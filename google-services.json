@@ -1,0 +1,85 @@
+{
+  "project_info": {
+    "project_number": "224242886052",
+    "firebase_url": "https://musicreleasenotifier-c0836-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "musicreleasenotifier-c0836",
+    "storage_bucket": "musicreleasenotifier-c0836.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224242886052:android:9ea4f710f6824c76a78d31",
+        "android_client_info": {
+          "package_name": "vip.chi_chi.pawify"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "224242886052-thk5nclf4gqiv007lmp542oq2cf461pi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "vip.chi_chi.pawify",
+            "certificate_hash": "f5e30d14c85c9ff834a462c7396cf4b76d20b3be"
+          }
+        },
+        {
+          "client_id": "224242886052-q9cfolescbve55p099dvk0io55l2hmko.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKjS9PMdTvUN4BRqhLX5ZIQeaV-9BMq8g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "224242886052-q9cfolescbve55p099dvk0io55l2hmko.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224242886052:android:740da51f6304414ea78d31",
+        "android_client_info": {
+          "package_name": "vip.chi_chi.pawify.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "224242886052-dgmd2m9pb2764ija531urmtil86psgct.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "vip.chi_chi.pawify.dev",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "224242886052-q9cfolescbve55p099dvk0io55l2hmko.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKjS9PMdTvUN4BRqhLX5ZIQeaV-9BMq8g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "224242886052-q9cfolescbve55p099dvk0io55l2hmko.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

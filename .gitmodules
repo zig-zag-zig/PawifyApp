@@ -1,0 +1,4 @@
+[submodule "src-modules"]
+	path = src/modules
+	url = https://github.com/zig-zag-zig/PawifyModule
+	branch = main

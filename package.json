@@ -1,0 +1,83 @@
+{
+  "name": "pawify",
+  "license": "0BSD",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "start": "node scripts/with-env.cjs development -- npx expo start",
+    "sync:android-version": "node scripts/sync-android-version.cjs",
+    "build:debug:local": "node scripts/with-env.cjs development -- node scripts/android-local-build.cjs debug",
+    "build:debug:local:install": "node scripts/with-env.cjs development -- node scripts/android-local-build.cjs debug --install",
+    "build:debug:local:clean": "node scripts/with-env.cjs development -- node scripts/android-local-build.cjs debug --clean",
+    "build:debug:local:install:clean": "node scripts/with-env.cjs development -- node scripts/android-local-build.cjs debug --clean --install",
+    "build:debug:cloud": "node scripts/with-env.cjs development --sync-eas-env -- npx eas build --platform android --profile development",
+    "build:release:local": "node scripts/with-env.cjs production -- node scripts/android-local-build.cjs release",
+    "build:release:local:install": "node scripts/with-env.cjs production -- node scripts/android-local-build.cjs release --install",
+    "build:release:local:clean": "node scripts/with-env.cjs production -- node scripts/android-local-build.cjs release --clean",
+    "build:release:local:install:clean": "node scripts/with-env.cjs production -- node scripts/android-local-build.cjs release --clean --install",
+    "build:release:cloud": "node scripts/with-env.cjs production --sync-eas-env -- npx eas build --platform android --profile production",
+    "release:check": "node scripts/release-check.cjs",
+    "release:config:check": "node scripts/validate-release-config.cjs",
+    "release:smoke:android": "node scripts/android-release-smoke-test.cjs",
+    "toolchain:check": "node scripts/validate-android-toolchain.cjs",
+    "deps:expo:check": "node scripts/expo-maintenance-check.cjs",
+    "deps:expo:fix": "node scripts/with-env.cjs development -- npx expo install --fix",
+    "android": "node scripts/with-env.cjs development -- expo run:android",
+    "ios": "node scripts/with-env.cjs development -- expo run:ios"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "listUnknownPackages": false
+      }
+    }
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
+    "@react-navigation/bottom-tabs": "^7.2.0",
+    "@react-navigation/native": "^7.0.14",
+    "@react-navigation/stack": "^7.1.1",
+    "@sentry/react-native": "~7.11.0",
+    "expo": "^56.0.4",
+    "expo-constants": "~56.0.15",
+    "expo-dev-client": "~56.0.15",
+    "expo-device": "~56.0.4",
+    "expo-file-system": "~56.0.7",
+    "expo-font": "~56.0.5",
+    "expo-linear-gradient": "~56.0.4",
+    "expo-linking": "~56.0.11",
+    "expo-notifications": "~56.0.13",
+    "expo-secure-store": "~56.0.4",
+    "expo-splash-screen": "~56.0.10",
+    "expo-system-ui": "~56.0.5",
+    "expo-task-manager": "~56.0.14",
+    "expo-updates": "~56.0.16",
+    "firebase": "^12.12.1",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-device-info": "^15.0.2",
+    "react-native-gesture-handler": "~2.31.1",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4",
+    "react-native-uuid": "^2.0.3",
+    "react-native-worklets": "0.8.3"
+  },
+  "devDependencies": {
+    "@react-native-community/cli": "latest",
+    "@types/react": "~19.2.14",
+    "babel-preset-expo": "~56.0.0",
+    "dotenv": "^16.6.1",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.7"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
+  "private": true
+}

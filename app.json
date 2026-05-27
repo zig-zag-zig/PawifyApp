@@ -1,0 +1,106 @@
+{
+  "expo": {
+    "sdkVersion": "56.0.0",
+    "name": "Pawify",
+    "slug": "pawify",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "scheme": "pawify",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "vip.chichi.pawify",
+      "infoPlist": {
+        "NSRemindersUsageDescription": "This app uses notifications to notify you about new music releases.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "pawify"
+            ]
+          }
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#EAD8DD"
+      },
+      "package": "vip.chi_chi.pawify",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "pawify"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "./plugins/expo-android-build-variants-plugin",
+      "expo-dev-client",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon-transparent.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#121212"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "mode": "production",
+          "icon": "./assets/white_paw.png",
+          "android": {
+            "allowWhileIdle": true
+          }
+        }
+      ],
+      [
+        "expo-task-manager",
+        {
+          "internal": {
+            "tasks": [
+              "background-notification-task"
+            ]
+          }
+        }
+      ],
+      "./plugins/expo-google-signin-plugin",
+      "./plugins/expo-gradle-jvm-plugin",
+      "expo-font"
+    ],
+    "owner": "alanomar1992",
+    "extra": {
+      "eas": {
+        "projectId": "605ad594-2de4-4490-9f19-8e2459963499"
+      }
+    }
+  }
+}

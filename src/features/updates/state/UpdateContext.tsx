@@ -1,0 +1,202 @@
+import React, { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { useToast } from '../../../components/ToastContext';
+import { AppUpdateModal } from '../components/AppUpdateModal';
+import type {
+  AppRelease,
+  UpdateCheckOptions,
+  UpdateDownloadProgress,
+  UpdateStatus,
+} from '../model/types';
+import { AppUpdateNoReleaseError, appUpdateService } from '../services/appUpdateService';
+
+type UpdateContextType = {
+  status: UpdateStatus;
+  isChecking: boolean;
+  isConfigured: boolean;
+  currentVersion: string;
+  latestRelease: AppRelease | null;
+  skippedReleaseTag: string | null;
+  error: string | null;
+  checkedAt: number | null;
+  downloadProgress: UpdateDownloadProgress | null;
+  checkForUpdates: (options?: UpdateCheckOptions) => Promise<void>;
+  showUpdateModal: () => void;
+  hideUpdateModal: () => void;
+  installUpdate: () => Promise<void>;
+  skipLatestRelease: () => Promise<void>;
+};
+
+const UpdateContext = createContext<UpdateContextType | null>(null);
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return 'Could not check for updates.';
+}
+
+export const UpdateProvider = ({ children }: { children: ReactNode }) => {
+  const { showToast } = useToast();
+  const [status, setStatus] = useState<UpdateStatus>('idle');
+  const [latestRelease, setLatestRelease] = useState<AppRelease | null>(null);
+  const [skippedReleaseTag, setSkippedReleaseTag] = useState<string | null>(null);
+  const [currentVersion, setCurrentVersion] = useState(appUpdateService.getCurrentVersion());
+  const [error, setError] = useState<string | null>(null);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const checkingRef = useRef(false);
+  const installingRef = useRef(false);
+  const isConfigured = appUpdateService.isConfigured();
+
+  const checkForUpdates = useCallback(async (options: UpdateCheckOptions = {}) => {
+    if (checkingRef.current) return;
+
+    if (!isConfigured) {
+      const message = 'Update repository is not configured';
+      setStatus('error');
+      setError(message);
+      if (!options.silent) {
+        showToast(message, 'error');
+        setModalVisible(true);
+      }
+      return;
+    }
+
+    checkingRef.current = true;
+    setStatus('checking');
+    setError(null);
+    setDownloadProgress(null);
+
+    try {
+      const result = await appUpdateService.checkForUpdate();
+      const skippedTag = await appUpdateService.getSkippedReleaseTag();
+      setCurrentVersion(result.currentVersion);
+      setLatestRelease(result.release);
+      setSkippedReleaseTag(skippedTag);
+      setCheckedAt(result.checkedAt);
+      setStatus(result.isAvailable ? 'available' : 'current');
+      const skippedOnStartup = options.respectSkippedVersion && skippedTag === result.release.tagName;
+
+      if (result.isAvailable && options.showModalOnUpdate && !skippedOnStartup) {
+        setModalVisible(true);
+      } else if (!result.isAvailable && options.showModalWhenCurrent) {
+        setModalVisible(true);
+      } else if (!result.isAvailable && !options.silent) {
+        showToast('App is up to date', 'success');
+      }
+    } catch (caught) {
+      const message = getErrorMessage(caught);
+      const releaseNotFound = caught instanceof AppUpdateNoReleaseError;
+      setStatus(releaseNotFound ? 'not_found' : 'error');
+      setError(message);
+      setLatestRelease(null);
+      setCheckedAt(Date.now());
+      if (!options.silent) {
+        showToast(message, releaseNotFound ? 'info' : 'error');
+        setModalVisible(true);
+      }
+    } finally {
+      checkingRef.current = false;
+    }
+  }, [isConfigured, showToast]);
+
+  const installUpdate = useCallback(async () => {
+    if (!latestRelease) return;
+    if (installingRef.current) return;
+
+    installingRef.current = true;
+    setError(null);
+    try {
+      await appUpdateService.downloadAndInstallUpdate(latestRelease, setDownloadProgress);
+    } catch (caught) {
+      showToast(getErrorMessage(caught), 'error');
+    } finally {
+      installingRef.current = false;
+      setDownloadProgress(null);
+    }
+  }, [latestRelease, showToast]);
+
+  const skipLatestRelease = useCallback(async () => {
+    if (!latestRelease) return;
+
+    try {
+      await appUpdateService.skipRelease(latestRelease);
+      setSkippedReleaseTag(latestRelease.tagName);
+      setModalVisible(false);
+      showToast(`Skipped ${latestRelease.version}`, 'info');
+    } catch {
+      showToast('Could not save update preference', 'error');
+    }
+  }, [latestRelease, showToast]);
+
+  const value = useMemo<UpdateContextType>(() => ({
+    status,
+    isChecking: status === 'checking',
+    isConfigured,
+    currentVersion,
+    latestRelease,
+    skippedReleaseTag,
+    error,
+    checkedAt,
+    downloadProgress,
+    checkForUpdates,
+    showUpdateModal: () => setModalVisible(true),
+    hideUpdateModal: () => setModalVisible(false),
+    installUpdate,
+    skipLatestRelease,
+  }), [
+    status,
+    isConfigured,
+    currentVersion,
+    latestRelease,
+    skippedReleaseTag,
+    error,
+    checkedAt,
+    downloadProgress,
+    checkForUpdates,
+    installUpdate,
+    skipLatestRelease,
+  ]);
+
+  return (
+    <UpdateContext.Provider value={value}>
+      {children}
+      <AppUpdateModal
+        visible={modalVisible}
+        status={status}
+        currentVersion={currentVersion}
+        release={latestRelease}
+        error={error}
+        checking={status === 'checking'}
+        updating={Boolean(downloadProgress)}
+        downloadProgress={downloadProgress}
+        onClose={() => {
+          if (!downloadProgress) setModalVisible(false);
+        }}
+        onCheckAgain={() => {
+          void checkForUpdates({
+            showModalOnUpdate: true,
+            showModalWhenCurrent: true,
+          });
+        }}
+        onUpdate={() => {
+          void installUpdate();
+        }}
+        onSkipVersion={() => {
+          void skipLatestRelease();
+        }}
+      />
+    </UpdateContext.Provider>
+  );
+};
+
+export const useAppUpdate = () => {
+  const context = useContext(UpdateContext);
+  if (!context) {
+    throw new Error('useAppUpdate must be used within an UpdateProvider');
+  }
+
+  return context;
+};

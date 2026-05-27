@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "App.tsx",
+    "scripts/android-local-build.cjs"
+  ],
+  "ignore": [
+    "babel.config.js",
+    "plugins/expo-google-signin-plugin.js"
+  ]
+}
