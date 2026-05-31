@@ -5,54 +5,47 @@ function getOptionalEnvValue(name) {
     return value || null;
 }
 
-function removeBuildTypeProperty(source, buildType, propertyName) {
-    const buildTypePattern = new RegExp(`(\\n\\s*${buildType}\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})`);
+function replaceBuildType(source, buildType, updateBody) {
+    const buildTypePattern = new RegExp(`(\\n\\s*buildTypes\\s*\\{[\\s\\S]*?\\n\\s*${buildType}\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})`);
 
     if (!buildTypePattern.test(source)) {
         throw new Error(`Unable to find Android ${buildType} buildType`);
     }
 
-    const propertyPattern = new RegExp(`\\n\\s*${propertyName}\\s*(?:=\\s*)?["'][^"']*["']\\s*`, 'm');
     return source.replace(buildTypePattern, (match, start, body, end) => {
-        return `${start}${body.replace(propertyPattern, '')}${end}`;
+        const nextBody = updateBody(body);
+        return `${start}${nextBody.startsWith('\n') || nextBody.length === 0 ? nextBody : `\n${nextBody}`}${end}`;
     });
 }
 
+function removeBuildTypeProperty(source, buildType, propertyName) {
+    const propertyPattern = new RegExp(`\\n\\s*${propertyName}\\s*(?:=\\s*)?["'][^"']*["']\\s*`, 'm');
+    return replaceBuildType(source, buildType, body => body.replace(propertyPattern, ''));
+}
+
 function upsertBuildTypeProperty(source, buildType, propertyName, propertyValue) {
-    const buildTypePattern = new RegExp(`(\\n\\s*${buildType}\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})`);
-
-    if (!buildTypePattern.test(source)) {
-        throw new Error(`Unable to find Android ${buildType} buildType`);
-    }
-
     const propertyPattern = new RegExp(`^\\s*${propertyName}\\s*(?:=\\s*)?["'][^"']*["']\\s*$`, 'm');
     const propertyLine = `            ${propertyName} = "${propertyValue}"`;
 
-    return source.replace(buildTypePattern, (match, start, body, end) => {
+    return replaceBuildType(source, buildType, body => {
         if (propertyPattern.test(body)) {
-            return `${start}${body.replace(propertyPattern, propertyLine)}${end}`;
+            return body.replace(propertyPattern, propertyLine);
         }
 
-        return `${start}${body.replace(/\s*$/, '')}\n${propertyLine}${end}`;
+        return `${body.replace(/\s*$/, '')}\n${propertyLine}`;
     });
 }
 
 function upsertBuildTypeRawProperty(source, buildType, propertyName, propertyValue) {
-    const buildTypePattern = new RegExp(`(\\n\\s*${buildType}\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})`);
-
-    if (!buildTypePattern.test(source)) {
-        throw new Error(`Unable to find Android ${buildType} buildType`);
-    }
-
     const propertyPattern = new RegExp(`^\\s*${propertyName}\\s*(?:=\\s*)?.*$`, 'm');
     const propertyLine = `            ${propertyName} = ${propertyValue}`;
 
-    return source.replace(buildTypePattern, (match, start, body, end) => {
+    return replaceBuildType(source, buildType, body => {
         if (propertyPattern.test(body)) {
-            return `${start}${body.replace(propertyPattern, propertyLine)}${end}`;
+            return body.replace(propertyPattern, propertyLine);
         }
 
-        return `${start}${body.replace(/\s*$/, '')}\n${propertyLine}${end}`;
+        return `${body.replace(/\s*$/, '')}\n${propertyLine}`;
     });
 }
 
