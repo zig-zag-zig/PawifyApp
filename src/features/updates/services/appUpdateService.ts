@@ -35,6 +35,7 @@ const GITHUB_API_VERSION = '2022-11-28';
 const GITHUB_RELEASES_NOT_FOUND_MESSAGE = 'No public GitHub release found for this app.';
 const SKIPPED_RELEASE_TAG_KEY = 'app-update-skipped-release-tag';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
+const supportsInstallActions = (): boolean => Platform.OS === 'android';
 
 export class AppUpdateNoReleaseError extends Error {
   constructor(message = GITHUB_RELEASES_NOT_FOUND_MESSAGE) {
@@ -97,12 +98,14 @@ function getCurrentVersion(): string {
 function getPreferredAsset(assets: GitHubReleaseAsset[] | undefined): GitHubReleaseAsset | null {
   if (!assets?.length) return null;
 
-  if (Platform.OS === 'android') {
+  if (supportsInstallActions()) {
     const apkAsset = assets.find(asset => asset.name?.toLowerCase().endsWith('.apk'));
     if (apkAsset) return apkAsset;
   }
 
-  return assets.find(asset => Boolean(asset.browser_download_url)) ?? null;
+  return supportsInstallActions()
+    ? assets.find(asset => Boolean(asset.browser_download_url)) ?? null
+    : null;
 }
 
 function getGitHubHeaders(accept = 'application/vnd.github+json'): Record<string, string> {
@@ -206,7 +209,7 @@ function toAppRelease(release: GitHubRelease): AppRelease {
   const downloadUrl = preferredAsset?.browser_download_url?.trim() || htmlUrl;
   const assetName = preferredAsset?.name?.trim() || null;
   const assetDownloadUrl = preferredAsset?.url?.trim() || preferredAsset?.browser_download_url?.trim() || null;
-  const isAndroidApk = Platform.OS === 'android' && Boolean(assetName?.toLowerCase().endsWith('.apk'));
+  const isAndroidApk = supportsInstallActions() && Boolean(assetName?.toLowerCase().endsWith('.apk'));
 
   return {
     tagName,
@@ -216,7 +219,7 @@ function toAppRelease(release: GitHubRelease): AppRelease {
     publishedAt: release.published_at || null,
     htmlUrl,
     downloadUrl,
-    downloadLabel: isAndroidApk ? 'Install Update' : preferredAsset ? 'Update' : 'Open Release',
+    downloadLabel: isAndroidApk ? 'Install Update' : preferredAsset ? 'Update' : 'Release Notes',
     assetName,
     assetDownloadUrl,
     assetSizeBytes: typeof preferredAsset?.size === 'number' ? preferredAsset.size : null,
@@ -270,7 +273,11 @@ async function downloadAndInstallApk(
   release: AppRelease,
   onProgress?: (progress: UpdateDownloadProgress) => void,
 ): Promise<void> {
-  if (Platform.OS !== 'android' || !release.canInstallInApp || !release.assetDownloadUrl) {
+  if (!supportsInstallActions()) {
+    return;
+  }
+
+  if (!release.canInstallInApp || !release.assetDownloadUrl) {
     await openExternalUrl(release.downloadUrl || release.htmlUrl);
     return;
   }
@@ -332,6 +339,7 @@ async function downloadAndInstallApk(
 
 export const appUpdateService = {
   isConfigured: () => Boolean(parseRepoUrl(ENV.updateGithubRepoUrl)),
+  isInstallSupported: supportsInstallActions,
   getCurrentVersion,
   getSkippedReleaseTag: async (): Promise<string | null> => {
     return getUpdatePreference(SKIPPED_RELEASE_TAG_KEY);
@@ -353,6 +361,10 @@ export const appUpdateService = {
   },
 
   openUpdate: async (release: AppRelease): Promise<void> => {
+    if (!supportsInstallActions()) {
+      return;
+    }
+
     await openExternalUrl(release.downloadUrl || release.htmlUrl);
   },
 

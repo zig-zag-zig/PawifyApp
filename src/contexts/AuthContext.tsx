@@ -140,7 +140,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithGoogle = async () => {
     if (Platform.OS !== 'android') {
-      throw new Error('Google sign-in is only available on Android.');
+      return;
     }
 
     try {
@@ -160,7 +160,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const linkGoogle = async () => {
     if (Platform.OS !== 'android') {
-      throw new Error('Google sign-in is only available on Android.');
+      return;
     }
 
     const currentUser = auth.currentUser;
@@ -193,6 +193,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const unlinkProvider = async (providerId: string) => {
+    if (providerId === 'google.com' && Platform.OS !== 'android') {
+      return;
+    }
+
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('No current user');
     // Prevent unlinking the last provider: user must have at least one sign-in method

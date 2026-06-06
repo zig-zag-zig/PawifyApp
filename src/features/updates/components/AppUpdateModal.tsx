@@ -20,6 +20,7 @@ type AppUpdateModalProps = {
   error: string | null;
   checking: boolean;
   updating: boolean;
+  canInstallUpdates: boolean;
   downloadProgress: UpdateDownloadProgress | null;
   onClose: () => void;
   onCheckAgain: () => void;
@@ -70,6 +71,7 @@ export const AppUpdateModal = ({
   error,
   checking,
   updating,
+  canInstallUpdates,
   downloadProgress,
   onClose,
   onCheckAgain,
@@ -78,8 +80,10 @@ export const AppUpdateModal = ({
 }: AppUpdateModalProps) => {
   const insets = useSafeAreaInsets();
   const styles = getStyles();
-  const isAvailable = status === 'available' && release;
-  const isCurrent = status === 'current' && release;
+  const availableRelease = status === 'available' ? release : null;
+  const currentRelease = status === 'current' ? release : null;
+  const isAvailable = Boolean(availableRelease);
+  const isCurrent = Boolean(currentRelease);
   const isNotFound = status === 'not_found';
   const isError = status === 'error';
   const isChecking = status === 'checking';
@@ -90,6 +94,7 @@ export const AppUpdateModal = ({
   const progressWidth = `${Math.max(3, progressPercent ?? 18)}%` as `${number}%`;
   const bytesWritten = formatBytes(downloadProgress?.bytesWritten ?? null);
   const contentLength = formatBytes(downloadProgress?.contentLength ?? release?.assetSizeBytes ?? null);
+  const showUpdateAction = Boolean(availableRelease && canInstallUpdates);
 
   useEffect(() => {
     if (!visible) {
@@ -236,15 +241,15 @@ export const AppUpdateModal = ({
               variant="secondary"
               disabled={updating}
             />
-            {isAvailable ? (
+            {showUpdateAction && availableRelease ? (
               <ModalButton
-                label={updating ? getProgressLabel(downloadProgress) : release.downloadLabel}
+                label={updating ? getProgressLabel(downloadProgress) : availableRelease.downloadLabel}
                 onPress={onUpdate}
                 icon="download"
                 loading={updating}
                 disabled={updating}
               />
-            ) : (
+            ) : !isAvailable ? (
               <ModalButton
                 label="Check Again"
                 onPress={onCheckAgain}
@@ -252,14 +257,13 @@ export const AppUpdateModal = ({
                 loading={checking}
                 disabled={checking}
               />
-            )}
+            ) : null}
           </View>
-          {isAvailable && (
+          {showUpdateAction && !updating && (
             <TouchableOpacity
-              style={[styles.skipButton, updating && styles.disabledButton]}
+              style={styles.skipButton}
               onPress={onSkipVersion}
               activeOpacity={0.75}
-              disabled={updating}
             >
               <Text style={styles.skipButtonText}>Do Not Ask Again for This Version</Text>
             </TouchableOpacity>

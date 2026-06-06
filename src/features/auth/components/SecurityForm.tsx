@@ -31,7 +31,7 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
 
             {!securityPage.needsPasswordField && actionType !== 'password' && (
                 <CustomInput
-                    placeholder="You'll be prompted to authenticate with Google"
+                    placeholder={securityPage.reauthPromptMessage ?? 'Authentication is unavailable'}
                     value=""
                     onChangeText={() => { }}
                     editable={false}

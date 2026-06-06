@@ -13,6 +13,7 @@ type UpdateContextType = {
   status: UpdateStatus;
   isChecking: boolean;
   isConfigured: boolean;
+  canInstallUpdates: boolean;
   currentVersion: string;
   latestRelease: AppRelease | null;
   skippedReleaseTag: string | null;
@@ -49,6 +50,7 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
   const checkingRef = useRef(false);
   const installingRef = useRef(false);
   const isConfigured = appUpdateService.isConfigured();
+  const canInstallUpdates = appUpdateService.isInstallSupported();
 
   const checkForUpdates = useCallback(async (options: UpdateCheckOptions = {}) => {
     if (checkingRef.current) return;
@@ -135,6 +137,7 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
     status,
     isChecking: status === 'checking',
     isConfigured,
+    canInstallUpdates,
     currentVersion,
     latestRelease,
     skippedReleaseTag,
@@ -149,6 +152,7 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
   }), [
     status,
     isConfigured,
+    canInstallUpdates,
     currentVersion,
     latestRelease,
     skippedReleaseTag,
@@ -171,6 +175,7 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
         error={error}
         checking={status === 'checking'}
         updating={Boolean(downloadProgress)}
+        canInstallUpdates={canInstallUpdates}
         downloadProgress={downloadProgress}
         onClose={() => {
           if (!downloadProgress) setModalVisible(false);

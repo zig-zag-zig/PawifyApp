@@ -69,7 +69,11 @@ function createGoogleSignInError(error: unknown, fallback = failedMessage): Erro
 
 async function signInWithGoogle(): Promise<GoogleAuthResult> {
     if (!isAndroid) {
-        throw new Error('Google sign-in is only available on Android.');
+        return {
+            idToken: null,
+            accessToken: null,
+            providerId: 'google.com',
+        };
     }
 
     if (!GoogleSignInModule || !GoogleSignInModule.init || !GoogleSignInModule.signIn) {

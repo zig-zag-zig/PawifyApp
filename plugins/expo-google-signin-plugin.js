@@ -80,20 +80,57 @@ function insertPackageRegistration(source) {
     );
 }
 
-function patchMainApplication(projectRoot) {
-    const mainAppPath = path.join(
+function findGeneratedMainApplication(projectRoot) {
+    const javaRoot = path.join(projectRoot, 'android', 'app', 'src', 'main', 'java');
+    if (!fs.existsSync(javaRoot)) {
+        return null;
+    }
+
+    const pending = [javaRoot];
+    while (pending.length > 0) {
+        const current = pending.pop();
+        for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+            const entryPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                pending.push(entryPath);
+            } else if (entry.name === 'MainApplication.kt') {
+                return entryPath;
+            }
+        }
+    }
+
+    return null;
+}
+
+function getMainApplicationPath(projectRoot, androidPackage) {
+    const packagePath = String(androidPackage || 'vip.chi_chi.pawify')
+        .split('.')
+        .filter(Boolean);
+    const expectedPath = path.join(
         projectRoot,
         'android',
         'app',
         'src',
         'main',
         'java',
-        'vip',
-        'chi_chi',
-        'pawify',
+        ...packagePath,
         'MainApplication.kt',
     );
 
+    if (fs.existsSync(expectedPath)) {
+        return expectedPath;
+    }
+
+    const generatedPath = findGeneratedMainApplication(projectRoot);
+    if (generatedPath) {
+        return generatedPath;
+    }
+
+    return expectedPath;
+}
+
+function patchMainApplication(projectRoot, androidPackage) {
+    const mainAppPath = getMainApplicationPath(projectRoot, androidPackage);
     const mainApplication = fs.readFileSync(mainAppPath, 'utf8');
     const patched = insertPackageRegistration(insertImport(mainApplication));
 
@@ -127,7 +164,7 @@ function withGoogleSignin(config) {
         config => {
             const projectRoot = config.modRequest.projectRoot;
             copyTemplateFiles(projectRoot);
-            patchMainApplication(projectRoot);
+            patchMainApplication(projectRoot, config.android?.package);
 
             return config;
         },

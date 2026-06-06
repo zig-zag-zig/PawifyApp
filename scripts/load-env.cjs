@@ -7,7 +7,7 @@ const requiredPublicEnvKeys = [
 ];
 
 function resolveAppEnv() {
-  const explicitEnv = process.env.APP_ENV || process.env.EXPO_ENV || process.env.EAS_BUILD_PROFILE;
+  const explicitEnv = process.env.APP_ENV || process.env.EXPO_ENV;
   if (explicitEnv) {
     return explicitEnv;
   }

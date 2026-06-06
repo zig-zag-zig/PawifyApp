@@ -35,7 +35,8 @@ export interface SecurityState {
 export interface ValidateSecurityOptions {
     type: SecurityActionType;
     currentPassword: string;
-    currentUser: User;
+    currentUser: User | null;
+    canUseGoogleAuth?: boolean;
     newValue?: string;
     confirmValue?: string;
 }

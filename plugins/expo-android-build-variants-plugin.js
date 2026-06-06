@@ -19,7 +19,7 @@ function replaceBuildType(source, buildType, updateBody) {
 }
 
 function removeBuildTypeProperty(source, buildType, propertyName) {
-    const propertyPattern = new RegExp(`\\n\\s*${propertyName}\\s*(?:=\\s*)?["'][^"']*["']\\s*`, 'm');
+    const propertyPattern = new RegExp(`^\\s*${propertyName}\\s*(?:=\\s*)?["'][^"']*["']\\s*\\n?`, 'm');
     return replaceBuildType(source, buildType, body => body.replace(propertyPattern, ''));
 }
 

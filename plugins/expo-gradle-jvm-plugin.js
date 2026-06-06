@@ -6,10 +6,27 @@ const GLOBAL_GRADLE_PROPERTY_KEYS = new Set([
     'org.gradle.parallel',
     'org.gradle.workers.max',
 ]);
+const REQUIRED_GRADLE_PROPERTIES = [
+    {
+        type: 'property',
+        key: 'org.gradle.jvmargs',
+        value: '-Xmx4g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8',
+    },
+    {
+        type: 'property',
+        key: 'kotlin.daemon.jvmargs',
+        value: '-Xmx2g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=512m',
+    },
+    {
+        type: 'property',
+        key: 'org.gradle.workers.max',
+        value: '1',
+    },
+];
 const DEV_CLIENT_AUTOLINKING_BLOCK_START = '// @generated begin pawify-prod-dev-client-exclude';
 const DEV_CLIENT_AUTOLINKING_BLOCK_END = '// @generated end pawify-prod-dev-client-exclude';
 const DEV_CLIENT_AUTOLINKING_BLOCK = `${DEV_CLIENT_AUTOLINKING_BLOCK_START}
-def pawifyAppEnv = System.getenv('APP_ENV') ?: System.getenv('EAS_BUILD_PROFILE') ?: System.getenv('NODE_ENV')
+def pawifyAppEnv = System.getenv('APP_ENV') ?: System.getenv('NODE_ENV')
 if (pawifyAppEnv == 'production') {
   def pawifyDevClientAutolinkingExcludes = [
     'expo-dev-client',
@@ -49,7 +66,10 @@ function withGradleJvm(config) {
             property => !GLOBAL_GRADLE_PROPERTY_KEYS.has(property.key),
         );
 
-        config.modResults = properties;
+        config.modResults = [
+            ...properties,
+            ...REQUIRED_GRADLE_PROPERTIES,
+        ];
         return config;
     });
 

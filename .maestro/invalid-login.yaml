@@ -1,0 +1,22 @@
+appId: vip.chi_chi.pawify.dev
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: "Android app compatibility"
+    commands:
+      - tapOn: "Don't show again"
+- extendedWaitUntil:
+    visible: "Email"
+    timeout: 15000
+- tapOn: "Email"
+- inputText: "missing-user@example.test"
+- tapOn: "Password"
+- inputText: "wrong-password-123"
+- hideKeyboard
+- tapOn: "Sign In"
+- extendedWaitUntil:
+    visible: "Sign In"
+    timeout: 15000
+- assertVisible: "Email"

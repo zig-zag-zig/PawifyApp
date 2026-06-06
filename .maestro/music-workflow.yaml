@@ -1,0 +1,64 @@
+appId: vip.chi_chi.pawify.dev
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: "Android app compatibility"
+    commands:
+      - tapOn: "Don't show again"
+- extendedWaitUntil:
+    visible: "Email"
+    timeout: 15000
+- tapOn: "Don't have an account? Sign Up"
+- extendedWaitUntil:
+    visible: "Confirm Password"
+    timeout: 15000
+- tapOn: "Email"
+- inputText: ${E2E_MUSIC_EMAIL}
+- tapOn: "Password"
+- inputText: "Pawify-e2e-password-123"
+- tapOn: "Confirm Password"
+- inputText: "Pawify-e2e-password-123"
+- hideKeyboard
+- tapOn: "Sign Up"
+- extendedWaitUntil:
+    visible: "Search artists"
+    timeout: 30000
+- tapOn: "Search artists"
+- inputText: "Aurora"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Aurora Test Ensemble"
+    timeout: 30000
+- tapOn: "Aurora Test Ensemble"
+- extendedWaitUntil:
+    visible: "Follow"
+    timeout: 30000
+- assertVisible: "Aurora Test Ensemble \\(Pawify E2E Fixture\\)"
+- assertVisible: "Also known as ATE Fixture"
+- extendedWaitUntil:
+    visible: "Midnight Signals"
+    timeout: 30000
+- tapOn: "Follow"
+- extendedWaitUntil:
+    visible: "Unfollow"
+    timeout: 30000
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "Search artists"
+    timeout: 15000
+- tapOn:
+    point: "38%,95%"
+- extendedWaitUntil:
+    visible: "Aurora Test Ensemble"
+    timeout: 15000
+- tapOn: "Aurora Test Ensemble"
+- extendedWaitUntil:
+    visible: "Midnight Signals"
+    timeout: 30000
+- tapOn: "Midnight Signals"
+- extendedWaitUntil:
+    visible: "Signal Drift"
+    timeout: 30000
+- assertVisible: "Skyline Loop"

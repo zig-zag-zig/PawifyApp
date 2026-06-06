@@ -1,0 +1,16 @@
+appId: vip.chi_chi.pawify.dev
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: "Android app compatibility"
+    commands:
+      - tapOn: "Don't show again"
+- extendedWaitUntil:
+    visible: "Email"
+    timeout: 15000
+- assertVisible: "Password"
+- assertVisible: "Sign In"
+- assertVisible: "Don't have an account? Sign Up"
+- assertVisible: "Forgot Password?"

@@ -5,6 +5,7 @@ const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
 const appJsonPath = path.join(projectRoot, 'app.json');
+const appConfigPath = path.join(projectRoot, 'app.config.js');
 const androidRootBuildGradlePath = path.join(projectRoot, 'android', 'build.gradle');
 const androidBuildGradlePath = path.join(projectRoot, 'android', 'app', 'build.gradle');
 
@@ -19,6 +20,24 @@ function readAppConfig() {
   } catch (error) {
     fail(`Failed to read app.json: ${error.message}`);
   }
+}
+
+function readExpoConfig(appConfig) {
+  if (!fs.existsSync(appConfigPath)) {
+    return appConfig.expo;
+  }
+
+  try {
+    delete require.cache[require.resolve(appConfigPath)];
+    const createConfig = require(appConfigPath);
+    if (typeof createConfig === 'function') {
+      return createConfig({ config: {} });
+    }
+  } catch (error) {
+    fail(`Failed to read app.config.js: ${error.message}`);
+  }
+
+  return appConfig.expo;
 }
 
 function validateVersion(version) {
@@ -188,8 +207,14 @@ def resolveRepoFile = { filePath ->
 }
 
 const appConfig = readAppConfig();
+const expoConfig = readExpoConfig(appConfig);
 const versionName = validateVersion(appConfig.expo?.version);
 const versionCode = validateVersionCode(appConfig.expo?.android?.versionCode);
+const androidPackageName = expoConfig.android?.package || appConfig.expo?.android?.package;
+
+if (typeof androidPackageName !== 'string' || androidPackageName.trim().length === 0) {
+  fail('expo.android.package must be configured.');
+}
 
 if (!fs.existsSync(androidBuildGradlePath)) {
   fail('android/app/build.gradle does not exist. Run `npx expo prebuild --platform android` first.');
@@ -210,6 +235,18 @@ buildGradle = replaceRequired(
   `versionName = "${versionName}"`,
   'versionName',
 );
+buildGradle = replaceRequired(
+  buildGradle,
+  /namespace\s*=\s*["'][^"']+["']/,
+  `namespace = '${androidPackageName}'`,
+  'namespace',
+);
+buildGradle = replaceRequired(
+  buildGradle,
+  /applicationId\s*=\s*["'][^"']+["']/,
+  `applicationId = '${androidPackageName}'`,
+  'applicationId',
+);
 
 fs.writeFileSync(androidBuildGradlePath, buildGradle, 'utf8');
-console.log(`[android-version] Synced Android versionName=${versionName}, versionCode=${versionCode}, release signing, and Gradle syntax`);
+console.log(`[android-version] Synced Android versionName=${versionName}, versionCode=${versionCode}, package=${androidPackageName}, release signing, and Gradle syntax`);

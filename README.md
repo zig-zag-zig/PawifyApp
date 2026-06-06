@@ -21,7 +21,7 @@ The app includes email and Google sign-in, artist search, followed artist manage
 - TypeScript
 - Firebase Authentication
 - React Navigation
-- EAS Build
+- Local Android APK builds
 
 ## Related Repositories
 
@@ -91,75 +91,155 @@ npm run ios
 
 Android is the primary target for the current native Google sign-in and update flow. iOS may need additional provider setup depending on the authentication methods you enable.
 
-## Builds
+## NPM Scripts
 
-Create a local Android debug build:
-
-```bash
-npm run build:debug:local
-```
-
-The debug APK is copied to `android/app/build/outputs/apk/debug/Pawify-debug.apk`.
-
-Create a local Android release build:
+Run the app locally:
 
 ```bash
-npm run build:release:local
+npm start
+npm run android
+npm run ios
 ```
 
-The release APK is copied to `android/app/build/outputs/apk/release/Pawify.apk`.
+Check environment injection without starting or building the app:
+
+```bash
+npm run env:check:development
+npm run env:check:production
+npm run env:check:e2e
+```
+
+Run the fast local quality gate:
+
+```bash
+npm run verify
+```
+
+`verify` runs TypeScript checks and the Vitest suite. Android build scripts run this first and stop immediately if it fails.
+
+Run Expo dependency/tooling checks:
+
+```bash
+npm run doctor
+```
+
+Safely align Expo-managed package versions, then re-run maintenance checks and tests:
+
+```bash
+npm run deps:update
+```
+
+`deps:update` may change `package.json` or `package-lock.json`; use it when updating packages, not as part of every build.
+
+## Android Builds
+
+Development/debug builds install with the launcher name `Pawify Dev`, while production release builds install as `Pawify`. Their separate Android package names allow both to be installed side by side.
+
+Build a debug APK:
+
+```bash
+npm run build:debug
+```
+
+Build and install a debug APK on the main Android profile only:
+
+```bash
+npm run build:debug:install
+```
+
+Build a production release APK:
+
+```bash
+npm run build:release
+```
+
+Build and install a production release APK on the main Android profile only:
+
+```bash
+npm run build:release:install
+```
 
 Install variants use `adb install --user 0`, so they install only into the main Android profile.
 
-Create an EAS production build:
+Use `--clean` when you need a fresh Expo prebuild and Gradle clean:
 
 ```bash
-npm run build:release:cloud
+npm run build:debug -- --clean
+npm run build:debug:install -- --clean
+npm run build:release -- --clean
+npm run build:release:install -- --clean
 ```
 
-The build scripts load `.env` through `scripts/with-env.cjs` and sync loaded environment values to EAS for cloud builds.
-
-Run the full local production release gate:
+Use `--dry-run` to preview the commands, selected environment, clean forwarding, APK path, and install steps without running prebuild, Gradle, or ADB:
 
 ```bash
-npm run release:check
+npm run build:release -- --dry-run
+npm run build:release:install -- --clean --dry-run
 ```
 
-This validates the Android toolchain pins, production config, Expo dependency alignment, TypeScript, npm audit, whitespace, release build, and APK signature.
+Dry runs are for checking script behavior before a real build or install. They are not a substitute for `verify`, `doctor`, or a real APK build.
+
+Use one version bump flag when building a new APK version:
+
+```bash
+npm run build:release -- --bump-patch
+npm run build:release -- --bump-minor
+npm run build:release -- --bump-major
+```
+
+Patch bumps are for fixes, minor bumps are for normal feature releases, and major bumps are for intentionally larger compatibility/version changes. The build script updates `package.json`, `package-lock.json` when present, `app.json` `expo.version`, and `app.json` `expo.android.versionCode` before Expo prebuild and Gradle run. Combine with `--dry-run` to preview the version change without writing files:
+
+```bash
+npm run build:release -- --bump-patch --dry-run
+```
+
+Android native files are generated through Expo prebuild and project scripts. Make persistent native changes in the tracked scripts/templates, not directly in ignored `android/` output.
+
+## E2E Testing
+
+Run local Maestro e2e tests against the local backend and Firebase emulators:
+
+```bash
+npm run e2e
+```
+
+Run only the smoke flow:
+
+```bash
+npm run e2e:smoke
+```
+
+Forward flags after `--`:
+
+```bash
+npm run e2e -- --clean
+npm run e2e:smoke -- --clean
+npm run e2e -- --dry-run
+npm run e2e -- --clean --dry-run
+```
+
+`e2e` and `e2e:smoke` run `verify`, build and install the e2e APK, start the local backend/Firebase emulator stack, then run Maestro. Dry-run mode previews the e2e APK build/install path and skips Maestro.
+
+The e2e APK is written under `android/app/build/outputs/apk/e2e/Pawify-e2e.apk`, separate from the normal `debug/` and `release/` APK output folders.
+
+Local e2e runs always target an Android emulator and refuse connected physical devices. The runner starts the `PurrivacyPawifyE2E` AVD when no emulator is already running. Set `PAWIFY_E2E_AVD=YourAvdName` to use a different AVD, `PAWIFY_E2E_HEADLESS=true` to start it without a window, or `PAWIFY_E2E_KEEP_EMULATOR=true` to leave an emulator started by the script running after tests.
+
+Normal debug and release installs may target a physical phone; only the local e2e runner is emulator-only.
+
+Maestro runs each flow separately so its steps remain visible, continues through flow failures, and prints passed and failed flow totals with their names at the end.
+
+PawifyApp e2e uses backend port `10000` and Firebase Auth emulator port `9199`, so it does not collide with PurrivacyApp e2e.
 
 ## Testing
 
-Run the app test suite:
+Run individual checks when you want a tighter loop:
 
 ```bash
 npm test
-```
-
-Run TypeScript checks:
-
-```bash
 npm run typecheck
 ```
 
-The current tests cover reducer behavior, artist relationship helpers, task-result normalization, and app launch-background configuration without hitting Firebase or the Pawify API.
-
-Run Expo maintenance checks after SDK 56 patch releases:
-
-```bash
-npm run deps:expo:check
-```
-
-Apply Expo dependency alignment fixes when needed:
-
-```bash
-npm run deps:expo:fix
-```
-
-Install and launch the release APK on a connected Android device, then follow the printed manual smoke checklist:
-
-```bash
-npm run release:smoke:android
-```
+Use `npm run verify` before pushing app logic changes, and use `npm run doctor` after package or Expo SDK changes.
 
 ### Android Signing
 
@@ -187,7 +267,7 @@ src/
 - Do not commit production secrets, signing keys, or private `.env` values.
 - `EXPO_PUBLIC_` values are bundled into the app and should be treated as public client configuration.
 - Use your own Firebase and API configuration before publishing a production build.
-- Do not upgrade the Android Gradle wrapper or Android Gradle Plugin outside the Expo/RN-supported versions. `npm run toolchain:check` enforces the current pins.
+- Do not upgrade the Android Gradle wrapper or Android Gradle Plugin outside the Expo/RN-supported versions unless `npm run doctor`, `npm run verify`, and a real Android build pass afterward.
 - Production builds exclude `expo-dev-client`, `expo-dev-launcher`, and dev-menu native modules. Development builds keep them.
 - Sentry crash reporting is disabled until `EXPO_PUBLIC_SENTRY_DSN` is set. Source-map upload requires build-time `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT`; use `SENTRY_DISABLE_AUTO_UPLOAD=true` only when intentionally building without source-map upload.
 

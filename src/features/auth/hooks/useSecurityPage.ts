@@ -17,6 +17,7 @@ import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { RootStackParamList } from '../../../types/navigation';
 import { useAuthApi } from '../api/authApi';
 import {
+    getSecurityReauthMethod,
     requiresPasswordInput,
     securityButtonTextMap,
     securitySuccessMessageMap,
@@ -51,10 +52,24 @@ export function useSecurityPage(actionType: SecurityActionType) {
         undefined,
         createInitialSecurityState
     );
+    const canUseGoogleAuth = Platform.OS === 'android';
 
     const needsPasswordField = useMemo(() => {
-        return requiresPasswordInput(actionType, user);
-    }, [actionType, user]);
+        return requiresPasswordInput(actionType, user, { canUseGoogleAuth });
+    }, [actionType, canUseGoogleAuth, user]);
+
+    const reauthPromptMessage = useMemo(() => {
+        if (needsPasswordField || actionType === 'password') {
+            return null;
+        }
+
+        const reauthMethod = getSecurityReauthMethod(actionType, user, { canUseGoogleAuth });
+        if (reauthMethod === 'google') {
+            return "You'll be prompted to authenticate with Google";
+        }
+
+        return 'This action is not available for this sign-in method on this platform.';
+    }, [actionType, canUseGoogleAuth, needsPasswordField, user]);
 
     useFocusEffect(
         useCallback(() => {
@@ -67,9 +82,21 @@ export function useSecurityPage(actionType: SecurityActionType) {
             if (actionType === 'email' && user?.providerData?.some(provider => provider.providerId === 'google.com')) {
                 dispatch({ type: 'formDisabledChanged', value: true });
                 showToast(
-                    'Email change not available when Google account is linked. To change email: unlink Google, update email, then re-link Google.',
+                    canUseGoogleAuth
+                        ? 'Email change not available when Google account is linked. To change email: unlink Google, update email, then re-link Google.'
+                        : 'Email change is not available on iOS while Google is linked.',
                     'error'
                 );
+                return () => { };
+            }
+
+            if (
+                actionType !== 'password'
+                && user
+                && !getSecurityReauthMethod(actionType, user, { canUseGoogleAuth })
+            ) {
+                dispatch({ type: 'formDisabledChanged', value: true });
+                showToast('This action is not available for your sign-in method on this platform.', 'error');
                 return () => { };
             }
 
@@ -78,7 +105,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
             return () => {
                 dispatch({ type: 'resetInputs' });
             };
-        }, [actionType, navigation, showToast, user])
+        }, [actionType, canUseGoogleAuth, navigation, showToast, user])
     );
 
     const executeSecurityAction = async () => {
@@ -91,6 +118,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
             type: actionType,
             currentPassword: state.currentPassword,
             currentUser,
+            canUseGoogleAuth,
             newValue: state.newValue,
             confirmValue: actionType !== 'delete' ? state.confirmValue : undefined,
         });
@@ -102,15 +130,9 @@ export function useSecurityPage(actionType: SecurityActionType) {
         setLoginWithReauthenticateWithCredential(true);
 
         const hasGoogle = currentUser.providerData.some(provider => provider.providerId === 'google.com');
-        const hasPassword = currentUser.providerData.some(provider => provider.providerId === 'password');
-        const canUseGoogleAuth = Platform.OS === 'android';
+        const reauthMethod = getSecurityReauthMethod(actionType, currentUser, { canUseGoogleAuth });
 
-        const shouldUseGoogleAuth = canUseGoogleAuth && hasGoogle && actionType !== 'password';
-        const shouldUsePasswordAuth =
-            (actionType === 'password' && hasPassword) ||
-            ((!hasGoogle || !canUseGoogleAuth) && hasPassword);
-
-        if (shouldUseGoogleAuth) {
+        if (reauthMethod === 'google') {
             try {
                 const result = await useGoogleAuth.signInWithGoogle();
                 const idToken = result?.idToken;
@@ -122,7 +144,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
             } catch (error) {
                 return { success: false, requiresSignout: true };
             }
-        } else if (shouldUsePasswordAuth) {
+        } else if (reauthMethod === 'password') {
             const credential = EmailAuthProvider.credential(currentUser.email, state.currentPassword);
             await reauthenticateWithCredential(currentUser, credential);
         } else {
@@ -188,6 +210,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
     return {
         state,
         needsPasswordField,
+        reauthPromptMessage,
         buttonText: securityButtonTextMap[actionType],
         onCurrentPasswordChanged: (value: string) => dispatch({ type: 'currentPasswordChanged', value }),
         onNewValueChanged: (value: string) => dispatch({ type: 'newValueChanged', value }),

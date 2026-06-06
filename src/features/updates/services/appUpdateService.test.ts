@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Platform } from 'react-native';
+import { openExternalUrl } from '../../../services/externalNavigation';
 
 vi.mock('expo-constants', () => ({
   default: {
@@ -82,6 +84,8 @@ function createRelease(overrides: Record<string, unknown> = {}) {
 }
 
 afterEach(() => {
+  (Platform as { OS: string }).OS = 'android';
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -125,5 +129,28 @@ describe('appUpdateService', () => {
     await expect(appUpdateService.checkForUpdate())
       .rejects
       .toBeInstanceOf(AppUpdateNoReleaseError);
+  });
+
+  it('checks iOS releases for notes without exposing download or install actions', async () => {
+    (Platform as { OS: string }).OS = 'ios';
+    const fetchMock = vi.fn().mockResolvedValueOnce(createFetchResponse(200, createRelease({
+      tag_name: 'v1.0.1',
+    })));
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await appUpdateService.checkForUpdate();
+
+    expect(appUpdateService.isInstallSupported()).toBe(false);
+    expect(result.isAvailable).toBe(true);
+    expect(result.release.assetName).toBeNull();
+    expect(result.release.assetDownloadUrl).toBeNull();
+    expect(result.release.canInstallInApp).toBe(false);
+    expect(result.release.downloadLabel).toBe('Release Notes');
+
+    await appUpdateService.downloadAndInstallUpdate(result.release);
+    await appUpdateService.openUpdate(result.release);
+
+    expect(openExternalUrl).not.toHaveBeenCalled();
   });
 });

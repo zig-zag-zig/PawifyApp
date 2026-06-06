@@ -8,16 +8,16 @@ const DEVELOPMENT_ONLY_PLUGINS = new Set([
 const SENTRY_PLUGIN = '@sentry/react-native/expo';
 
 function resolveAppEnv() {
-    return process.env.APP_ENV || process.env.EAS_BUILD_PROFILE || process.env.NODE_ENV || 'development';
+    return process.env.APP_ENV || process.env.NODE_ENV || 'development';
 }
 
-function isProductionBuild() {
+function isStandaloneBuild() {
     const appEnv = resolveAppEnv();
-    return appEnv === 'production';
+    return ['production', 'e2e-test'].includes(appEnv);
 }
 
 function getAppName() {
-    return isProductionBuild() ? baseConfig.expo.name : `${baseConfig.expo.name} Dev`;
+    return isStandaloneBuild() ? baseConfig.expo.name : `${baseConfig.expo.name} Dev`;
 }
 
 function getAndroidGoogleServicesFile() {
@@ -27,6 +27,10 @@ function getAndroidGoogleServicesFile() {
     }
 
     const appEnv = resolveAppEnv();
+    if (appEnv === 'e2e-test') {
+        return './google-services.development.json';
+    }
+
     const envFile = `./google-services.${appEnv}.json`;
     if (fs.existsSync(path.join(__dirname, envFile))) {
         return envFile;
@@ -35,11 +39,23 @@ function getAndroidGoogleServicesFile() {
     return baseConfig.expo.android?.googleServicesFile;
 }
 
+function getAndroidPackage() {
+    const packageName = baseConfig.expo.android?.package;
+    if (resolveAppEnv() === 'e2e-test' && packageName) {
+        return `${packageName}.dev`;
+    }
+
+    return packageName;
+}
+
 function getAndroidConfig() {
     const googleServicesFile = getAndroidGoogleServicesFile();
+    const packageName = getAndroidPackage();
     return {
         ...(baseConfig.expo.android ?? {}),
+        ...(packageName ? { package: packageName } : {}),
         ...(googleServicesFile ? { googleServicesFile } : {}),
+        ...(resolveAppEnv() === 'e2e-test' ? { usesCleartextTraffic: true } : {}),
     };
 }
 
@@ -48,6 +64,10 @@ function getPluginName(plugin) {
 }
 
 function hasSentryConfig() {
+    if (resolveAppEnv() === 'e2e-test') {
+        return false;
+    }
+
     return Boolean(
         process.env.EXPO_PUBLIC_SENTRY_DSN
         || process.env.SENTRY_ORG
@@ -57,7 +77,7 @@ function hasSentryConfig() {
 }
 
 function getPlugins(plugins) {
-    const filteredPlugins = isProductionBuild()
+    const filteredPlugins = isStandaloneBuild()
         ? plugins.filter(plugin => !DEVELOPMENT_ONLY_PLUGINS.has(getPluginName(plugin)))
         : plugins;
 

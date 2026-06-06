@@ -1,29 +1,57 @@
 import type { User } from 'firebase/auth';
 import type { SecurityActionType, ValidateSecurityOptions } from '../model/types';
 
-export function requiresPasswordInput(actionType: SecurityActionType, user: User | null): boolean {
-    if (!user) return true;
+type SecurityAuthOptions = {
+    canUseGoogleAuth?: boolean;
+};
 
-    const hasGoogle = user.providerData.some(provider => provider.providerId === 'google.com');
-    const hasPassword = user.providerData.some(provider => provider.providerId === 'password');
+type SecurityReauthMethod = 'google' | 'password';
+
+function hasProvider(user: User, providerId: string): boolean {
+    return user.providerData.some(provider => provider.providerId === providerId);
+}
+
+export function getSecurityReauthMethod(
+    actionType: SecurityActionType,
+    user: User | null,
+    { canUseGoogleAuth = false }: SecurityAuthOptions = {},
+): SecurityReauthMethod | null {
+    if (!user) return null;
+
+    const hasGoogle = hasProvider(user, 'google.com');
+    const hasPassword = hasProvider(user, 'password');
 
     if (actionType === 'password') {
-        return hasPassword;
+        return hasPassword ? 'password' : null;
     }
 
-    return !hasGoogle || !hasPassword;
+    if (canUseGoogleAuth && hasGoogle) {
+        return 'google';
+    }
+
+    return hasPassword ? 'password' : null;
+}
+
+export function requiresPasswordInput(
+    actionType: SecurityActionType,
+    user: User | null,
+    options: SecurityAuthOptions = {},
+): boolean {
+    if (!user) return true;
+    return getSecurityReauthMethod(actionType, user, options) === 'password';
 }
 
 export function validateSecurityForm({
     type,
     currentPassword,
     currentUser,
+    canUseGoogleAuth,
     newValue,
     confirmValue,
 }: ValidateSecurityOptions): Record<string, string> {
     const errors: Record<string, string> = {};
 
-    if (requiresPasswordInput(type, currentUser) && !currentPassword) {
+    if (requiresPasswordInput(type, currentUser, { canUseGoogleAuth }) && !currentPassword) {
         errors.currentPassword = 'Password is required';
     }
 
@@ -40,7 +68,7 @@ export function validateSecurityForm({
         else if (!/^\S+@\S+\.\S+$/.test(newValue)) errors.newValue = 'Invalid email format';
         if (!confirmValue) errors.confirmValue = 'Please confirm email';
         else if (newValue !== confirmValue) errors.confirmValue = 'Emails must match';
-        if (newValue === currentUser.email) errors.newValue = 'New email must be different';
+        if (newValue === currentUser?.email) errors.newValue = 'New email must be different';
     }
 
     return errors;

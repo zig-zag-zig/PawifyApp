@@ -117,6 +117,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
   numberOnly = false,
   maxDigits = 6,
   maxLength,
+  ...textInputProps
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const styles = getStyles();
@@ -140,6 +141,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     <View style={styles.inputContainer}>
       <View style={styles.inputWrapper}>
         <TextInput
+          {...textInputProps}
           autoCapitalize={capitalize ? 'sentences' : 'none'}
           keyboardType={numberOnly ? 'number-pad' : email ? 'email-address' : 'default'}
           style={[
