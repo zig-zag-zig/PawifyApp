@@ -14,6 +14,7 @@ type SelectableAnimatedListProps<T extends { id: string }> = {
     onEndReachedThreshold?: number;
     initialNumToRender?: number;
     windowSize?: number;
+    onContentReady: () => void;
 };
 
 const SelectableAnimatedList = forwardRef(function SelectableAnimatedList<T extends { id: string }>(
@@ -26,6 +27,7 @@ const SelectableAnimatedList = forwardRef(function SelectableAnimatedList<T exte
         onEndReachedThreshold,
         initialNumToRender,
         windowSize,
+        onContentReady,
     }: SelectableAnimatedListProps<T>,
     ref: React.Ref<any>
 ) {
@@ -55,6 +57,7 @@ const SelectableAnimatedList = forwardRef(function SelectableAnimatedList<T exte
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
             keyExtractor={item => item.id}
+            onContentSizeChange={onContentReady}
         />
     );
 }) as <T extends { id: string }>(

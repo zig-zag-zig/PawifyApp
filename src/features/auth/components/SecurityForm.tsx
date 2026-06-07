@@ -1,10 +1,10 @@
 import React from 'react';
 import {
-    CustomButton,
-    CustomInput,
-    Container,
+    Button,
+    TextField,
+    ScreenContainer,
     Spinner
-} from '../../../components/StyledComponents';
+} from '../../../components/ui';
 import type { SecurityActionType } from '../model/types';
 import { useSecurityPage } from '../hooks/useSecurityPage';
 
@@ -12,11 +12,11 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
     const securityPage = useSecurityPage(actionType);
 
     return (
-        <Container>
+        <ScreenContainer>
             <Spinner isLoading={securityPage.state.isLoading} />
 
             {securityPage.needsPasswordField && (
-                <CustomInput
+                <TextField
                     placeholder={actionType === 'delete' ? 'Password' : 'Current Password'}
                     value={securityPage.state.currentPassword}
                     onChangeText={securityPage.onCurrentPasswordChanged}
@@ -30,7 +30,7 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
             )}
 
             {!securityPage.needsPasswordField && actionType !== 'password' && (
-                <CustomInput
+                <TextField
                     placeholder={securityPage.reauthPromptMessage ?? 'Authentication is unavailable'}
                     value=""
                     onChangeText={() => { }}
@@ -41,7 +41,7 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
 
             {actionType !== 'delete' && (
                 <>
-                    <CustomInput
+                    <TextField
                         placeholder={actionType === 'email' ? 'New Email' : 'New Password'}
                         value={securityPage.state.newValue}
                         onChangeText={securityPage.onNewValueChanged}
@@ -53,7 +53,7 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
                         style={securityPage.state.isFormDisabled ? { opacity: 0.6 } : undefined}
                     />
 
-                    <CustomInput
+                    <TextField
                         placeholder={actionType === 'email' ? 'Confirm New Email' : 'Confirm New Password'}
                         value={securityPage.state.confirmValue}
                         onChangeText={securityPage.onConfirmValueChanged}
@@ -67,7 +67,7 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
                 </>
             )}
 
-            <CustomButton
+            <Button
                 onPress={() => void securityPage.onSubmit()}
                 disabled={
                     securityPage.state.isFormDisabled ||
@@ -78,7 +78,7 @@ export const SecurityForm = ({ actionType }: { actionType: SecurityActionType })
                 }
             >
                 {securityPage.buttonText}
-            </CustomButton>
-        </Container>
+            </Button>
+        </ScreenContainer>
     );
 };

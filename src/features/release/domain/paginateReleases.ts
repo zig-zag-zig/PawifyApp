@@ -1,4 +1,4 @@
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 
 export const RELEASES_PAGE_SIZE = 10;
 

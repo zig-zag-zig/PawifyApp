@@ -1,6 +1,6 @@
 import React from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 import { useScrollAnchorList } from '../../../hooks/useScrollAnchorList';
 import ReleasesView from '../components/ReleasesView';
 import { useReleasesPage } from '../hooks/useReleasesPage';

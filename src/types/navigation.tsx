@@ -1,5 +1,5 @@
 import { StackNavigationProp } from "@react-navigation/stack";
-import { ReleaseGroupReleaseListItem } from "../modules/models/models";
+import { ReleaseGroupReleaseListItem } from "../shared/music";
 
 export type RootStackParamList = {
     Menu: undefined;

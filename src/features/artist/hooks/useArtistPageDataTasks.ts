@@ -1,5 +1,5 @@
 import { useCallback, useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import type { Task, TaskReplayPolicy } from '../../../hooks/useTaskManager';
+import type { QueuedTask, TaskReplayPolicy } from '../../../hooks/useTaskManager';
 import type {
     ArtistDetailsResponse,
     ArtistReleasesResponse
@@ -33,15 +33,15 @@ type PendingTaskRef = RefObject<{
 
 type ArtistPageDataTasksOptions = {
     addTask: <T>(
-        method: () => Promise<T>,
-        methodName: string,
+        run: () => Promise<T>,
+        operationName: string,
         options?: AddTaskOptions,
-    ) => Task<T>;
+    ) => QueuedTask<T>;
     artistId: string | undefined;
     artistIdRef: RefObject<string | undefined>;
     artistProfileImages: Record<string, string | null | undefined>;
     dispatch: Dispatch<ArtistPageAction>;
-    executeTask: <T>(task: Task<T>) => Promise<T | null>;
+    executeTask: <T>(task: QueuedTask<T>) => Promise<T | null>;
     getArtistDetails: (artistId: string) => Promise<ArtistDetailsResponse>;
     getArtistReleases: (artistId: string) => Promise<ArtistReleasesResponse>;
     pendingTaskRef: PendingTaskRef;
@@ -65,7 +65,7 @@ type ArtistPageDataTasksOptions = {
     ) => Promise<TaskResolution>;
     setOptimisticFollowing: Dispatch<SetStateAction<boolean | null>>;
     taskStartedAtRef: RefObject<Record<string, number>>;
-    tasks: Task[];
+    tasks: QueuedTask[];
     updatePendingTask: (key: PendingTaskKey, taskId: string | null) => void;
 };
 

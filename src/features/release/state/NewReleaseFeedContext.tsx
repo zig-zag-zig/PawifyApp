@@ -1,19 +1,21 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
-import { useAuth } from './AuthContext';
-import { useBackend } from '../hooks/useBackend';
-import { useOnAppForeground } from '../hooks/useOnAppForeground';
-import useTaskManager from '../hooks/useTaskManager';
-import type { NewRelease, NewReleaseCoverTaskResult, NewReleasesResult, RemoteValueState } from '../modules/models/models';
-import { EventService } from '../services/eventService';
-import { fillMissingIdsWithNull, mergeNullableStringMaps } from '../utils/nullableMaps';
-import type { NullableStringMap } from '../utils/nullableMaps';
-import { extractNewReleaseCovers } from '../utils/taskResultMaps';
-import { useToast } from '../components/ToastContext';
+import { useToast } from '../../../components/ToastContext';
+import { useAuth } from '../../../contexts/AuthContext';
+import { useApiClient } from '../../../hooks/useApiClient';
+import { useOnAppForeground } from '../../../hooks/useOnAppForeground';
+import useTaskManager from '../../../hooks/useTaskManager';
+import type { NewRelease, NewReleaseCoverTaskResult, NewReleasesResult, RemoteValueState } from '../../../shared/music';
+import { EventService } from '../../../services/eventService';
+import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
+import type { NewReleasesResponse, TaskResultResponse } from '../../../types/apiTypes';
+import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import type { NullableStringMap } from '../../../utils/nullableMaps';
+import { extractNewReleaseCovers } from '../../../utils/taskResultMaps';
 
 export type NewReleaseListItem = NewRelease & { cover_url: RemoteValueState };
 
-interface NewReleasesContextType {
+interface NewReleaseFeedContextType {
     newReleases: NewReleaseListItem[];
     isLoading: boolean;
     hasLoadedOnce: boolean;
@@ -24,14 +26,14 @@ interface NewReleasesContextType {
     ensureNewReleasesLoaded: () => void;
 }
 
-const NewReleasesContext = createContext<NewReleasesContextType | null>(null);
+const NewReleaseFeedContext = createContext<NewReleaseFeedContextType | null>(null);
 
 type RemovedReleaseSnapshot = {
     release: NewReleaseListItem;
     index: number;
 };
 
-type NewReleasesFetchReason = 'releases-initial' | 'releases-event' | 'foreground-resume';
+type NewReleaseFeedFetchReason = 'releases-initial' | 'releases-event' | 'foreground-resume';
 const iosForegroundRefreshMinInactiveMs = 5 * 60 * 1000;
 
 const mergeUniqueIds = (currentIds: string[], nextIds: string[]): string[] => {
@@ -71,26 +73,40 @@ function shouldRunIosForegroundRefresh(inactiveMs: number | null) {
     return inactiveMs === null || inactiveMs >= iosForegroundRefreshMinInactiveMs;
 }
 
-export const NewReleasesProvider = ({ children }: { children: React.ReactNode }) => {
+export const NewReleaseFeedProvider = ({ children }: { children: React.ReactNode }) => {
     const [newReleases, setNewReleases] = useState<NewReleaseListItem[]>([]);
     const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
     const { getAccessToken, user } = useAuth();
-    const {
-        getNewReleases,
-        removeNewReleases: removeNewReleasesApi,
-        waitForTaskResult,
-    } = useBackend(getAccessToken);
+    const apiClient = useApiClient(getAccessToken);
     const { tasks, addTask, removeTask, executeTask } = useTaskManager();
     const [taskId, setTaskId] = useState<string | null>(null);
     const taskIdRef = useRef<string | null>(null);
     const releaseCoverTaskIdRef = useRef<string | null>(null);
     const initialLoadRequestedRef = useRef(false);
-    const queuedFetchReasonRef = useRef<NewReleasesFetchReason | null>(null);
+    const queuedFetchReasonRef = useRef<NewReleaseFeedFetchReason | null>(null);
     const pendingEventUpdateRef = useRef(false);
     const [eventVersion, setEventVersion] = useState(0);
     const { showToast } = useToast();
+
+    const getTaskResult = useCallback(async <T,>(taskId: string) =>
+        await apiClient.request<TaskResultResponse<T>>('getTaskResult', {
+            body: { taskId },
+        }), [apiClient]);
+
+    const waitForTaskResult = useCallback(async <T,>(
+        taskId: string,
+        options?: Parameters<typeof apiClient.waitForTaskResult<T>>[2],
+    ) => await apiClient.waitForTaskResult<T>(taskId, getTaskResult, options), [apiClient, getTaskResult]);
+
+    const getNewReleases = useCallback(async () =>
+        await apiClient.request<NewReleasesResponse>('getNewReleases', { method: 'GET' }), [apiClient]);
+
+    const removeNewReleasesApi = useCallback(async (releaseIds: string[]) =>
+        await apiClient.request<string>('removeNewReleases', {
+            body: await apiClient.withSourcePushToken({ releaseIds }),
+        }), [apiClient]);
 
     const updateTaskId = useCallback((nextTaskId: string | null) => {
         taskIdRef.current = nextTaskId;
@@ -112,7 +128,7 @@ export const NewReleasesProvider = ({ children }: { children: React.ReactNode })
         }
     }, [removeTask, updateTaskId, user?.uid]);
 
-    const fetchNewReleases = useCallback((reason: NewReleasesFetchReason) => {
+    const fetchNewReleases = useCallback((reason: NewReleaseFeedFetchReason) => {
         if (!user) {
             queuedFetchReasonRef.current = null;
             return;
@@ -167,60 +183,30 @@ export const NewReleasesProvider = ({ children }: { children: React.ReactNode })
         releaseCoverTaskIdRef.current = releaseCoverTaskId;
         setPendingReleaseCoverIds(releaseIds);
 
-        const applyPartialReleaseCovers = (result: unknown) => {
-            const partialCovers = extractNewReleaseCovers(result);
-            const resolvedReleaseIds = releaseIds.filter(releaseId => partialCovers[releaseId] !== undefined);
-            if (resolvedReleaseIds.length === 0) {
-                return;
-            }
+        await resolveNullableTaskMap<NewReleaseCoverTaskResult>({
+            taskId: releaseCoverTaskId,
+            expectedIds: releaseIds,
+            waitForTaskResult,
+            extractMap: extractNewReleaseCovers,
+            onResolvedValues: (covers, resolvedReleaseIds) => {
+                if (releaseCoverTaskIdRef.current !== releaseCoverTaskId) {
+                    return;
+                }
 
-            applyReleaseCovers(partialCovers);
-            setPendingReleaseCoverIds(prev =>
-                prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
-            );
-        };
-
-        try {
-            const taskResult = await waitForTaskResult<NewReleaseCoverTaskResult>(releaseCoverTaskId, {
-                onPartialResult: partialResult => {
-                    if (releaseCoverTaskIdRef.current !== releaseCoverTaskId) {
-                        return;
-                    }
-
-                    applyPartialReleaseCovers(partialResult.result);
-                },
-                recreateTask: async () => {
-                    const result = await getNewReleases();
-                    return result.releaseCoverTaskId;
-                },
-                recreateTaskDescription: 'getNewReleases.releaseCoverTaskId',
-            });
-            if (releaseCoverTaskIdRef.current !== releaseCoverTaskId) {
-                return;
-            }
-
-            const status = taskResult.status.toLowerCase();
-            const taskCovers = status === 'completed'
-                ? extractNewReleaseCovers(taskResult.result)
-                : {};
-            const completedCovers = fillMissingIdsWithNull(releaseIds, taskCovers);
-
-            applyReleaseCovers(completedCovers);
-            setPendingReleaseCoverIds(prev =>
-                prev.filter(releaseId => !releaseIds.includes(releaseId))
-            );
-        } catch (error) {
-            console.error('new-releases: resolve release cover task failed', error);
-            if (releaseCoverTaskIdRef.current !== releaseCoverTaskId) {
-                return;
-            }
-
-            const completedCovers = fillMissingIdsWithNull(releaseIds, {});
-            applyReleaseCovers(completedCovers);
-            setPendingReleaseCoverIds(prev =>
-                prev.filter(releaseId => !releaseIds.includes(releaseId))
-            );
-        }
+                applyReleaseCovers(covers);
+                setPendingReleaseCoverIds(prev =>
+                    prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
+                );
+            },
+            onError: error => {
+                console.error('new-releases: resolve release cover task failed', error);
+            },
+            recreateTask: async () => {
+                const result = await getNewReleases();
+                return result.releaseCoverTaskId;
+            },
+            recreateTaskDescription: 'getNewReleases.releaseCoverTaskId',
+        });
     }, [applyReleaseCovers, getNewReleases, waitForTaskResult]);
 
     useEffect(() => {
@@ -359,7 +345,7 @@ export const NewReleasesProvider = ({ children }: { children: React.ReactNode })
     }, [fetchNewReleases, hasLoadedOnce]);
 
     return (
-        <NewReleasesContext.Provider value={{
+        <NewReleaseFeedContext.Provider value={{
             newReleases,
             isLoading,
             hasLoadedOnce,
@@ -370,8 +356,8 @@ export const NewReleasesProvider = ({ children }: { children: React.ReactNode })
             ensureNewReleasesLoaded,
         }}>
             {children}
-        </NewReleasesContext.Provider>
+        </NewReleaseFeedContext.Provider>
     );
 };
 
-export const useNewReleases = () => useContext(NewReleasesContext)!;
+export const useNewReleaseFeed = () => useContext(NewReleaseFeedContext)!;

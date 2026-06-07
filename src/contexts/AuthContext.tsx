@@ -1,20 +1,28 @@
 import {
-  createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onIdTokenChanged,
-  signInWithEmailAndPassword,
   User
 } from 'firebase/auth';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import useGoogleAuth, { getGoogleSignInErrorCode } from '../hooks/useGoogleAuth';
-import { Platform } from 'react-native';
 import { auth } from '../firebase/firebaseAuth';
-import { useBackend } from '../hooks/useBackend';
+import {
+  linkGoogleProvider,
+  linkPasswordProvider,
+  signInWithGoogleProvider,
+  signOutGoogleProvider,
+  unlinkAuthProvider,
+} from '../features/auth/services/authProviderLinkingService';
+import {
+  signInWithEmail,
+  signUpWithEmail,
+} from '../features/auth/services/firebaseCredentialService';
+import {
+  cleanupPostAuthDevice,
+  registerPostAuthDevice,
+} from '../features/auth/services/postAuthSetupService';
+import { useApiClient } from '../hooks/useApiClient';
 import { useOnAppForeground } from '../hooks/useOnAppForeground';
 import { useRegisterForPushNotifications } from '../hooks/useRegisterForPushNotifications';
-import { EventService } from '../services/eventService';
-import { getStoredPushToken, removeStoredPushToken } from '../services/pushTokenStorage';
-import { getUserFacingErrorMessage } from '../services/userFacingErrors';
 
 interface AuthContextType {
   user: User | null;
@@ -33,23 +41,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 const authForegroundRefreshMinInactiveMs = 5 * 60 * 1000;
 
-type ErrorWithCode = Error & {
-  code?: string;
-  cause?: unknown;
-};
-
 function shouldRunForegroundTokenRefresh(inactiveMs: number | null) {
   return inactiveMs === null || inactiveMs >= authForegroundRefreshMinInactiveMs;
-}
-
-function createUserFacingAuthError(error: unknown, fallback: string): ErrorWithCode {
-  const wrappedError = new Error(getUserFacingErrorMessage(error, fallback)) as ErrorWithCode;
-  const code = getGoogleSignInErrorCode(error);
-  if (code) {
-    wrappedError.code = code;
-  }
-  wrappedError.cause = error;
-  return wrappedError;
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -78,7 +71,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       throw new Error('Authentication failed. Please sign in again.');
     }
   }, []);
-  const { deletePushToken, savePushToken } = useBackend(getAccessToken);
+  const apiClient = useApiClient(getAccessToken);
+  const savePushToken = useCallback(async (pushToken: string) => {
+    await apiClient.request<string>('savePushToken', {
+      body: { pushToken, deviceId: await apiClient.getDeviceId() },
+    });
+    return pushToken;
+  }, [apiClient]);
+  const deletePushToken = useCallback(async () =>
+    await apiClient.request<string>('deletePushToken', {
+      body: { deviceId: await apiClient.getDeviceId() },
+    }), [apiClient]);
   const { registerForPushNotificationsAsync } = useRegisterForPushNotifications();
 
   const refreshCurrentUserToken = useCallback(async () => {
@@ -109,7 +112,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try {
           await getAccessToken();
           setUser(prev => (prev?.uid === currentUser.uid ? prev : currentUser));
-          await registerForPushNotificationsAsync(savePushToken);
+          await registerPostAuthDevice(registerForPushNotificationsAsync, savePushToken);
         } catch (error) {
           console.error('auth: post-auth setup failed', error);
         }
@@ -120,118 +123,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       unsubscribeAuth();
     };
-  }, [deletePushToken, getAccessToken, registerForPushNotificationsAsync, savePushToken]);
+  }, [getAccessToken, registerForPushNotificationsAsync, savePushToken]);
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = useCallback(async (email: string, password: string) => {
+    await signUpWithEmail(email, password);
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    await signInWithEmail(email, password);
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    await signInWithGoogleProvider();
+  }, []);
+
+  const linkGoogle = useCallback(async () => {
+    setUser(await linkGoogleProvider());
+  }, []);
+
+  const linkPassword = useCallback(async (email: string, password: string) => {
+    setUser(await linkPasswordProvider(email, password));
+  }, []);
+
+  const unlinkProvider = useCallback(async (providerId: string) => {
+    setUser(await unlinkAuthProvider(providerId));
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await cleanupPostAuthDevice(deletePushToken);
+    setUser(null);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      throw new Error(getUserFacingErrorMessage(error, 'Registration failed. Please try again.'));
+      await signOutGoogleProvider();
+    } catch {
+      // Native Google sign-out is best effort; Firebase sign-out is authoritative.
     }
-  };
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      throw new Error(getUserFacingErrorMessage(error, 'Invalid email or password. Please try again.'));
-    }
-  };
-
-  const signInWithGoogle = async () => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    try {
-      const res = await useGoogleAuth.signInWithGoogle();
-      const idToken = res?.idToken;
-      if (!idToken) {
-        throw new Error('No idToken returned from native Google sign-in');
-      }
-      // lazy import to avoid breaking web builds
-      const { signInWithCredential, GoogleAuthProvider } = await import('firebase/auth');
-      const credential = GoogleAuthProvider.credential(idToken);
-      await signInWithCredential(auth, credential);
-    } catch (error) {
-      throw createUserFacingAuthError(error, 'Google sign-in failed. Please try again.');
-    }
-  };
-
-  const linkGoogle = async () => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error('No current user');
-    const res = await useGoogleAuth.signInWithGoogle();
-    const idToken = res?.idToken;
-    if (!idToken) throw new Error('No idToken returned');
-    const { GoogleAuthProvider, linkWithCredential } = await import('firebase/auth');
-    const cred = GoogleAuthProvider.credential(idToken);
-    await linkWithCredential(currentUser, cred);
-    await reloadCurrentUser(currentUser);
-  };
-
-  const linkPassword = async (email: string, password: string) => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error('No current user');
-    const { EmailAuthProvider, linkWithCredential } = await import('firebase/auth');
-    const cred = EmailAuthProvider.credential(email, password);
-    await linkWithCredential(currentUser, cred);
-    await reloadCurrentUser(currentUser);
-  };
-
-  const reloadCurrentUser = async (currentUser: User) => {
-    try {
-      await currentUser.reload();
-      setUser(auth.currentUser);
-    } catch (e) {
-      console.warn('auth: reload user failed', e);
-    }
-  };
-
-  const unlinkProvider = async (providerId: string) => {
-    if (providerId === 'google.com' && Platform.OS !== 'android') {
-      return;
-    }
-
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error('No current user');
-    // Prevent unlinking the last provider: user must have at least one sign-in method
-    const providers = currentUser.providerData || [];
-    if (providers.length <= 1) {
-      throw new Error('Cannot unlink the only sign-in provider. Add another sign-in method first.');
-    }
-
-    const { unlink } = await import('firebase/auth');
-    await unlink(currentUser, providerId);
-    await reloadCurrentUser(currentUser);
-  };
-
-  const signOut = async () => {
-    try {
-      try {
-        await deletePushToken();
-      } catch (error) {
-        console.warn('auth: push token cleanup failed', error);
-      }
-      await removeStoredPushToken();
-    } catch (error) {
-      console.error('auth: sign-out failed', error);
-    } finally {
-      EventService.setClientPushToken(null);
-      setUser(null);
-      // try native google sign out as well
-      try {
-        await useGoogleAuth.signOutGoogle();
-      } catch (e) {
-        // ignore
-      }
-      await firebaseSignOut(auth);
-    }
-  };
+    await firebaseSignOut(auth);
+  }, [deletePushToken]);
 
   useEffect(() => {
     signOutRef.current = signOut;

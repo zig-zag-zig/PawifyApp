@@ -1,4 +1,4 @@
-import type { ArtistMinimal } from '../../../modules/models/models';
+import type { ArtistMinimal } from '../../../shared/music';
 
 export interface ArtistsPageState {
     artists: ArtistMinimal[];

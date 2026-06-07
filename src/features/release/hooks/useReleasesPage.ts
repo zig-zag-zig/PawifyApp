@@ -1,8 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
-import { useEffect, useMemo, useReducer } from 'react';
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
+import { useEffect, useMemo, useReducer, useState } from 'react';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useNewReleases } from '../../../contexts/NewReleasesContext';
+import { useNewReleaseFeed } from '../state/NewReleaseFeedContext';
 import { useEventDrivenBanner } from '../../../hooks/useEventDrivenBanner';
 import { ReleaseNavigationProp } from '../../../types/navigation';
 import {
@@ -25,8 +25,9 @@ export function useReleasesPage(): ReleasesPageController {
         pendingEventUpdateRef,
         eventVersion,
         pendingReleaseCoverIds,
-    } = useNewReleases();
+    } = useNewReleaseFeed();
     const [showBanner, setShowBanner] = useEventDrivenBanner(pendingEventUpdateRef, eventVersion);
+    const [hasRequestedInitialLoad, setHasRequestedInitialLoad] = useState(false);
     const [state, dispatch] = useReducer(
         releasesReducer,
         undefined,
@@ -34,6 +35,7 @@ export function useReleasesPage(): ReleasesPageController {
     );
 
     useEffect(() => {
+        setHasRequestedInitialLoad(true);
         ensureNewReleasesLoaded();
     }, [ensureNewReleasesLoaded]);
 
@@ -51,7 +53,7 @@ export function useReleasesPage(): ReleasesPageController {
         displayedReleases,
         allReleases: newReleases,
         pendingReleaseCoverIds,
-        isLoading,
+        isLoading: isLoading || (!hasLoadedOnce && !hasRequestedInitialLoad),
         hasLoadedOnce,
         showBanner,
     };

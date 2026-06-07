@@ -4,6 +4,7 @@ import { useToast } from '../../../components/ToastContext';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { ResetPasswordNavigationProp } from '../../../types/navigation';
 import { usePublicAuthApi } from '../api/authApi';
+import { authCopy } from '../domain/authCopy';
 import {
     createInitialForgotPasswordState,
     forgotPasswordReducer,
@@ -24,10 +25,10 @@ export function useForgotPasswordPage() {
         try {
             await sendOtp(state.email.trim());
             dispatch({ type: 'stepChanged', value: 'otp' });
-            showToast('OTP sent to your email. Please enter the code you received.', 'info');
+            showToast(authCopy.forgotPassword.codeSent, 'info');
         } catch (error) {
             showToast(
-                getUserFacingErrorMessage(error, 'Failed to send OTP. Please check your email and try again.'),
+                getUserFacingErrorMessage(error, authCopy.forgotPassword.sendCodeFailed),
                 'error'
             );
         } finally {
@@ -40,10 +41,10 @@ export function useForgotPasswordPage() {
         try {
             const tempToken = await verifyOtp(state.email.trim(), state.otp.trim());
             navigation.navigate('ResetPassword', { tempToken });
-            showToast('OTP verified. Please reset your password.', 'success');
+            showToast(authCopy.forgotPassword.codeVerified, 'success');
         } catch (error) {
             showToast(
-                getUserFacingErrorMessage(error, 'Failed to verify OTP. Please check the code and try again.'),
+                getUserFacingErrorMessage(error, authCopy.forgotPassword.verifyCodeFailed),
                 'error'
             );
         } finally {

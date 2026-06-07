@@ -2,7 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useToast } from '../../../components/ToastContext';
 import { useCache } from '../../../contexts/CacheContext';
-import { useFollow } from '../../../contexts/FollowContext';
+import { useFollowing } from '../state/FollowingContext';
 import { useEventDrivenBanner } from '../../../hooks/useEventDrivenBanner';
 import { ArtistNavigationProp } from '../../../types/navigation';
 import { useArtistsApi } from '../api/artistsApi';
@@ -26,7 +26,7 @@ export function useArtistsPage(): ArtistsPageController {
         pendingEventUpdateRef,
         eventVersion,
         setFollowedArtist,
-    } = useFollow();
+    } = useFollowing();
     const { artistProfileImages } = useCache();
     const [showBanner, setShowBanner] = useEventDrivenBanner(pendingEventUpdateRef, eventVersion);
     const { unfollowArtists } = useArtistsApi();

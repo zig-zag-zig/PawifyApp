@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch, type RefObject } from 'react';
-import type { Task } from '../../../hooks/useTaskManager';
+import type { QueuedTask } from '../../../hooks/useTaskManager';
 import type {
     ArtistDetailsResponse,
     ArtistReleasesResponse,
@@ -46,7 +46,7 @@ type ArtistPageDataTaskResultsOptions = {
     ) => Promise<TaskResolution>;
     resolvingSettledTaskIdsRef: RefObject<Set<string>>;
     taskStartedAtRef: RefObject<Record<string, number>>;
-    tasks: Task[];
+    tasks: QueuedTask[];
     updatePendingTask: (key: PendingTaskKey, taskId: string | null) => void;
 };
 
@@ -79,7 +79,7 @@ export function useArtistPageDataTaskResults({
             return;
         }
 
-        const task = tasks.find(item => item.id === artistTaskId) as Task<ArtistDetailsResponse> | undefined;
+        const task = tasks.find(item => item.id === artistTaskId) as QueuedTask<ArtistDetailsResponse> | undefined;
         if (!isTaskSettled(task)) {
             return;
         }
@@ -203,7 +203,7 @@ export function useArtistPageDataTaskResults({
             return;
         }
 
-        const task = tasks.find(item => item.id === releasesTaskId) as Task<ArtistReleasesResponse> | undefined;
+        const task = tasks.find(item => item.id === releasesTaskId) as QueuedTask<ArtistReleasesResponse> | undefined;
         if (!isTaskSettled(task)) {
             return;
         }

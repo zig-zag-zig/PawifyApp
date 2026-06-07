@@ -1,8 +1,8 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
-import { Container } from '../../../components/StyledComponents';
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
+import { ScreenContainer } from '../../../components/ui';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 import ReleaseItem from './ReleaseItem';
 
 interface ReleasesViewProps {
@@ -42,7 +42,7 @@ const ReleasesView = ({
 
     if (shouldShowEmptyState) {
         return (
-            <Container>
+            <ScreenContainer>
                 <View
                     style={{
                         paddingVertical: 50,
@@ -60,7 +60,7 @@ const ReleasesView = ({
                         No new releases
                     </Text>
                 </View>
-            </Container>
+            </ScreenContainer>
         );
     }
 

@@ -1,4 +1,4 @@
-import type { Artist } from '../../../modules/models/models';
+import type { Artist } from '../../../shared/music';
 
 export interface SearchPageState {
     query: string;

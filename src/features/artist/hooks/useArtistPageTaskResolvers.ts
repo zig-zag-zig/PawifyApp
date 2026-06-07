@@ -1,4 +1,5 @@
 import { useCallback, type RefObject } from 'react';
+import { resolveNullableTaskMap, type ResolveNullableTaskMapPhase } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages, extractReleaseGroupCovers } from '../../../utils/taskResultMaps';
 import { fillMissingIdsWithNull } from '../../../utils/nullableMaps';
 import type { TaskResultResponse } from '../../../types/apiTypes';
@@ -7,7 +8,6 @@ import {
     describeError,
     describeIds,
     describeNullableStringMap,
-    describeValueShape,
     diagnosticLog,
     diagnosticWarn,
     elapsedSince,
@@ -39,6 +39,22 @@ type ArtistPageTaskResolversOptions = {
 const ARTIST_PAGE_TASK_NOTIFICATION_WAIT_MS = 2500;
 const ARTIST_PAGE_TASK_POLL_INTERVAL_MS = 5000;
 
+function getTaskSource(prefix: string, phase: ResolveNullableTaskMapPhase): string {
+    switch (phase) {
+        case 'partial':
+            return `${prefix}-partial`;
+        case 'completed':
+            return `${prefix}-completed`;
+        case 'non-completed':
+            return `${prefix}-not-completed`;
+        case 'error':
+            return `${prefix}-error`;
+        case 'missing-task':
+        default:
+            return `${prefix}-missing`;
+    }
+}
+
 export function useArtistPageTaskResolvers({
     artistIdRef,
     waitForTaskResult,
@@ -56,8 +72,6 @@ export function useArtistPageTaskResolvers({
                     currentArtistId: artistIdRef.current,
                     expectedArtistIds: describeIds(expectedArtistIds),
                 });
-            }
-            if (expectedArtistIds.length > 0) {
                 mergeProfileImagesWithDiagnostics(
                     fillMissingIdsWithNull(expectedArtistIds, {}),
                     expectedArtistIds,
@@ -74,103 +88,48 @@ export function useArtistPageTaskResolvers({
             expectedArtistIds: describeIds(expectedArtistIds),
         });
 
-        try {
-            const taskResult = await waitForTaskResult(profileImageTaskId, {
+        await resolveNullableTaskMap({
+            taskId: profileImageTaskId,
+            expectedIds: expectedArtistIds,
+            waitForTaskResult,
+            extractMap: extractArtistProfileImages,
+            waitOptions: {
                 notificationWaitMs: ARTIST_PAGE_TASK_NOTIFICATION_WAIT_MS,
                 pollIntervalMs: ARTIST_PAGE_TASK_POLL_INTERVAL_MS,
-                onPartialResult: partialResult => {
-                    const images = extractArtistProfileImages(partialResult.result);
-                    const resolvedArtistIds = expectedArtistIds.filter(id => images[id] !== undefined);
-                    if (resolvedArtistIds.length === 0) {
-                        return;
-                    }
-
-                    diagnosticLog('artist-page', 'profile-image-task-partial', {
-                        currentArtistId: artistIdRef.current,
-                        profileImageTaskId,
-                        resolvedArtistIds: describeIds(resolvedArtistIds),
-                        extracted: describeNullableStringMap(images, expectedArtistIds),
-                    });
-                    mergeProfileImagesWithDiagnostics(
-                        images,
-                        expectedArtistIds,
-                        'profile-image-task-partial'
-                    );
-                    recreateOptions?.onPartialResolvedIds?.(resolvedArtistIds);
-                },
-                recreateTask: recreateOptions?.recreateTask,
-                recreateTaskDescription: recreateOptions?.recreateTaskDescription,
-            });
-            const status = taskResult.status.toLowerCase();
-            diagnosticLog('artist-page', 'profile-image-task-result', {
-                currentArtistId: artistIdRef.current,
-                profileImageTaskId,
-                status: taskResult.status,
-                type: taskResult.type,
-                waitMs: elapsedSince(waitStartedAt),
-                expectedArtistIds: describeIds(expectedArtistIds),
-                resultShape: describeValueShape(taskResult.result),
-                errorShape: taskResult.error !== undefined ? describeValueShape(taskResult.error) : undefined,
-            });
-            if (status !== 'completed') {
-                const completedArtistImages = fillMissingIdsWithNull(expectedArtistIds, {});
-                diagnosticWarn('artist-page', 'profile-image-task-not-completed', {
+            },
+            onResolvedValues: (images, resolvedArtistIds, phase) => {
+                diagnosticLog('artist-page', `profile-image-task-${phase}`, {
                     currentArtistId: artistIdRef.current,
                     profileImageTaskId,
-                    status: taskResult.status,
+                    waitMs: elapsedSince(waitStartedAt),
                     expectedArtistIds: describeIds(expectedArtistIds),
+                    resolvedArtistIds: describeIds(resolvedArtistIds),
+                    extracted: describeNullableStringMap(images, expectedArtistIds),
                 });
                 mergeProfileImagesWithDiagnostics(
-                    completedArtistImages,
+                    images,
                     expectedArtistIds,
-                    `profile-image-task-${status}`
+                    getTaskSource('profile-image-task', phase)
                 );
-                return { settled: true };
-            }
+                if (phase === 'partial') {
+                    recreateOptions?.onPartialResolvedIds?.(resolvedArtistIds);
+                }
+            },
+            onError: error => {
+                console.error('artist-page: resolve profile image task failed', error);
+                diagnosticWarn('artist-page', 'profile-image-task-error', {
+                    currentArtistId: artistIdRef.current,
+                    profileImageTaskId,
+                    waitMs: elapsedSince(waitStartedAt),
+                    expectedArtistIds: describeIds(expectedArtistIds),
+                    error: describeError(error),
+                });
+            },
+            recreateTask: recreateOptions?.recreateTask,
+            recreateTaskDescription: recreateOptions?.recreateTaskDescription,
+        });
 
-            const images = extractArtistProfileImages(taskResult.result);
-            const completedArtistImages = fillMissingIdsWithNull(expectedArtistIds, images);
-            const unresolvedArtistIds = expectedArtistIds.filter(id => completedArtistImages[id] === null);
-            const resolvedArtistIds = expectedArtistIds.filter(id => typeof completedArtistImages[id] === 'string');
-            const missingFromPayloadIds = expectedArtistIds.filter(id => images[id] === undefined);
-
-            diagnosticLog('artist-page', 'profile-image-task-extracted', {
-                currentArtistId: artistIdRef.current,
-                profileImageTaskId,
-                waitMs: elapsedSince(waitStartedAt),
-                expectedArtistIds: describeIds(expectedArtistIds),
-                extracted: describeNullableStringMap(images, expectedArtistIds),
-                completed: describeNullableStringMap(completedArtistImages, expectedArtistIds),
-                resolvedCount: resolvedArtistIds.length,
-                unresolvedCount: unresolvedArtistIds.length,
-                missingFromPayloadCount: missingFromPayloadIds.length,
-            });
-
-            mergeProfileImagesWithDiagnostics(
-                completedArtistImages,
-                expectedArtistIds,
-                'profile-image-task-completed'
-            );
-
-            return { settled: true };
-        } catch (error) {
-            console.error('artist-page: resolve profile image task failed', error);
-            diagnosticWarn('artist-page', 'profile-image-task-error', {
-                currentArtistId: artistIdRef.current,
-                profileImageTaskId,
-                waitMs: elapsedSince(waitStartedAt),
-                expectedArtistIds: describeIds(expectedArtistIds),
-                error: describeError(error),
-            });
-            if (expectedArtistIds.length > 0) {
-                mergeProfileImagesWithDiagnostics(
-                    fillMissingIdsWithNull(expectedArtistIds, {}),
-                    expectedArtistIds,
-                    'profile-image-task-error'
-                );
-            }
-            return { settled: true };
-        }
+        return { settled: true };
     }, [artistIdRef, mergeProfileImagesWithDiagnostics, waitForTaskResult]);
 
     const resolveReleaseGroupCoverTask = useCallback(async (
@@ -195,91 +154,53 @@ export function useArtistPageTaskResolvers({
             expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
         });
 
-        try {
-            const taskResult = await waitForTaskResult(taskId, {
+        await resolveNullableTaskMap({
+            taskId,
+            expectedIds: expectedReleaseGroupIds,
+            waitForTaskResult,
+            extractMap: extractReleaseGroupCovers,
+            waitOptions: {
                 notificationWaitMs: ARTIST_PAGE_TASK_NOTIFICATION_WAIT_MS,
                 pollIntervalMs: ARTIST_PAGE_TASK_POLL_INTERVAL_MS,
-                onPartialResult: partialResult => {
-                    const covers = extractReleaseGroupCovers(partialResult.result);
-                    const resolvedReleaseGroupIds = expectedReleaseGroupIds.filter(id => covers[id] !== undefined);
-                    if (resolvedReleaseGroupIds.length === 0) {
-                        return;
-                    }
-
-                    diagnosticLog('artist-page', 'release-group-cover-task-partial', {
-                        currentArtistId: artistIdRef.current,
-                        taskId,
-                        resolvedReleaseGroupIds: describeIds(resolvedReleaseGroupIds),
-                        extracted: describeNullableStringMap(covers, expectedReleaseGroupIds),
-                    });
-                    mergeReleaseGroupCoversWithDiagnostics(
-                        covers,
-                        expectedReleaseGroupIds,
-                        'release-group-cover-task-partial'
-                    );
-                    recreateOptions?.onPartialResolvedIds?.(resolvedReleaseGroupIds);
-                },
-                recreateTask: recreateOptions?.recreateTask,
-                recreateTaskDescription: recreateOptions?.recreateTaskDescription,
-            });
-            const status = taskResult.status.toLowerCase();
-            diagnosticLog('artist-page', 'release-group-cover-task-result', {
-                currentArtistId: artistIdRef.current,
-                taskId,
-                status: taskResult.status,
-                type: taskResult.type,
-                waitMs: elapsedSince(waitStartedAt),
-                expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
-                resultShape: describeValueShape(taskResult.result),
-                errorShape: taskResult.error !== undefined ? describeValueShape(taskResult.error) : undefined,
-            });
-            if (status !== 'completed') {
-                diagnosticWarn('artist-page', 'release-group-cover-task-not-completed', {
-                    currentArtistId: artistIdRef.current,
-                    taskId,
-                    status: taskResult.status,
-                    expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
-                });
-                return { settled: true };
-            }
-
-            const covers = extractReleaseGroupCovers(taskResult.result);
-            if (Object.keys(covers).length === 0) {
-                diagnosticWarn('artist-page', 'release-group-cover-task-empty', {
+            },
+            onResolvedValues: (covers, resolvedReleaseGroupIds, phase) => {
+                diagnosticLog('artist-page', `release-group-cover-task-${phase}`, {
                     currentArtistId: artistIdRef.current,
                     taskId,
                     waitMs: elapsedSince(waitStartedAt),
                     expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
+                    resolvedReleaseGroupIds: describeIds(resolvedReleaseGroupIds),
+                    extracted: describeNullableStringMap(covers, expectedReleaseGroupIds),
                 });
-                return { settled: true };
-            }
+                if (Object.keys(covers).length > 0) {
+                    mergeReleaseGroupCoversWithDiagnostics(
+                        covers,
+                        expectedReleaseGroupIds,
+                        getTaskSource('release-group-cover-task', phase)
+                    );
+                }
+                if (phase === 'partial') {
+                    recreateOptions?.onPartialResolvedIds?.(resolvedReleaseGroupIds);
+                }
+            },
+            onError: error => {
+                console.error('artist-page: resolve release-group cover task failed', error);
+                diagnosticWarn('artist-page', 'release-group-cover-task-error', {
+                    currentArtistId: artistIdRef.current,
+                    taskId,
+                    waitMs: elapsedSince(waitStartedAt),
+                    expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
+                    error: describeError(error),
+                });
+            },
+            shouldFillMissingOnCompleted: () => false,
+            shouldFillMissingOnError: false,
+            shouldFillMissingOnNonCompleted: false,
+            recreateTask: recreateOptions?.recreateTask,
+            recreateTaskDescription: recreateOptions?.recreateTaskDescription,
+        });
 
-            diagnosticLog('artist-page', 'release-group-cover-task-extracted', {
-                currentArtistId: artistIdRef.current,
-                taskId,
-                waitMs: elapsedSince(waitStartedAt),
-                expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
-                extracted: describeNullableStringMap(covers, expectedReleaseGroupIds),
-            });
-
-            mergeReleaseGroupCoversWithDiagnostics(
-                covers,
-                expectedReleaseGroupIds,
-                'release-group-cover-task-completed'
-            );
-
-            return { settled: true };
-        } catch (error) {
-            console.error('artist-page: resolve release-group cover task failed', error);
-            diagnosticWarn('artist-page', 'release-group-cover-task-error', {
-                currentArtistId: artistIdRef.current,
-                taskId,
-                waitMs: elapsedSince(waitStartedAt),
-                expectedReleaseGroupIds: describeIds(expectedReleaseGroupIds),
-                error: describeError(error),
-            });
-            return { settled: true };
-        }
+        return { settled: true };
     }, [artistIdRef, mergeReleaseGroupCoversWithDiagnostics, waitForTaskResult]);
 
     return {

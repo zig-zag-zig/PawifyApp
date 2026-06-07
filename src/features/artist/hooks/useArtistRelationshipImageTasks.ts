@@ -1,6 +1,6 @@
 import { useCallback, useEffect, type Dispatch, type RefObject } from 'react';
 import { scheduleIdleCallback } from '../../../utils/scheduleIdle';
-import type { Task, TaskReplayPolicy } from '../../../hooks/useTaskManager';
+import type { QueuedTask, TaskReplayPolicy } from '../../../hooks/useTaskManager';
 import type { ArtistDetailsResponse } from '../../../types/apiTypes';
 import {
     describeError,
@@ -27,14 +27,14 @@ type TaskRecreateOptions = {
 
 type ArtistRelationshipImageTasksOptions = {
     addTask: <T>(
-        method: () => Promise<T>,
-        methodName: string,
+        run: () => Promise<T>,
+        operationName: string,
         options?: AddTaskOptions,
-    ) => Task<T>;
+    ) => QueuedTask<T>;
     artistIdRef: RefObject<string | undefined>;
     artistProfileImagesRef: RefObject<Record<string, string | null | undefined>>;
     dispatch: Dispatch<ArtistPageAction>;
-    executeTask: <T>(task: Task<T>) => Promise<T | null>;
+    executeTask: <T>(task: QueuedTask<T>) => Promise<T | null>;
     getArtistDetails: (artistId: string) => Promise<ArtistDetailsResponse>;
     isMountedRef: RefObject<boolean>;
     membersWithoutCachedPicture: string[];
@@ -47,7 +47,7 @@ type ArtistRelationshipImageTasksOptions = {
         recreateOptions?: TaskRecreateOptions,
     ) => Promise<TaskResolution>;
     taskStartedAtRef: RefObject<Record<string, number>>;
-    tasks: Task[];
+    tasks: QueuedTask[];
 };
 
 export function useArtistRelationshipImageTasks({

@@ -1,4 +1,4 @@
-import type { Artist, Member } from '../../../modules/models/models';
+import type { Artist, Member } from '../../../shared/music';
 import type {
     ArtistRelationshipBuckets,
     ArtistRelationshipGroup,

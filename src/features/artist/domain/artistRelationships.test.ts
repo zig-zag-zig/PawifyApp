@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Artist, Member } from '../../../modules/models/models';
+import type { Artist, Member } from '../../../shared/music';
 import {
   buildArtistRelationshipGroups,
   getArtistRelationshipBuckets,

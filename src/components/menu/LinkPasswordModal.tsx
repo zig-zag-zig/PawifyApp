@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
-import { CustomButton, CustomInput } from '../StyledComponents';
+import { Button, TextField } from '../ui';
 import { getModalStyles } from './menuStyles';
 
 export function LinkPasswordModal({
@@ -47,14 +47,14 @@ export function LinkPasswordModal({
         <Text style={styles.title}>Link Password Sign-In</Text>
         <Text style={styles.subtitle}>Add email and password sign-in to your account</Text>
 
-        <CustomInput
+        <TextField
           placeholder="Email"
           value={email}
           onChangeText={onEmailChange}
           email={true}
         />
 
-        <CustomInput
+        <TextField
           placeholder="Password"
           value={password}
           onChangeText={onPasswordChange}
@@ -62,7 +62,7 @@ export function LinkPasswordModal({
           showPasswordToggle
         />
 
-        <CustomInput
+        <TextField
           placeholder="Confirm Password"
           value={confirmPassword}
           onChangeText={onConfirmPasswordChange}
@@ -71,12 +71,12 @@ export function LinkPasswordModal({
         />
 
         <View style={styles.buttonContainer}>
-          <CustomButton onPress={onCancel}>
+          <Button onPress={onCancel}>
             Cancel
-          </CustomButton>
-          <CustomButton onPress={onConfirm}>
+          </Button>
+          <Button onPress={onConfirm}>
             Link Password
-          </CustomButton>
+          </Button>
         </View>
       </View>
     </View>

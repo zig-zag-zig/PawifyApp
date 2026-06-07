@@ -22,19 +22,19 @@ type AddTaskOptions = {
     replayPolicy?: TaskReplayPolicy;
 };
 
-export type Task<T = any> = {
+export type QueuedTask<T = unknown> = {
     id: string;
-    method: () => Promise<T>;
-    methodName: string;
+    run: () => Promise<T>;
+    operationName: string;
     origin?: string;
     createdAtIso?: string;
     result?: T;
-    error?: any;
-    skippedDueToNetwork?: boolean;
+    error?: unknown;
+    deferredByNetwork?: boolean;
     replayPolicy: TaskReplayPolicy;
 };
 
-const shouldReplayTask = (task: Task, reason: TaskReplayReason): boolean => {
+const shouldReplayTask = (task: QueuedTask, reason: TaskReplayReason): boolean => {
     switch (task.replayPolicy) {
         case 'both':
             return true;
@@ -49,25 +49,25 @@ const shouldReplayTask = (task: Task, reason: TaskReplayReason): boolean => {
 };
 
 const useTaskManager = () => {
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const tasksRef = useRef<Task[]>([]);
+    const [tasks, setTasks] = useState<QueuedTask[]>([]);
+    const tasksRef = useRef<QueuedTask[]>([]);
     const inFlightTaskIdsRef = useRef<Set<string>>(new Set());
     const isConnectedRef = useRef<boolean | null>(null);
     const appStateRef = useRef<string>(AppState.currentState);
 
     const executeTask = useCallback(async <T,>(
-        task: Task<T>,
+        task: QueuedTask<T>,
         runReason: TaskRunReason = 'direct-execute'
     ): Promise<T | null> => {
         const isNetworkDisconnected = () => isConnectedRef.current === false;
-        const shouldLogDiagnostics = shouldLogArtistTaskDiagnostics(task.methodName, task.origin);
+        const shouldLogDiagnostics = shouldLogArtistTaskDiagnostics(task.operationName, task.origin);
 
         const existingTask = tasksRef.current.find((t) => t.id === task.id);
         if (existingTask && (existingTask.result !== undefined || existingTask.error !== undefined)) {
             if (shouldLogDiagnostics) {
                 diagnosticLog('task-manager', 'execute-skipped-settled', {
                     taskId: task.id,
-                    methodName: task.methodName,
+                    operationName: task.operationName,
                     origin: task.origin,
                     hasResult: existingTask.result !== undefined,
                     hasError: existingTask.error !== undefined,
@@ -80,7 +80,7 @@ const useTaskManager = () => {
             if (shouldLogDiagnostics) {
                 diagnosticLog('task-manager', 'execute-skipped-in-flight', {
                     taskId: task.id,
-                    methodName: task.methodName,
+                    operationName: task.operationName,
                     origin: task.origin,
                 });
             }
@@ -91,14 +91,14 @@ const useTaskManager = () => {
             if (shouldLogDiagnostics) {
                 diagnosticWarn('task-manager', 'execute-delayed-network', {
                     taskId: task.id,
-                    methodName: task.methodName,
+                    operationName: task.operationName,
                     origin: task.origin,
                     runReason,
                 });
             }
             setTasks((prevTasks) =>
                 prevTasks.map((t) =>
-                    t.id === task.id ? { ...t, skippedDueToNetwork: true } : t
+                    t.id === task.id ? { ...t, deferredByNetwork: true } : t
                 )
             );
             return null;
@@ -108,7 +108,7 @@ const useTaskManager = () => {
             if (shouldLogDiagnostics) {
                 diagnosticWarn('task-manager', 'execute-delayed-app-state', {
                     taskId: task.id,
-                    methodName: task.methodName,
+                    operationName: task.operationName,
                     origin: task.origin,
                     runReason,
                     appState: appStateRef.current,
@@ -122,18 +122,18 @@ const useTaskManager = () => {
         if (shouldLogDiagnostics) {
             diagnosticLog('task-manager', 'execute-start', {
                 taskId: task.id,
-                methodName: task.methodName,
+                operationName: task.operationName,
                 origin: task.origin,
                 runReason,
                 replayPolicy: task.replayPolicy,
             });
         }
         try {
-            const result = await task.method();
+            const result = await task.run();
             if (shouldLogDiagnostics) {
                 diagnosticLog('task-manager', 'execute-done', {
                     taskId: task.id,
-                    methodName: task.methodName,
+                    operationName: task.operationName,
                     origin: task.origin,
                     runReason,
                     elapsedMs: elapsedSince(taskStartedAt),
@@ -142,7 +142,7 @@ const useTaskManager = () => {
             }
             setTasks((prevTasks) =>
                 prevTasks.map((t) =>
-                    t.id === task.id ? { ...t, result, error: undefined, skippedDueToNetwork: false } : t
+                    t.id === task.id ? { ...t, result, error: undefined, deferredByNetwork: false } : t
                 )
             );
             return result;
@@ -151,7 +151,7 @@ const useTaskManager = () => {
                 if (shouldLogDiagnostics) {
                     diagnosticWarn('task-manager', 'execute-failed-network', {
                         taskId: task.id,
-                        methodName: task.methodName,
+                        operationName: task.operationName,
                         origin: task.origin,
                         runReason,
                         elapsedMs: elapsedSince(taskStartedAt),
@@ -160,13 +160,13 @@ const useTaskManager = () => {
                 }
                 setTasks((prevTasks) =>
                     prevTasks.map((t) =>
-                        t.id === task.id ? { ...t, skippedDueToNetwork: true } : t
+                        t.id === task.id ? { ...t, deferredByNetwork: true } : t
                     )
                 );
             } else if (appStateRef.current === 'active') {
                 console.error('task-manager: execute task failed', {
                     taskId: task.id,
-                    methodName: task.methodName,
+                    operationName: task.operationName,
                     origin: task.origin,
                     runReason,
                     error,
@@ -174,7 +174,7 @@ const useTaskManager = () => {
                 if (shouldLogDiagnostics) {
                     diagnosticWarn('task-manager', 'execute-failed', {
                         taskId: task.id,
-                        methodName: task.methodName,
+                        operationName: task.operationName,
                         origin: task.origin,
                         runReason,
                         elapsedMs: elapsedSince(taskStartedAt),
@@ -208,7 +208,7 @@ const useTaskManager = () => {
                 const replayableTaskIds = new Set<string>();
                 for (const task of tasksRef.current) {
                     const shouldReplay =
-                        task.skippedDueToNetwork &&
+                        task.deferredByNetwork &&
                         task.result === undefined &&
                         task.error === undefined &&
                         shouldReplayTask(task, 'network-replay');
@@ -225,7 +225,7 @@ const useTaskManager = () => {
                     const diagnosticTaskIds = tasksRef.current
                         .filter(task =>
                             replayableTaskIds.has(task.id) &&
-                            shouldLogArtistTaskDiagnostics(task.methodName, task.origin)
+                            shouldLogArtistTaskDiagnostics(task.operationName, task.origin)
                         )
                         .map(task => task.id);
                     if (diagnosticTaskIds.length > 0) {
@@ -236,7 +236,7 @@ const useTaskManager = () => {
                     setTasks((prevTasks) =>
                         prevTasks.map((task) =>
                             replayableTaskIds.has(task.id)
-                                ? { ...task, skippedDueToNetwork: false }
+                                ? { ...task, deferredByNetwork: false }
                                 : task
                         )
                     );
@@ -254,7 +254,7 @@ const useTaskManager = () => {
                 const replayableTaskIds: string[] = [];
                 for (const task of tasksRef.current) {
                     const shouldReplay =
-                        !task.skippedDueToNetwork &&
+                        !task.deferredByNetwork &&
                         task.result === undefined &&
                         task.error === undefined &&
                         shouldReplayTask(task, 'appstate-replay');
@@ -270,7 +270,7 @@ const useTaskManager = () => {
                 const diagnosticTaskIds = tasksRef.current
                     .filter(task =>
                         replayableTaskIds.includes(task.id) &&
-                        shouldLogArtistTaskDiagnostics(task.methodName, task.origin)
+                        shouldLogArtistTaskDiagnostics(task.operationName, task.origin)
                     )
                     .map(task => task.id);
                 if (diagnosticTaskIds.length > 0) {
@@ -289,26 +289,26 @@ const useTaskManager = () => {
     }, [executeTask]);
 
     const addTask = useCallback(<T,>(
-        method: () => Promise<T>,
-        methodName: string,
+        run: () => Promise<T>,
+        operationName: string,
         options?: AddTaskOptions
-    ): Task<T> => {
+    ): QueuedTask<T> => {
         const taskId = options?.taskId;
         const origin = options?.origin;
         const replayPolicy = options?.replayPolicy ?? 'none';
         const resolvedTaskId = (taskId ?? uuid.v4()) as string;
-        const newTask: Task<T> = {
+        const newTask: QueuedTask<T> = {
             id: resolvedTaskId,
-            method,
-            methodName,
+            run,
+            operationName,
             origin,
             createdAtIso: new Date().toISOString(),
             replayPolicy,
         };
-        if (shouldLogArtistTaskDiagnostics(methodName, origin)) {
+        if (shouldLogArtistTaskDiagnostics(operationName, origin)) {
             diagnosticLog('task-manager', 'task-added', {
                 taskId: newTask.id,
-                methodName,
+                operationName,
                 origin,
                 replayPolicy,
             });
@@ -319,10 +319,10 @@ const useTaskManager = () => {
 
     const removeTask = useCallback((taskId: string) => {
         const existingTask = tasksRef.current.find(task => task.id === taskId);
-        if (existingTask && shouldLogArtistTaskDiagnostics(existingTask.methodName, existingTask.origin)) {
+        if (existingTask && shouldLogArtistTaskDiagnostics(existingTask.operationName, existingTask.origin)) {
             diagnosticLog('task-manager', 'task-removed', {
                 taskId,
-                methodName: existingTask.methodName,
+                operationName: existingTask.operationName,
                 origin: existingTask.origin,
                 hadResult: existingTask.result !== undefined,
                 hadError: existingTask.error !== undefined,
@@ -333,7 +333,7 @@ const useTaskManager = () => {
 
     const removeAllTasks = useCallback(() => {
         const diagnosticTasks = tasksRef.current.filter(task =>
-            shouldLogArtistTaskDiagnostics(task.methodName, task.origin)
+            shouldLogArtistTaskDiagnostics(task.operationName, task.origin)
         );
         if (diagnosticTasks.length > 0) {
             diagnosticLog('task-manager', 'remove-all', {

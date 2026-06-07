@@ -1,4 +1,4 @@
-import type { ExternalLink, ExternalLinkCategory, ExternalLinkService } from '../../modules/models/models';
+import type { ExternalLink, ExternalLinkCategory, ExternalLinkService } from '../../shared/music';
 import type { BrandIconSlug } from './brandIconPaths';
 
 export type ExternalLinkIconConfig =

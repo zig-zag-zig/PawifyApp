@@ -1,6 +1,7 @@
 import React, { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../../components/ToastContext';
 import { AppUpdateModal } from '../components/AppUpdateModal';
+import { updateCopy } from '../domain/updateCopy';
 import type {
   AppRelease,
   UpdateCheckOptions,
@@ -34,7 +35,7 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return 'Could not check for updates.';
+  return updateCopy.errors.checkFailed;
 }
 
 export const UpdateProvider = ({ children }: { children: ReactNode }) => {
@@ -56,7 +57,7 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
     if (checkingRef.current) return;
 
     if (!isConfigured) {
-      const message = 'Update repository is not configured';
+      const message = updateCopy.errors.sourceNotConfigured;
       setStatus('error');
       setError(message);
       if (!options.silent) {
@@ -86,7 +87,7 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
       } else if (!result.isAvailable && options.showModalWhenCurrent) {
         setModalVisible(true);
       } else if (!result.isAvailable && !options.silent) {
-        showToast('App is up to date', 'success');
+        showToast(updateCopy.toast.current, 'success');
       }
     } catch (caught) {
       const message = getErrorMessage(caught);
@@ -127,9 +128,9 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
       await appUpdateService.skipRelease(latestRelease);
       setSkippedReleaseTag(latestRelease.tagName);
       setModalVisible(false);
-      showToast(`Skipped ${latestRelease.version}`, 'info');
+      showToast(updateCopy.toast.skipped(latestRelease.version), 'info');
     } catch {
-      showToast('Could not save update preference', 'error');
+      showToast(updateCopy.errors.savePreferenceFailed, 'error');
     }
   }, [latestRelease, showToast]);
 

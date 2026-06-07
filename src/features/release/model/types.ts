@@ -1,5 +1,5 @@
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
-import type { Release, ReleaseGroupReleaseListItem, Track } from '../../../modules/models/models';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
+import type { Release, ReleaseGroupReleaseListItem, Track } from '../../../shared/music';
 
 export interface ReleasesPageState {
     page: number;

@@ -6,7 +6,7 @@ import type {
   Release,
   ReleaseGroupReleaseListItem,
   ReleaseNotificationSettings
-} from '../modules/models/models';
+} from '../shared/music';
 
 export interface FollowingResponse {
   artists: ArtistMinimal[];

@@ -1,8 +1,8 @@
 import React from 'react';
 import { TouchableOpacity, View, LayoutChangeEvent } from 'react-native';
-import { CachedImageComponent, SelectableText } from '../../../components/StyledComponents';
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
-import { nameWithDisambiguation } from '../../../modules/utils/helpers';
+import { CachedImageComponent, SelectableText } from '../../../components/ui';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
+import { nameWithDisambiguation } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 
 interface ReleaseItemProps {

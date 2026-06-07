@@ -1,4 +1,4 @@
-import type { Artist } from '../../../modules/models/models';
+import type { Artist } from '../../../shared/music';
 import type { SearchPageState } from '../model/types';
 
 type SearchAction =

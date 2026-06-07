@@ -1,9 +1,11 @@
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { InteractionManager } from 'react-native';
 import { useToast } from '../../../components/ToastContext';
-import type { Artist, ArtistReleaseGroup } from '../../../modules/models/models';
+import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import type { ReleaseGroupReleasesResponse } from '../../../types/apiTypes';
+import { normalizeReleaseGroupReleasesResponse } from '../../release/domain/releaseGroupReleases';
 import {
     ArtistNavigationProp,
     ReleaseGroupNavigationProp,
@@ -43,6 +45,80 @@ type ArtistPageActionsOptions = {
     updatePendingTask: (key: PendingTaskKey, taskId: string | null) => void;
 };
 
+const NAVIGATION_HANDOFF_FALLBACK_MS = 600;
+const RELEASE_GROUP_RESPONSE_RETRY_DELAYS_MS = [250, 750];
+
+function wait(milliseconds: number): Promise<void> {
+    return new Promise(resolve => {
+        setTimeout(resolve, milliseconds);
+    });
+}
+
+async function getReleaseGroupReleasesWhenReady(
+    getReleaseGroupReleases: (releaseGroupId: string) => Promise<ReleaseGroupReleasesResponse>,
+    releaseGroupId: string,
+): Promise<ReleaseGroupReleasesResponse> {
+    for (let attempt = 0; attempt <= RELEASE_GROUP_RESPONSE_RETRY_DELAYS_MS.length; attempt += 1) {
+        if (attempt > 0) {
+            await wait(RELEASE_GROUP_RESPONSE_RETRY_DELAYS_MS[attempt - 1]);
+        }
+
+        const response = await getReleaseGroupReleases(releaseGroupId);
+        const normalizedResponse = normalizeReleaseGroupReleasesResponse(response);
+
+        if (normalizedResponse) {
+            return normalizedResponse;
+        }
+    }
+
+    throw new Error('Please wait a moment and try again.');
+}
+
+function createNavigationHandoffWaiter(
+    navigation: ReleaseGroupNavigationProp
+): () => Promise<void> {
+    const waitForHandoff = new Promise<void>(resolve => {
+        let didResolve = false;
+        let unsubscribeTransitionEnd: (() => void) | undefined;
+        let frameId: number | null = null;
+
+        const finishAfterPaint = () => {
+            if (didResolve) {
+                return;
+            }
+
+            didResolve = true;
+            unsubscribeTransitionEnd?.();
+
+            if (frameId !== null) {
+                cancelAnimationFrame(frameId);
+            }
+
+            InteractionManager.runAfterInteractions(() => {
+                frameId = requestAnimationFrame(() => {
+                    frameId = requestAnimationFrame(() => {
+                        frameId = null;
+                        resolve();
+                    });
+                });
+            });
+        };
+
+        const fallbackTimeout = setTimeout(finishAfterPaint, NAVIGATION_HANDOFF_FALLBACK_MS);
+
+        unsubscribeTransitionEnd = navigation.addListener('transitionEnd', event => {
+            if (event.data?.closing) {
+                return;
+            }
+
+            clearTimeout(fallbackTimeout);
+            finishAfterPaint();
+        });
+    });
+
+    return () => waitForHandoff;
+}
+
 export function useArtistPageActions({
     artistId,
     artist,
@@ -66,6 +142,12 @@ export function useArtistPageActions({
     const releaseNavigation = useNavigation<ReleaseNavigationProp>();
     const releaseGroupNavigation = useNavigation<ReleaseGroupNavigationProp>();
     const artistNavigation = useNavigation<ArtistNavigationProp>();
+
+    useFocusEffect(
+        useCallback(() => {
+            dispatch({ type: 'releaseGroupLoadFinished' });
+        }, [dispatch])
+    );
 
     const handleToggleFollow = useCallback(async () => {
         if (!artistId || !artist || isFollowLoading || followToggleInFlightRef.current) return;
@@ -138,8 +220,14 @@ export function useArtistPageActions({
             releaseGroupTitle: releaseGroup.title,
         });
         dispatch({ type: 'releaseGroupLoadStarted' });
+        let didNavigate = false;
+        let waitForHandoff: (() => Promise<void>) | null = null;
+
         try {
-            const releaseGroupResult = await getReleaseGroupReleases(releaseGroup.id);
+            const releaseGroupResult = await getReleaseGroupReleasesWhenReady(
+                getReleaseGroupReleases,
+                releaseGroup.id
+            );
             diagnosticLog('artist-page', 'release-group-press-done', {
                 currentArtistId: artistIdRef.current,
                 resolvedArtistId,
@@ -159,14 +247,17 @@ export function useArtistPageActions({
                 releaseNavigation.navigate('Release', {
                     releaseId: releaseGroupResult.releases[0].id,
                 });
+                didNavigate = true;
                 return;
             }
 
+            waitForHandoff = createNavigationHandoffWaiter(releaseGroupNavigation);
             releaseGroupNavigation.navigate('ReleaseGroup', {
                 releaseGroupId: releaseGroup.id,
                 releases: releaseGroupResult.releases,
                 initialReleaseCoverTaskId: releaseGroupResult.releaseCoverTaskId,
             });
+            didNavigate = true;
         } catch (error) {
             console.error('artist-page: fetch release-group releases failed', error);
             diagnosticWarn('artist-page', 'release-group-press-error', {
@@ -181,7 +272,13 @@ export function useArtistPageActions({
                 'error'
             );
         } finally {
-            dispatch({ type: 'releaseGroupLoadFinished' });
+            if (didNavigate && waitForHandoff) {
+                await waitForHandoff();
+            }
+
+            if (isMountedRef.current) {
+                dispatch({ type: 'releaseGroupLoadFinished' });
+            }
         }
     }, [
         artist?.id,
@@ -189,6 +286,7 @@ export function useArtistPageActions({
         artistIdRef,
         dispatch,
         getReleaseGroupReleases,
+        isMountedRef,
         isLoadingReleaseGroup,
         releaseGroupNavigation,
         releaseNavigation,

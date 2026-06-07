@@ -1,4 +1,4 @@
-import type { ArtistReleaseGroup } from '../../../modules/models/models';
+import type { ArtistReleaseGroup } from '../../../shared/music';
 import type { ReleaseGroupSection } from '../model/types';
 
 const RELEASE_TYPES_ORDER = [

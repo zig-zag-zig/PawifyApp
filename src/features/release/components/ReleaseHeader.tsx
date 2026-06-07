@@ -1,10 +1,10 @@
 import React from 'react';
 import { View } from 'react-native';
-import { SelectableText } from '../../../components/StyledComponents';
+import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import type { Release } from '../../../modules/models/models';
-import { nameWithDisambiguation } from '../../../modules/utils/helpers';
+import type { Release } from '../../../shared/music';
+import { nameWithDisambiguation } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 
 interface ReleaseHeaderProps {

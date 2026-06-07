@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
-import { Container, Spinner } from './StyledComponents';
+import { ScreenContainer } from './ui';
 import { ConfirmationPrompt } from './ConfirmationPrompt';
 import { SmartSelectableList } from './SmartSelectableList';
 import { useRemoveConfirmation } from '../hooks/useRemoveConfirmation';
+import { useContentReady } from '../hooks/useContentReady';
+import { useGlobalSpinner } from '../contexts/GlobalSpinnerContext';
 import { useToast } from '../components/ToastContext';
 
 export function GenericList<T extends { id: string }>({
@@ -44,6 +46,8 @@ export function GenericList<T extends { id: string }>({
 }) {
     const { showToast } = useToast();
     const removeConfirmation = useRemoveConfirmation();
+    const { isWaitingForContent, onContentReady } = useContentReady(isLoading, items.length > 0);
+    useGlobalSpinner(isLoading || isWaitingForContent);
 
     const handleRemoveSelected = (ids: string[]) => {
         removeConfirmation.requestRemove(ids, () => {
@@ -60,8 +64,7 @@ export function GenericList<T extends { id: string }>({
     }, [bannerVisible]);
 
     return (
-        <Container>
-            <Spinner isLoading={isLoading} backdropVariant="strong" />
+        <ScreenContainer>
             <SmartSelectableList
                 selectionManagerRef={selectionManagerRef}
                 flatListRef={flatListRef}
@@ -73,6 +76,7 @@ export function GenericList<T extends { id: string }>({
                 onEndReachedThreshold={onEndReachedThreshold}
                 initialNumToRender={initialNumToRender}
                 windowSize={windowSize}
+                onContentReady={onContentReady}
             />
             <ConfirmationPrompt
                 visible={removeConfirmation.promptVisible}
@@ -83,6 +87,6 @@ export function GenericList<T extends { id: string }>({
                 onConfirm={removeConfirmation.handleConfirm}
                 onCancel={removeConfirmation.handleCancel}
             />
-        </Container>
+        </ScreenContainer>
     );
 }

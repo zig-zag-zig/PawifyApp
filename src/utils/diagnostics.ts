@@ -159,21 +159,21 @@ export function describeValueShape(value: unknown): DiagnosticPayload {
   };
 }
 
-export function shouldLogArtistTaskDiagnostics(methodName?: string, origin?: string): boolean {
+export function shouldLogArtistTaskDiagnostics(operationName?: string, origin?: string): boolean {
   if (!ARTIST_DIAGNOSTICS_ENABLED) {
     return false;
   }
 
-  const relevantMethods = new Set([
+    const relevantOperations = new Set([
     'getArtistDetails',
     'getArtistReleases',
     'getReleaseGroupReleases',
     'downloadAndCacheImage',
   ]);
 
-  return Boolean(
-    (origin && (origin.startsWith('artist-page') || origin.startsWith('cached-image'))) ||
-    (methodName && relevantMethods.has(methodName))
+    return Boolean(
+        (origin && (origin.startsWith('artist-page') || origin.startsWith('cached-image'))) ||
+    (operationName && relevantOperations.has(operationName))
   );
 }
 

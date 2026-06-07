@@ -1,4 +1,4 @@
-import type { Artist, ArtistReleaseGroup } from '../../../modules/models/models';
+import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
 import { buildInitialLoadedItemsByType, DEFAULT_RELEASE_ITEMS_TO_SHOW } from '../domain/releaseSections';
 import type { ArtistPageState, PendingTaskKey } from '../model/types';
 

@@ -23,6 +23,7 @@ import {
     securitySuccessMessageMap,
     validateSecurityForm,
 } from '../domain/securityRules';
+import { authCopy } from '../domain/authCopy';
 import type { SecurityActionType } from '../model/types';
 import { createInitialSecurityState, securityReducer } from '../state/authReducers';
 
@@ -34,6 +35,15 @@ async function deleteAccount(deleteUserAccount: () => Promise<string>) {
     await deleteUserAccount();
     await deleteUser(auth.currentUser);
     return true;
+}
+
+function getFirebaseErrorCode(error: unknown): string | null {
+    if (!error || typeof error !== 'object' || !('code' in error)) {
+        return null;
+    }
+
+    const { code } = error as { code?: unknown };
+    return typeof code === 'string' ? code : null;
 }
 
 export function useSecurityPage(actionType: SecurityActionType) {
@@ -65,16 +75,16 @@ export function useSecurityPage(actionType: SecurityActionType) {
 
         const reauthMethod = getSecurityReauthMethod(actionType, user, { canUseGoogleAuth });
         if (reauthMethod === 'google') {
-            return "You'll be prompted to authenticate with Google";
+            return authCopy.security.googlePrompt;
         }
 
-        return 'This action is not available for this sign-in method on this platform.';
+        return authCopy.security.actionUnavailable;
     }, [actionType, canUseGoogleAuth, needsPasswordField, user]);
 
     useFocusEffect(
         useCallback(() => {
             if (actionType === 'password' && !user?.providerData?.some(provider => provider.providerId === 'password')) {
-                showToast('Password change not available for your sign-in method.', 'error');
+                showToast(authCopy.security.passwordUnavailable, 'error');
                 navigation.goBack && navigation.goBack();
                 return () => { };
             }
@@ -83,8 +93,8 @@ export function useSecurityPage(actionType: SecurityActionType) {
                 dispatch({ type: 'formDisabledChanged', value: true });
                 showToast(
                     canUseGoogleAuth
-                        ? 'Email change not available when Google account is linked. To change email: unlink Google, update email, then re-link Google.'
-                        : 'Email change is not available on iOS while Google is linked.',
+                        ? authCopy.security.googleLinkedEmailAndroid
+                        : authCopy.security.googleLinkedEmailIos,
                     'error'
                 );
                 return () => { };
@@ -96,7 +106,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
                 && !getSecurityReauthMethod(actionType, user, { canUseGoogleAuth })
             ) {
                 dispatch({ type: 'formDisabledChanged', value: true });
-                showToast('This action is not available for your sign-in method on this platform.', 'error');
+                showToast(authCopy.security.actionUnavailable, 'error');
                 return () => { };
             }
 
@@ -184,17 +194,19 @@ export function useSecurityPage(actionType: SecurityActionType) {
             if (result.success) {
                 showToast(securitySuccessMessageMap[actionType], 'success');
             }
-        } catch (error: any) {
-            if (error?.code === 'auth/invalid-credential') {
+        } catch (error) {
+            const errorCode = getFirebaseErrorCode(error);
+
+            if (errorCode === 'auth/invalid-credential') {
                 dispatch({
                     type: 'formErrorsChanged',
-                    value: { currentPassword: 'Incorrect password' },
+                    value: { currentPassword: authCopy.security.incorrectPassword },
                 });
-            } else if (error?.code === 'auth/requires-recent-login') {
+            } else if (errorCode === 'auth/requires-recent-login') {
                 requiresSignout = true;
             } else {
                 showToast(
-                    getUserFacingErrorMessage(error, `Failed to ${securityButtonTextMap[actionType].toLowerCase()}`),
+                    getUserFacingErrorMessage(error, authCopy.security.failed(securityButtonTextMap[actionType])),
                     'error'
                 );
             }

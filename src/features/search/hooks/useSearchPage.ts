@@ -2,8 +2,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import useTaskManager from '../../../hooks/useTaskManager';
-import type { Artist } from '../../../modules/models/models';
-import { fillMissingIdsWithNull, mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import type { Artist } from '../../../shared/music';
+import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages } from '../../../utils/taskResultMaps';
 import { ArtistNavigationProp } from '../../../types/navigation';
 import { useSearchApi } from '../api/searchApi';
@@ -261,55 +262,30 @@ export function useSearchPage(): SearchPageController {
                     return;
                 }
 
-                try {
-                    const applyPartialArtistImages = (result: unknown) => {
-                        const partialImages = extractArtistProfileImages(result);
-                        const resolvedArtistIds = missingArtistImageIdsForTask
-                            .filter(artistId => partialImages[artistId] !== undefined);
-                        if (resolvedArtistIds.length === 0) {
-                            return;
-                        }
-
-                        setArtistProfileImages(prev => mergeNullableStringMaps(prev, partialImages));
+                await resolveNullableTaskMap({
+                    taskId: profileImageTask.taskId,
+                    expectedIds: missingArtistImageIdsForTask,
+                    waitForTaskResult,
+                    extractMap: extractArtistProfileImages,
+                    onResolvedValues: (artistImages, resolvedArtistIds) => {
+                        setArtistProfileImages(prev => mergeNullableStringMaps(prev, artistImages));
                         setPendingArtistImageIds(prev =>
                             prev.filter(artistId => !resolvedArtistIds.includes(artistId))
                         );
-                    };
-
-                    const imageTaskResult = await waitForTaskResult(profileImageTask.taskId, {
-                        onPartialResult: partialResult => {
-                            applyPartialArtistImages(partialResult.result);
-                        },
-                        recreateTask: async () => {
-                            const replayedResult = await searchArtists(
-                                profileImageTask.query,
-                                SEARCH_PAGE_SIZE,
-                                profileImageTask.offset
-                            );
-                            return replayedResult.profileImageTaskId;
-                        },
-                        recreateTaskDescription: 'searchArtists.profileImageTaskId',
-                    });
-                    const taskStatus = imageTaskResult.status.toLowerCase();
-                    const fetchedImages = taskStatus === 'completed'
-                        ? extractArtistProfileImages(imageTaskResult.result)
-                        : {};
-                    const completedArtistImages = fillMissingIdsWithNull(
-                        missingArtistImageIdsForTask,
-                        fetchedImages
-                    );
-                    setArtistProfileImages(prev => mergeNullableStringMaps(prev, completedArtistImages));
-                    setPendingArtistImageIds(prev =>
-                        prev.filter(artistId => !missingArtistImageIdsForTask.includes(artistId))
-                    );
-                } catch (error) {
-                    console.error('search-page: resolve artist profile image task failed', error);
-                    const completedArtistImages = fillMissingIdsWithNull(missingArtistImageIdsForTask, {});
-                    setArtistProfileImages(prev => mergeNullableStringMaps(prev, completedArtistImages));
-                    setPendingArtistImageIds(prev =>
-                        prev.filter(artistId => !missingArtistImageIdsForTask.includes(artistId))
-                    );
-                }
+                    },
+                    onError: error => {
+                        console.error('search-page: resolve artist profile image task failed', error);
+                    },
+                    recreateTask: async () => {
+                        const replayedResult = await searchArtists(
+                            profileImageTask.query,
+                            SEARCH_PAGE_SIZE,
+                            profileImageTask.offset
+                        );
+                        return replayedResult.profileImageTaskId;
+                    },
+                    recreateTaskDescription: 'searchArtists.profileImageTaskId',
+                });
             }));
         } else {
             setPendingArtistImageIds(prev =>

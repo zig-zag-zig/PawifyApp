@@ -1,4 +1,4 @@
-import type { Artist, ArtistReleaseGroup } from '../../../modules/models/models';
+import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
 
 interface ArtistPendingTasks {
     artistTaskId: string | null;

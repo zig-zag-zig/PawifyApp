@@ -1,9 +1,9 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
-import type { ArtistMinimal } from '../../../modules/models/models';
+import type { ArtistMinimal } from '../../../shared/music';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
-import { Container } from '../../../components/StyledComponents';
+import { ScreenContainer } from '../../../components/ui';
 
 interface ArtistsViewProps {
     artists: ArtistMinimal[];
@@ -36,7 +36,7 @@ const ArtistsView = ({
 
     if (shouldShowEmptyState) {
         return (
-            <Container>
+            <ScreenContainer>
                 <View
                     style={{
                         paddingVertical: 50,
@@ -54,7 +54,7 @@ const ArtistsView = ({
                         No favorite artists
                     </Text>
                 </View>
-            </Container>
+            </ScreenContainer>
         );
     }
 

@@ -1,4 +1,4 @@
-import type { ArtistMinimal } from '../../../modules/models/models';
+import type { ArtistMinimal } from '../../../shared/music';
 import type { ArtistsPageState } from '../model/types';
 
 type ArtistsAction =

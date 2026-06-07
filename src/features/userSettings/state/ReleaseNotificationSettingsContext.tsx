@@ -8,9 +8,10 @@ import React, {
 } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useBackend } from '../../../hooks/useBackend';
+import { useApiClient } from '../../../hooks/useApiClient';
 import { EventService } from '../../../services/eventService';
-import { ReleaseNotificationSettings, DEFAULT_RELEASE_NOTIFICATION_SETTINGS } from '../../../modules/models/models';
+import { ReleaseNotificationSettings, DEFAULT_RELEASE_NOTIFICATION_SETTINGS } from '../../../shared/music';
+import type { ReleaseNotificationSettingsResponse } from '../../../types/apiTypes';
 
 type ReleaseNotificationSettingsContextValue = {
   settings: ReleaseNotificationSettings;
@@ -24,13 +25,22 @@ const ReleaseNotificationSettingsContext = createContext<ReleaseNotificationSett
 
 export function ReleaseNotificationSettingsProvider({ children }: { children: React.ReactNode }) {
   const { user, getAccessToken } = useAuth();
-  const {
-    getReleaseNotificationSettings,
-    updateReleaseNotificationSettings,
-  } = useBackend(getAccessToken);
+  const apiClient = useApiClient(getAccessToken);
   const [settings, setSettings] = useState<ReleaseNotificationSettings>(DEFAULT_RELEASE_NOTIFICATION_SETTINGS);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const getReleaseNotificationSettings = useCallback(async () =>
+    await apiClient.request<ReleaseNotificationSettingsResponse>(
+      'getReleaseNotificationSettings',
+      { method: 'GET' },
+    ), [apiClient]);
+
+  const updateReleaseNotificationSettings = useCallback(async (nextSettings: ReleaseNotificationSettings) =>
+    await apiClient.request<ReleaseNotificationSettingsResponse>(
+      'updateReleaseNotificationSettings',
+      { body: await apiClient.withSourcePushToken({ ...nextSettings }) },
+    ), [apiClient]);
 
   const refreshSettings = useCallback(async () => {
     if (!user) {

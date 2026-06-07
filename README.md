@@ -6,7 +6,7 @@ The app includes email and Google sign-in, artist search, followed artist manage
 
 ## What You Can Do
 
-- Sign in with email OTP or Google.
+- Sign in with an email verification code or Google.
 - Search for artists and inspect artist profile details.
 - Follow and unfollow artists.
 - Browse release groups, releases, tracks, artwork, links, and lyrics when available.
@@ -54,6 +54,8 @@ Optional environment values:
 EXPO_PUBLIC_API_VERSION=v1
 EXPO_PUBLIC_ARTIST_DIAGNOSTICS=false
 EXPO_PUBLIC_UPDATE_GITHUB_REPO_URL=https://github.com/owner/repo
+
+# EXPO_PUBLIC values are bundled into the app. Leave this empty for public builds.
 EXPO_PUBLIC_UPDATE_GITHUB_TOKEN=
 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=
 EXPO_PUBLIC_SENTRY_DSN=

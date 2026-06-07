@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Platform, View, Text, ScrollView } from 'react-native';
-import { Container } from './StyledComponents';
+import { ScreenContainer } from './ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { SecurityNavigationProp } from '../types/navigation';
@@ -10,6 +10,7 @@ import { getUserFacingErrorMessage } from '../services/userFacingErrors';
 import { LinkPasswordModal } from './menu/LinkPasswordModal';
 import { MenuItem } from './menu/MenuItem';
 import { getMenuStyles } from './menu/menuStyles';
+import { authCopy } from '../features/auth/domain/authCopy';
 import { useAppUpdate } from '../features/updates/state/UpdateContext';
 import { ReleaseNotificationSettingsCard } from '../features/userSettings/components/ReleaseNotificationSettingsCard';
 
@@ -95,7 +96,7 @@ export default function Menu() {
   };
 
   return (
-    <Container>
+    <ScreenContainer>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -142,7 +143,7 @@ export default function Menu() {
                     !hasGoogleProvider ?
                       handleSecurityAction('email') :
                       showToast(
-                        'Email change not available when Google account is linked. To change email: 1) Unlink Google account and change email, then re-link Google, OR 2) Unlink password sign-in and re-link with new email.',
+                        authCopy.security.googleLinkedEmailAndroid,
                         'error'
                       )
                   }
@@ -199,7 +200,7 @@ export default function Menu() {
       />
       <ConfirmationPrompt
         visible={linkGooglePromptVisible}
-        message="Link your Google account to this profile?"
+        message={authCopy.menu.linkGooglePrompt}
         confirmText="Link"
         cancelText="Cancel"
         danger={false}
@@ -207,10 +208,10 @@ export default function Menu() {
           setLinkGooglePromptVisible(false);
           try {
             await linkGoogle();
-            showToast('Google account has been linked to your profile', 'success');
-          } catch (e: any) {
+            showToast(authCopy.menu.linkGoogleSuccess, 'success');
+          } catch (e) {
             console.warn('menu: link Google account failed', e);
-            showToast(getUserFacingErrorMessage(e, 'Failed to link Google account.'), 'error');
+            showToast(getUserFacingErrorMessage(e, authCopy.menu.linkGoogleFailed), 'error');
           }
         }}
         onCancel={() => setLinkGooglePromptVisible(false)}
@@ -228,15 +229,15 @@ export default function Menu() {
             onConfirm={async () => {
               try {
                 if (passwordLinkPassword !== passwordLinkConfirm) {
-                  showToast('Passwords do not match', 'error');
+                  showToast(authCopy.resetPassword.passwordMismatch, 'error');
                   return;
                 }
                 if (passwordLinkPassword.length < 6) {
-                  showToast('Password must be at least 6 characters', 'error');
+                  showToast(authCopy.resetPassword.passwordTooShort, 'error');
                   return;
                 }
                 if (!/^\S+@\S+\.\S+$/.test(passwordLinkEmail)) {
-                  showToast('Please enter a valid email address', 'error');
+                  showToast(authCopy.security.validation.invalidEmail, 'error');
                   return;
                 }
 
@@ -245,9 +246,9 @@ export default function Menu() {
                 setPasswordLinkEmail('');
                 setPasswordLinkPassword('');
                 setPasswordLinkConfirm('');
-                showToast('Password sign-in has been linked to your account', 'success');
+                showToast(authCopy.menu.linkPasswordSuccess, 'success');
               } catch (error) {
-                showToast(getUserFacingErrorMessage(error, 'Failed to link password.'), 'error');
+                showToast(getUserFacingErrorMessage(error, authCopy.menu.linkPasswordFailed), 'error');
               }
             }}
             onCancel={() => {
@@ -261,7 +262,7 @@ export default function Menu() {
       }
       <ConfirmationPrompt
         visible={unlinkGooglePromptVisible}
-        message={canUnlinkGoogle ? 'Unlink Google from this profile? You will still be able to sign in if other providers exist.' : 'You cannot unlink your only sign-in method. Add another sign-in method first.'}
+        message={canUnlinkGoogle ? authCopy.menu.unlinkGooglePrompt : authCopy.menu.unlinkOnlyProvider}
         confirmText="Unlink"
         cancelText="Cancel"
         danger={true}
@@ -270,17 +271,17 @@ export default function Menu() {
           try {
             if (!canUnlinkGoogle) throw new Error('Cannot unlink the only provider');
             await unlinkProvider('google.com');
-            showToast('Google account has been unlinked from your profile', 'success');
-          } catch (e: any) {
+            showToast(authCopy.menu.unlinkGoogleSuccess, 'success');
+          } catch (e) {
             console.warn('menu: unlink Google account failed', e);
-            showToast(getUserFacingErrorMessage(e, 'Failed to unlink Google account.'), 'error');
+            showToast(getUserFacingErrorMessage(e, authCopy.menu.unlinkGoogleFailed), 'error');
           }
         }}
         onCancel={() => setUnlinkGooglePromptVisible(false)}
       />
       <ConfirmationPrompt
         visible={unlinkPasswordPromptVisible}
-        message={canUnlinkPassword ? 'Unlink password sign-in from this profile? You will still be able to sign in if other providers exist.' : 'You cannot unlink your only sign-in method. Add another sign-in method first.'}
+        message={canUnlinkPassword ? authCopy.menu.unlinkPasswordPrompt : authCopy.menu.unlinkOnlyProvider}
         confirmText="Unlink"
         cancelText="Cancel"
         danger={true}
@@ -289,14 +290,14 @@ export default function Menu() {
           try {
             if (!canUnlinkPassword) throw new Error('Cannot unlink the only provider');
             await unlinkProvider('password');
-            showToast('Password sign-in has been unlinked from your profile', 'success');
-          } catch (e: any) {
+            showToast(authCopy.menu.unlinkPasswordSuccess, 'success');
+          } catch (e) {
             console.warn('menu: unlink password provider failed', e);
-            showToast(getUserFacingErrorMessage(e, 'Failed to unlink password sign-in.'), 'error');
+            showToast(getUserFacingErrorMessage(e, authCopy.menu.unlinkPasswordFailed), 'error');
           }
         }}
         onCancel={() => setUnlinkPasswordPromptVisible(false)}
       />
-    </Container >
+    </ScreenContainer >
   );
 }
