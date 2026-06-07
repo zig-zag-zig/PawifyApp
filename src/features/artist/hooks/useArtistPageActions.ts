@@ -5,6 +5,7 @@ import { useToast } from '../../../components/ToastContext';
 import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import type { ReleaseGroupReleasesResponse } from '../../../types/apiTypes';
+import { normalizeReleaseGroupReleasesResponse } from '../../release/domain/releaseGroupReleases';
 import {
     ArtistNavigationProp,
     ReleaseGroupNavigationProp,
@@ -45,6 +46,33 @@ type ArtistPageActionsOptions = {
 };
 
 const NAVIGATION_HANDOFF_FALLBACK_MS = 600;
+const RELEASE_GROUP_RESPONSE_RETRY_DELAYS_MS = [250, 750];
+
+function wait(milliseconds: number): Promise<void> {
+    return new Promise(resolve => {
+        setTimeout(resolve, milliseconds);
+    });
+}
+
+async function getReleaseGroupReleasesWhenReady(
+    getReleaseGroupReleases: (releaseGroupId: string) => Promise<ReleaseGroupReleasesResponse>,
+    releaseGroupId: string,
+): Promise<ReleaseGroupReleasesResponse> {
+    for (let attempt = 0; attempt <= RELEASE_GROUP_RESPONSE_RETRY_DELAYS_MS.length; attempt += 1) {
+        if (attempt > 0) {
+            await wait(RELEASE_GROUP_RESPONSE_RETRY_DELAYS_MS[attempt - 1]);
+        }
+
+        const response = await getReleaseGroupReleases(releaseGroupId);
+        const normalizedResponse = normalizeReleaseGroupReleasesResponse(response);
+
+        if (normalizedResponse) {
+            return normalizedResponse;
+        }
+    }
+
+    throw new Error('Please wait a moment and try again.');
+}
 
 function createNavigationHandoffWaiter(
     navigation: ReleaseGroupNavigationProp
@@ -196,7 +224,10 @@ export function useArtistPageActions({
         let waitForHandoff: (() => Promise<void>) | null = null;
 
         try {
-            const releaseGroupResult = await getReleaseGroupReleases(releaseGroup.id);
+            const releaseGroupResult = await getReleaseGroupReleasesWhenReady(
+                getReleaseGroupReleases,
+                releaseGroup.id
+            );
             diagnosticLog('artist-page', 'release-group-press-done', {
                 currentArtistId: artistIdRef.current,
                 resolvedArtistId,
