@@ -3,7 +3,7 @@ import {
     diagnosticLog,
 } from '../utils/diagnostics';
 
-export type EventPayload = Record<string, any>;
+export type EventPayload = Record<string, unknown>;
 const pendingEvents = new Map<string, EventPayload | undefined>();
 const eventListeners = new Set<(eventName: string, payload: EventPayload | undefined) => void>();
 const handledTaskIds = new Set<string>();

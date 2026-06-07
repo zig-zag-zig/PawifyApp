@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View, type ListRenderItem } from 'react-native';
-import { CachedImageComponent, LoadingText, SelectableText, TouchableText } from '../../../components/StyledComponents';
-import type { ArtistReleaseGroup } from '../../../modules/models/models';
-import { nameWithDisambiguation } from '../../../modules/utils/helpers';
+import { CachedImageComponent, LoadingText, SelectableText, InlineLink } from '../../../components/ui';
+import type { ArtistReleaseGroup } from '../../../shared/music';
+import { nameWithDisambiguation } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 import { DEFAULT_RELEASE_ITEMS_TO_SHOW } from '../domain/releaseSections';
 import type { ReleaseGroupSection } from '../model/types';
@@ -23,6 +23,7 @@ interface ReleasesSectionProps {
     isLoadingReleaseGroup: boolean;
     onReleaseGroupPressed: (releaseGroup: ArtistReleaseGroup) => Promise<void>;
     onLoadMore: (sectionTitle: string) => void;
+    onContentReady: () => void;
 }
 
 const ReleasesSection = ({
@@ -35,6 +36,7 @@ const ReleasesSection = ({
     isLoadingReleaseGroup,
     onReleaseGroupPressed,
     onLoadMore,
+    onContentReady,
 }: ReleasesSectionProps) => {
     const styles = useMemo(() => getStyles(), []);
     const pendingReleaseGroupCoverIdSet = useMemo(
@@ -157,9 +159,9 @@ const ReleasesSection = ({
         }
 
         return (
-            <TouchableText onPress={() => onLoadMore(item.title)}>
+            <InlineLink onPress={() => onLoadMore(item.title)}>
                 Load More
-            </TouchableText>
+            </InlineLink>
         );
     };
 
@@ -177,6 +179,7 @@ const ReleasesSection = ({
             maxToRenderPerBatch={6}
             updateCellsBatchingPeriod={40}
             windowSize={7}
+            onContentSizeChange={onContentReady}
         />
     );
 };

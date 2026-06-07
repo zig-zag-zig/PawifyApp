@@ -1,8 +1,10 @@
 import React from 'react';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
-import { Container, Spinner } from '../../../components/StyledComponents';
+import { ScreenContainer } from '../../../components/ui';
 import { InfoBanner } from '../../../components/InfoBanner';
-import type { Track } from '../../../modules/models/models';
+import { useGlobalSpinner } from '../../../contexts/GlobalSpinnerContext';
+import { useContentReady } from '../../../hooks/useContentReady';
+import type { Track } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 import type { ReleasePageUiState } from '../model/types';
 import { flattenReleaseTracks } from '../domain/releaseEnrichment';
@@ -23,14 +25,15 @@ const ReleaseView = ({
     const styles = getStyles();
     const { width: screenWidth } = useWindowDimensions();
     const tracks = state.release ? flattenReleaseTracks(state.release) : [];
+    const isLoadingRelease = state.checkingExistence && state.releaseExists !== false;
+    const { isWaitingForContent, onContentReady } = useContentReady(
+        isLoadingRelease,
+        !!state.release && !isLoadingRelease
+    );
+    useGlobalSpinner(isLoadingRelease || isWaitingForContent);
 
     return (
-        <Container>
-            <Spinner
-                isLoading={state.checkingExistence && state.releaseExists !== false}
-                backdropVariant="strong"
-            />
-
+        <ScreenContainer>
             {state.releaseExists === false && (
                 <InfoBanner
                     message="This release no longer exists"
@@ -45,6 +48,7 @@ const ReleaseView = ({
                     style={styles.releaseScrollView}
                     showsVerticalScrollIndicator={false}
                     scrollIndicatorInsets={{ right: 1 }}
+                    onContentSizeChange={onContentReady}
                 >
                     <ReleaseHeader release={state.release} />
                     <View style={[styles.releaseTracksBleedContainer, { width: screenWidth }]}>
@@ -67,7 +71,7 @@ const ReleaseView = ({
                 </ScrollView>
             )}
 
-        </Container>
+        </ScreenContainer>
     );
 };
 

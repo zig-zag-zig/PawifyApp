@@ -1,9 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { CachedImageComponent, SelectableText } from '../../../components/StyledComponents';
-import type { Artist } from '../../../modules/models/models';
-import { formatDate } from '../../../modules/utils/dateUtil';
+import { CachedImageComponent, SelectableText } from '../../../components/ui';
+import type { Artist } from '../../../shared/music';
+import { formatDate } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 import {
     buildArtistRelationshipGroups,

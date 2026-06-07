@@ -7,6 +7,7 @@ import { auth } from '../../../firebase/firebaseAuth';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { RootStackParamList } from '../../../types/navigation';
 import { useAuthApi, useTempTokenAuthApi } from '../api/authApi';
+import { authCopy } from '../domain/authCopy';
 import {
     createInitialResetPasswordState,
     resetPasswordReducer,
@@ -15,9 +16,9 @@ import {
 type ResetPasswordNavigationProp = StackNavigationProp<RootStackParamList, 'ResetPassword'>;
 
 function validateResetPasswordInput(tempToken: string, newPassword: string, confirmPassword: string) {
-    if (!tempToken.trim()) throw new Error('Temp token is missing.');
-    if (newPassword.length < 6) throw new Error('Password must be at least 6 characters.');
-    if (newPassword !== confirmPassword) throw new Error('Passwords do not match.');
+    if (!tempToken.trim()) throw new Error(authCopy.resetPassword.tempTokenMissing);
+    if (newPassword.length < 6) throw new Error(authCopy.resetPassword.passwordTooShort);
+    if (newPassword !== confirmPassword) throw new Error(authCopy.resetPassword.passwordMismatch);
 }
 
 export function useResetPasswordPage(tempToken: string) {
@@ -55,10 +56,10 @@ export function useResetPasswordPage(tempToken: string) {
                 }
             }
 
-            showToast('Password successfully reset. Please sign in again.', 'success');
+            showToast(authCopy.resetPassword.success, 'success');
         } catch (error) {
             showToast(
-                getUserFacingErrorMessage(error, 'Failed to reset password. Please try again.'),
+                getUserFacingErrorMessage(error, authCopy.resetPassword.failed),
                 'error'
             );
         } finally {

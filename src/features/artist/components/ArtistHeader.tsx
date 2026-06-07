@@ -1,12 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SelectableText } from '../../../components/StyledComponents';
+import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import type { Artist } from '../../../modules/models/models';
-import { formatDate } from '../../../modules/utils/dateUtil';
-import { nameWithDisambiguation } from '../../../modules/utils/helpers';
+import type { Artist } from '../../../shared/music';
+import { formatDate } from '../../../shared/music';
+import { nameWithDisambiguation } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 import { calculateArtistAge } from '../domain/calculateArtistAge';
 import ArtistRelationships from './ArtistRelationships';

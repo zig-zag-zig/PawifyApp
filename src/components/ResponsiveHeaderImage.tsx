@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, ViewStyle, StyleProp } from 'react-native';
-import { CachedImageComponent } from './StyledComponents';
+import { CachedImageComponent } from './ui';
 
 interface ResponsiveHeaderImageProps {
     imageUrl?: string | null;
@@ -17,11 +17,12 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
     borderRadius = 8,
     showSpinnerWhenNoImage = false,
 }) => {
-    const [parentWidth, setParentWidth] = useState(0);
     const [ratio, setRatio] = useState(1);
 
     useEffect(() => {
+        setRatio(1);
         if (!imageUrl) return;
+
         Image.getSize(
             imageUrl,
             (w, h) => {
@@ -31,25 +32,18 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
         );
     }, [imageUrl]);
 
-    const height = parentWidth > 0 ? parentWidth / ratio : 0;
-
     return (
-        <View
-            style={containerStyle}
-            onLayout={e => setParentWidth(e.nativeEvent.layout.width)}
-        >
-            {parentWidth > 0 && (
-                <CachedImageComponent
-                    imageUrl={imageUrl}
-                    type={type}
-                    showSpinnerWhenNoImage={showSpinnerWhenNoImage}
-                    style={{
-                        width: parentWidth,
-                        height,
-                        borderRadius,
-                    }}
-                />
-            )}
+        <View style={containerStyle}>
+            <CachedImageComponent
+                imageUrl={imageUrl}
+                type={type}
+                showSpinnerWhenNoImage={showSpinnerWhenNoImage}
+                style={{
+                    width: '100%',
+                    aspectRatio: ratio,
+                    borderRadius,
+                }}
+            />
         </View>
     );
 };

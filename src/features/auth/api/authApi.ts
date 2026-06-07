@@ -1,38 +1,46 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useBackend } from '../../../hooks/useBackend';
+import { useApiClient } from '../../../hooks/useApiClient';
 
 export function useAuthApi() {
     const auth = useAuth();
-    const backend = useBackend(auth.getAccessToken);
+    const apiClient = useApiClient(auth.getAccessToken);
 
-    return {
+    return useMemo(() => ({
         user: auth.user,
         signIn: auth.signIn,
         signUp: auth.signUp,
         signOut: auth.signOut,
         setLoginWithReauthenticateWithCredential: auth.setLoginWithReauthenticateWithCredential,
-        revokeToken: backend.revokeToken,
-        deleteUserAccount: backend.deleteUserAccount,
-        changeEmail: backend.changeEmail,
-    };
+        revokeToken: async () => await apiClient.request<string>('revokeToken', { method: 'GET' }),
+        deleteUserAccount: async () => await apiClient.request<string>('deleteUserAccount'),
+        changeEmail: async (email: string) => await apiClient.request<string>('changeEmail', {
+            body: { email },
+        }),
+    }), [apiClient, auth]);
 }
 
 export function usePublicAuthApi() {
     const getAnonymousToken = useCallback(async () => '', []);
-    const backend = useBackend(getAnonymousToken);
+    const apiClient = useApiClient(getAnonymousToken);
 
-    return {
-        sendOtp: backend.sendOtp,
-        verifyOtp: backend.verifyOtp,
-    };
+    return useMemo(() => ({
+        sendOtp: async (email: string) => await apiClient.request<string>('sendOtp', {
+            body: { email },
+            requiresAuth: false,
+        }),
+        verifyOtp: async (email: string, otp: string) => await apiClient.request<string>('verifyOtp', {
+            body: { email, otp },
+            requiresAuth: false,
+        }),
+    }), [apiClient]);
 }
 
 export function useTempTokenAuthApi(tempToken: string) {
     const getTempToken = useCallback(async () => tempToken, [tempToken]);
-    const backend = useBackend(getTempToken);
+    const apiClient = useApiClient(getTempToken);
 
-    return {
-        revokeToken: backend.revokeToken,
-    };
+    return useMemo(() => ({
+        revokeToken: async () => await apiClient.request<string>('revokeToken', { method: 'GET' }),
+    }), [apiClient]);
 }

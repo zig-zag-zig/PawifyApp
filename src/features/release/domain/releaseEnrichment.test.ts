@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Release } from '../../../modules/models/models';
+import type { Release } from '../../../shared/music';
 
 import {
     collectArtistImagesForRelease,

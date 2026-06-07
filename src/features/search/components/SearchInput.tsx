@@ -1,6 +1,6 @@
 import React from 'react';
 import type { NativeSyntheticEvent, TextInputSubmitEditingEventData } from 'react-native';
-import { CustomInput } from '../../../components/StyledComponents';
+import { TextField } from '../../../components/ui';
 
 interface SearchInputProps {
     query: string;
@@ -16,7 +16,7 @@ const SearchInput = ({ query, onChangeText, onSubmitEditing }: SearchInputProps)
     };
 
     return (
-        <CustomInput
+        <TextField
             placeholder="Search artists"
             value={query}
             onChangeText={onChangeText}

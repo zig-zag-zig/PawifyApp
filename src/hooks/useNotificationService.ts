@@ -4,133 +4,18 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import { EventService, EventPayload } from '../services/eventService';
+import { EventService } from '../services/eventService';
 import { getExternalNavigationResumeDelayMs } from '../services/externalNavigation';
-import {
-  addPendingBackgroundEvent,
-  takePendingBackgroundEvents,
-} from '../services/backgroundEventStorage';
+import { takePendingBackgroundEvents } from '../services/backgroundEventStorage';
 import { getStoredPushToken } from '../services/pushTokenStorage';
+import {
+  extractNotificationEventData,
+  persistNotificationEvent,
+  registerNotificationEvent,
+  shouldPersistBackgroundEvent,
+} from '../services/notifications/notificationEvents';
 
 const BACKGROUND_NOTIFICATION_TASK = 'background-notification-task';
-
-type ExtractedEventData = {
-  eventName: string;
-  payload?: EventPayload;
-};
-
-function extractTaskId(payload: EventPayload | undefined): string | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-
-  const maybeTaskId = payload.taskId ?? payload.id;
-  return typeof maybeTaskId === 'string' && maybeTaskId.length > 0
-    ? maybeTaskId
-    : null;
-}
-
-function shouldPersistBackgroundEvent(eventName: string) {
-  return eventName === 'following'
-    || eventName === 'releases'
-    || eventName === 'releaseNotificationSettings'
-    || eventName === 'taskCompleted'
-    || eventName.startsWith('taskCompleted:');
-}
-
-function getTaskCompletedEventName(payload: EventPayload | undefined): string | null {
-  const taskId = extractTaskId(payload);
-  return taskId ? `taskCompleted:${taskId}` : null;
-}
-
-function extractEventPayload(eventData: any): EventPayload | undefined {
-  if (!eventData || typeof eventData !== 'object') {
-    return undefined;
-  }
-
-  if (eventData.payload && typeof eventData.payload === 'object') {
-    return eventData.payload as EventPayload;
-  }
-
-  const payload = { ...eventData };
-  delete payload.eventName;
-  delete payload.dataString;
-  delete payload.body;
-
-  return Object.keys(payload).length > 0 ? payload : undefined;
-}
-
-function registerEvent(eventName: string, payload: EventPayload | undefined, source: string) {
-  const taskId = extractTaskId(payload);
-
-  const eventAdded = EventService.addEvent(eventName, payload);
-
-  if (eventName !== 'taskCompleted') {
-    return eventAdded;
-  }
-
-  if (!taskId) {
-    console.warn('fcm: taskCompleted payload missing taskId', {
-      source,
-      eventName,
-      payloadKeys: payload ? Object.keys(payload) : [],
-      payload,
-    });
-    return eventAdded;
-  }
-
-  const taskEventAdded = EventService.addEvent(`taskCompleted:${taskId}`, payload);
-  return eventAdded || taskEventAdded;
-}
-
-function extractEventData(data: any): ExtractedEventData | null {
-  const payloadString = data?.dataString ?? data?.body;
-  let eventData = data;
-  const envelopeEventName = typeof data?.eventName === 'string' ? data.eventName : null;
-
-  if (typeof payloadString === 'string' && payloadString.length > 0) {
-    try {
-      const parsedEventData = JSON.parse(payloadString);
-      if (parsedEventData && typeof parsedEventData === 'object') {
-        eventData = parsedEventData;
-        if (envelopeEventName && typeof eventData.eventName !== 'string') {
-          eventData = {
-            ...eventData,
-            eventName: envelopeEventName,
-          };
-        }
-      }
-    } catch (error) {
-      if (envelopeEventName) {
-        console.warn('fcm: parse notification payload failed; using notification envelope', {
-          eventName: envelopeEventName,
-          error: error instanceof Error ? error.message : String(error),
-          payloadPreview: payloadString.slice(0, 240),
-        });
-      } else {
-        console.warn('fcm: parse notification payload failed', {
-          error: error instanceof Error ? error.message : String(error),
-          payloadPreview: payloadString.slice(0, 240),
-        });
-        return null;
-      }
-    }
-  }
-
-  const eventName = typeof eventData?.eventName === 'string'
-    ? eventData.eventName
-    : envelopeEventName;
-
-  return eventName
-    ? {
-      eventName,
-      payload: extractEventPayload({
-        ...eventData,
-        eventName,
-      }),
-    }
-    : null;
-}
 
 async function hydrateClientPushToken() {
   if (EventService.getClientPushToken()) {
@@ -158,14 +43,11 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }: { d
   await hydrateClientPushToken();
 
   const innerData = data?.data || {};
-  const eventData = extractEventData(innerData);
+  const eventData = extractNotificationEventData(innerData);
   if (eventData) {
-    const eventAdded = registerEvent(eventData.eventName, eventData.payload, 'background-task');
+    const eventAdded = registerNotificationEvent(eventData.eventName, eventData.payload, 'background-task');
     if (eventAdded && shouldPersistBackgroundEvent(eventData.eventName)) {
-      const persistedEventName = eventData.eventName === 'taskCompleted'
-        ? getTaskCompletedEventName(eventData.payload) ?? eventData.eventName
-        : eventData.eventName;
-      await addPendingBackgroundEvent(persistedEventName, eventData.payload);
+      await persistNotificationEvent(eventData.eventName, eventData.payload);
     }
   }
 });
@@ -207,7 +89,7 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
       try {
         const backgroundEvents = await takePendingBackgroundEvents();
         backgroundEvents.forEach(event => {
-          registerEvent(event.eventName, event.payload, 'background-replay');
+          registerNotificationEvent(event.eventName, event.payload, 'background-replay');
         });
       } catch (error) {
         console.warn('fcm: replay background events failed', error);
@@ -250,9 +132,9 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
     // Foreground listener
     const foregroundListener = Notifications.addNotificationReceivedListener(notification => {
       const { data } = notification.request.content;
-      const eventData = extractEventData(data);
+      const eventData = extractNotificationEventData(data);
       if (eventData) {
-        registerEvent(eventData.eventName, eventData.payload, 'foreground-listener');
+        registerNotificationEvent(eventData.eventName, eventData.payload, 'foreground-listener');
         return;
       }
     });

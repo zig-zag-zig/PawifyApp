@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { ENV } from '../../../config/env';
 import { openExternalUrl } from '../../../services/externalNavigation';
+import { updateCopy } from '../domain/updateCopy';
 import type { AppRelease, UpdateCheckResult, UpdateDownloadProgress } from '../model/types';
 import { androidApkInstaller } from './androidApkInstaller';
 import { getUpdatePreference, setUpdatePreference } from './updatePreferenceStorage';
@@ -32,13 +33,12 @@ type ParsedRepo = {
 };
 
 const GITHUB_API_VERSION = '2022-11-28';
-const GITHUB_RELEASES_NOT_FOUND_MESSAGE = 'No public GitHub release found for this app.';
 const SKIPPED_RELEASE_TAG_KEY = 'app-update-skipped-release-tag';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const supportsInstallActions = (): boolean => Platform.OS === 'android';
 
 export class AppUpdateNoReleaseError extends Error {
-  constructor(message = GITHUB_RELEASES_NOT_FOUND_MESSAGE) {
+  constructor(message = updateCopy.errors.noPublicRelease) {
     super(message);
     this.name = 'AppUpdateNoReleaseError';
   }
@@ -202,7 +202,7 @@ function toAppRelease(release: GitHubRelease): AppRelease {
   const tagName = release.tag_name?.trim();
   const htmlUrl = release.html_url?.trim();
   if (!tagName || !htmlUrl) {
-    throw new Error('Latest GitHub release is missing required metadata');
+    throw new Error(updateCopy.errors.missingReleaseMetadata);
   }
 
   const preferredAsset = getPreferredAsset(release.assets);
@@ -230,7 +230,7 @@ function toAppRelease(release: GitHubRelease): AppRelease {
 async function fetchLatestRelease(): Promise<AppRelease> {
   const repo = parseRepoUrl(ENV.updateGithubRepoUrl);
   if (!repo) {
-    throw new Error('Update repository is not configured');
+    throw new Error(updateCopy.errors.sourceNotConfigured);
   }
 
   const latestResponse = await fetchGitHubJson<GitHubRelease>(
@@ -258,7 +258,7 @@ async function fetchLatestRelease(): Promise<AppRelease> {
   }
 
   if (!Array.isArray(releasesResponse.data)) {
-    throw new Error('GitHub update check returned an unexpected response');
+    throw new Error(updateCopy.errors.unexpectedReleaseResponse);
   }
 
   const fallbackRelease = selectLatestStableRelease(releasesResponse.data);
@@ -291,7 +291,7 @@ async function downloadAndInstallApk(
   const canInstallPackages = await androidApkInstaller.canRequestPackageInstalls();
   if (!canInstallPackages) {
     await androidApkInstaller.openInstallPermissionSettings();
-    throw new Error('Allow app installs for Pawify in Settings, then tap Install Update again.');
+    throw new Error(updateCopy.errors.installPermissionRequired);
   }
 
   const downloadDirectory = getDownloadDirectory();
@@ -325,7 +325,7 @@ async function downloadAndInstallApk(
 
   const result = await download.downloadAsync();
   if (!result) {
-    throw new Error('Update download was cancelled');
+    throw new Error(updateCopy.errors.downloadCancelled);
   }
 
   if (result.status < 200 || result.status >= 300) {

@@ -1,4 +1,4 @@
-import type { ArtistMinimal } from '../../../modules/models/models';
+import type { ArtistMinimal } from '../../../shared/music';
 
 export function sortArtistsByDisplayName(artists: ArtistMinimal[]): ArtistMinimal[] {
     return [...artists].sort((a, b) => {

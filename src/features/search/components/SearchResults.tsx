@@ -1,8 +1,9 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { ActivityIndicator, FlatList, ListRenderItem, StyleSheet, Text, View } from 'react-native';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
-import { TouchableText } from '../../../components/StyledComponents';
-import { Artist } from '../../../modules/models/models';
+import { InlineLink, Spinner } from '../../../components/ui';
+import { useContentReady } from '../../../hooks/useContentReady';
+import { Artist } from '../../../shared/music';
 
 interface SearchResultsProps {
     artists: Artist[];
@@ -66,6 +67,11 @@ const SearchResults = ({
         ...(canLoadMore || (isLoading && artists.length > 0) ? [{ type: 'footer' as const }] : []),
     ], [artists, canLoadMore, isLoading]);
     const spinnerColor = '#FFF';
+    const isInitialLoading = isLoading && artists.length === 0;
+    const { isWaitingForContent, onContentReady } = useContentReady(
+        isInitialLoading,
+        artists.length > 0
+    );
 
     const renderLoadMore = useCallback(() => {
         if (isLoading) {
@@ -78,7 +84,7 @@ const SearchResults = ({
         }
 
         if (canLoadMore) {
-            return <TouchableText onPress={onLoadMore}>Load more</TouchableText>;
+            return <InlineLink onPress={onLoadMore}>Load more</InlineLink>;
         }
 
         return null;
@@ -99,46 +105,40 @@ const SearchResults = ({
         );
     }, [artistProfileImages, onArtistPress, pendingArtistImageIdSet, renderLoadMore]);
 
-    const renderEmpty = useCallback(() => {
-        if (!isLoading) {
-            return null;
-        }
-
-        return (
-            <View style={styles.emptyLoader}>
-                <ActivityIndicator size="large" color={spinnerColor} />
-            </View>
-        );
-    }, [isLoading, spinnerColor]);
-
     return (
-        <FlatList
-            data={listData}
-            keyExtractor={(item) => item.type === 'footer' ? 'search-load-more-footer' : item.artist.id}
-            extraData={{
-                artistProfileImages,
-                pendingArtistImageIds,
-                isLoading,
-                canLoadMore,
-            }}
-            style={styles.list}
-            contentContainerStyle={[
-                styles.contentContainer,
-                artists.length === 0 && styles.emptyContentContainer,
-            ]}
-            showsVerticalScrollIndicator={false}
-            renderItem={renderItem}
-            ListEmptyComponent={renderEmpty}
-            initialNumToRender={20}
-            maxToRenderPerBatch={20}
-            updateCellsBatchingPeriod={16}
-            windowSize={11}
-            removeClippedSubviews={false}
-        />
+        <View style={styles.results}>
+            <FlatList
+                data={listData}
+                keyExtractor={(item) => item.type === 'footer' ? 'search-load-more-footer' : item.artist.id}
+                extraData={{
+                    artistProfileImages,
+                    pendingArtistImageIds,
+                    isLoading,
+                    canLoadMore,
+                }}
+                style={styles.list}
+                contentContainerStyle={[
+                    styles.contentContainer,
+                    artists.length === 0 && styles.emptyContentContainer,
+                ]}
+                showsVerticalScrollIndicator={false}
+                renderItem={renderItem}
+                initialNumToRender={20}
+                maxToRenderPerBatch={20}
+                updateCellsBatchingPeriod={16}
+                windowSize={11}
+                removeClippedSubviews={false}
+                onContentSizeChange={onContentReady}
+            />
+            <Spinner isLoading={isInitialLoading || isWaitingForContent} backdropVariant="strong" />
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
+    results: {
+        flex: 1,
+    },
     list: {
         flex: 1,
     },
@@ -147,12 +147,6 @@ const styles = StyleSheet.create({
     },
     emptyContentContainer: {
         flexGrow: 1,
-    },
-    emptyLoader: {
-        flex: 1,
-        minHeight: 240,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     footerSpinner: {
         minHeight: 72,

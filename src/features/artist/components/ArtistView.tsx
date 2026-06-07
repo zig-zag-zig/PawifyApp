@@ -1,7 +1,9 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Container, Spinner } from '../../../components/StyledComponents';
-import type { ArtistReleaseGroup } from '../../../modules/models/models';
+import { ScreenContainer } from '../../../components/ui';
+import { useGlobalSpinner } from '../../../contexts/GlobalSpinnerContext';
+import { useContentReady } from '../../../hooks/useContentReady';
+import type { ArtistReleaseGroup } from '../../../shared/music';
 import type { ArtistPageUiState } from '../model/types';
 import ArtistHeader from './ArtistHeader';
 import ReleasesSection from './ReleasesSection';
@@ -27,6 +29,12 @@ const ArtistView = ({
     onRetry,
     onClearError
 }: ArtistViewProps) => {
+    const isLoadingPrimaryContent = state.isLoadingArtist || state.isLoadingReleases;
+    const { isWaitingForContent, onContentReady } = useContentReady(
+        isLoadingPrimaryContent,
+        !!state.artist && !isLoadingPrimaryContent
+    );
+    useGlobalSpinner(state.isLoadingReleaseGroup || isLoadingPrimaryContent || isWaitingForContent);
     const artistHeader = React.useMemo(() => {
         if (!state.artist) {
             return null;
@@ -60,12 +68,7 @@ const ArtistView = ({
     ]);
 
     return (
-        <Container>
-            <Spinner
-                isLoading={state.isLoadingReleaseGroup || (state.isLoadingArtist && !state.artist)}
-                backdropVariant="strong"
-            />
-
+        <ScreenContainer>
             {state.error && (
                 <View
                     style={{
@@ -102,9 +105,10 @@ const ArtistView = ({
                     isLoadingReleaseGroup={state.isLoadingReleaseGroup}
                     onReleaseGroupPressed={onReleaseGroupPressed}
                     onLoadMore={onLoadMoreReleases}
+                    onContentReady={onContentReady}
                 />
             )}
-        </Container>
+        </ScreenContainer>
     );
 };
 

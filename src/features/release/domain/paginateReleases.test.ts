@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { NewReleaseListItem } from '../../../contexts/NewReleasesContext';
+import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 
 import { canLoadMoreReleases, paginateReleases } from './paginateReleases';
 

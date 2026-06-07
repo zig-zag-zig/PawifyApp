@@ -1,16 +1,18 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
-import { useBackend } from '../hooks/useBackend';
-import { useOnAppForeground } from '../hooks/useOnAppForeground';
-import useTaskManager from '../hooks/useTaskManager';
-import { ArtistMinimal } from '../modules/models/models';
-import { fillMissingIdsWithNull, mergeNullableStringMaps } from '../utils/nullableMaps';
-import { extractArtistProfileImages } from '../utils/taskResultMaps';
-import { useAuth } from './AuthContext';
-import { useCache } from './CacheContext';
-import { EventService } from '../services/eventService';
+import { useAuth } from '../../../contexts/AuthContext';
+import { useCache } from '../../../contexts/CacheContext';
+import { useApiClient } from '../../../hooks/useApiClient';
+import { useOnAppForeground } from '../../../hooks/useOnAppForeground';
+import useTaskManager from '../../../hooks/useTaskManager';
+import { ArtistMinimal } from '../../../shared/music';
+import { EventService } from '../../../services/eventService';
+import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
+import type { FollowingResponse, TaskResultResponse } from '../../../types/apiTypes';
+import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import { extractArtistProfileImages } from '../../../utils/taskResultMaps';
 
-interface FollowContextType {
+interface FollowingContextType {
   followingArtists: ArtistMinimal[];
   isLoadingFollowing: boolean;
   hasLoadedFollowingOnce: boolean;
@@ -21,13 +23,13 @@ interface FollowContextType {
   setFollowedArtist: (artist: ArtistMinimal, isFollowing: boolean) => void;
 }
 
-type FollowFetchReason = 'user-change' | 'event' | 'foreground-resume' | 'manual-refresh';
-type FollowOverride = {
+type FollowingFetchReason = 'user-change' | 'event' | 'foreground-resume' | 'manual-refresh';
+type FollowingOverride = {
   artist: ArtistMinimal;
   isFollowing: boolean;
 };
 
-const FollowContext = createContext<FollowContextType | null>(null);
+const FollowingContext = createContext<FollowingContextType | null>(null);
 const iosForegroundRefreshMinInactiveMs = 5 * 60 * 1000;
 
 const mergeUniqueIds = (currentIds: string[], nextIds: string[]): string[] => {
@@ -43,7 +45,7 @@ function shouldRunIosForegroundRefresh(inactiveMs: number | null) {
   return inactiveMs === null || inactiveMs >= iosForegroundRefreshMinInactiveMs;
 }
 
-export const FollowProvider = ({ children }: { children: ReactNode }) => {
+export const FollowingProvider = ({ children }: { children: ReactNode }) => {
   const [followingArtists, setFollowingArtists] = useState<ArtistMinimal[]>([]);
   const { user, getAccessToken } = useAuth();
   const { tasks, addTask, removeTask, executeTask } = useTaskManager();
@@ -53,13 +55,26 @@ export const FollowProvider = ({ children }: { children: ReactNode }) => {
   const [pendingArtistImageIds, setPendingArtistImageIds] = useState<string[]>([]);
   const [eventVersion, setEventVersion] = useState(0);
   const { artistProfileImages, setArtistProfileImages } = useCache();
-  const { getFollowing, waitForTaskResult } = useBackend(getAccessToken);
+  const apiClient = useApiClient(getAccessToken);
   const pendingEventUpdateRef = useRef(false);
   const artistProfileImagesRef = useRef(artistProfileImages);
   const taskIdRef = useRef<string | null>(null);
-  const queuedFetchReasonRef = useRef<FollowFetchReason | null>(null);
-  const followOverridesRef = useRef<Map<string, FollowOverride>>(new Map());
+  const queuedFetchReasonRef = useRef<FollowingFetchReason | null>(null);
+  const followOverridesRef = useRef<Map<string, FollowingOverride>>(new Map());
   const userId = user?.uid ?? null;
+
+  const getTaskResult = useCallback(async <T,>(taskId: string) =>
+    await apiClient.request<TaskResultResponse<T>>('getTaskResult', {
+      body: { taskId },
+    }), [apiClient]);
+
+  const waitForTaskResult = useCallback(async <T,>(
+    taskId: string,
+    options?: Parameters<typeof apiClient.waitForTaskResult<T>>[2],
+  ) => await apiClient.waitForTaskResult<T>(taskId, getTaskResult, options), [apiClient, getTaskResult]);
+
+  const getFollowing = useCallback(async () =>
+    await apiClient.request<FollowingResponse>('getFollowing', { method: 'GET' }), [apiClient]);
 
   useEffect(() => {
     artistProfileImagesRef.current = artistProfileImages;
@@ -99,7 +114,7 @@ export const FollowProvider = ({ children }: { children: ReactNode }) => {
     return nextArtists;
   }, []);
 
-  const fetchArtists = useCallback(async (reason: FollowFetchReason) => {
+  const fetchArtists = useCallback(async (reason: FollowingFetchReason) => {
     try {
       if (!user) {
         followOverridesRef.current.clear();
@@ -136,53 +151,25 @@ export const FollowProvider = ({ children }: { children: ReactNode }) => {
     profileImageTaskId: string,
     artistIds: string[]
   ) => {
-    const applyPartialArtistImages = (result: unknown) => {
-      const partialArtistProfileImages = extractArtistProfileImages(result);
-      const resolvedArtistIds = artistIds.filter(artistId => partialArtistProfileImages[artistId] !== undefined);
-      if (resolvedArtistIds.length === 0) {
-        return;
-      }
-
-      setArtistProfileImages(prev => mergeNullableStringMaps(prev, partialArtistProfileImages));
-      removePendingArtistImages(resolvedArtistIds);
-    };
-
-    try {
-      const imageTaskResult = await waitForTaskResult(profileImageTaskId, {
-        onPartialResult: partialResult => {
-          applyPartialArtistImages(partialResult.result);
-        },
-        recreateTask: async () => {
-          const result = await getFollowing();
-          return result.profileImageTaskId;
-        },
-        recreateTaskDescription: 'getFollowing.profileImageTaskId',
-      });
-      const taskStatus = imageTaskResult.status.toLowerCase();
-      if (taskStatus === 'completed') {
-        const nextArtistProfileImages = extractArtistProfileImages(imageTaskResult.result);
-        const isCompositeTask = (imageTaskResult.subtaskCount ?? 0) > 0;
-        const resolvedArtistIds = artistIds.filter(artistId => nextArtistProfileImages[artistId] !== undefined);
-
-        if (isCompositeTask) {
-          setArtistProfileImages(prev => mergeNullableStringMaps(prev, nextArtistProfileImages));
-          removePendingArtistImages(resolvedArtistIds);
-        } else {
-          const completedArtistImages = fillMissingIdsWithNull(artistIds, nextArtistProfileImages);
-          setArtistProfileImages(prev => mergeNullableStringMaps(prev, completedArtistImages));
-          removePendingArtistImages(artistIds);
-        }
-      } else {
-        const completedArtistImages = fillMissingIdsWithNull(artistIds, {});
-        setArtistProfileImages(prev => mergeNullableStringMaps(prev, completedArtistImages));
-        removePendingArtistImages(artistIds);
-      }
-    } catch (error) {
-      console.error('follow-context: resolve artist profile image task failed', error);
-      const completedArtistImages = fillMissingIdsWithNull(artistIds, {});
-      setArtistProfileImages(prev => mergeNullableStringMaps(prev, completedArtistImages));
-      removePendingArtistImages(artistIds);
-    }
+    await resolveNullableTaskMap({
+      taskId: profileImageTaskId,
+      expectedIds: artistIds,
+      waitForTaskResult,
+      extractMap: extractArtistProfileImages,
+      onResolvedValues: (artistProfileImages, resolvedArtistIds) => {
+        setArtistProfileImages(prev => mergeNullableStringMaps(prev, artistProfileImages));
+        removePendingArtistImages(resolvedArtistIds);
+      },
+      onError: error => {
+        console.error('follow-context: resolve artist profile image task failed', error);
+      },
+      shouldFillMissingOnCompleted: taskResult => (taskResult.subtaskCount ?? 0) === 0,
+      recreateTask: async () => {
+        const result = await getFollowing();
+        return result.profileImageTaskId;
+      },
+      recreateTaskDescription: 'getFollowing.profileImageTaskId',
+    });
   }, [getFollowing, removePendingArtistImages, setArtistProfileImages, waitForTaskResult]);
 
   const handleFollowingEvent = useCallback((eventName: string, options?: { force?: boolean }) => {
@@ -330,7 +317,7 @@ export const FollowProvider = ({ children }: { children: ReactNode }) => {
   }, [applyFollowOverrides, fetchArtists, removeTask, resolveFollowingArtistImages, taskId, tasks, updateTaskId]);
 
   return (
-    <FollowContext.Provider value={{
+    <FollowingContext.Provider value={{
       followingArtists,
       isLoadingFollowing,
       hasLoadedFollowingOnce,
@@ -341,8 +328,8 @@ export const FollowProvider = ({ children }: { children: ReactNode }) => {
       setFollowedArtist,
     }}>
       {children}
-    </FollowContext.Provider>
+    </FollowingContext.Provider>
   );
 };
 
-export const useFollow = () => useContext(FollowContext)!;
+export const useFollowing = () => useContext(FollowingContext)!;

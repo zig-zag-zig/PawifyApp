@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ExternalLink, ExternalLinkCategory, ExternalLinkService } from '../../modules/models/models';
+import type { ExternalLink, ExternalLinkCategory, ExternalLinkService } from '../../shared/music';
 import { normalizeLinks, splitLinks } from './externalLinkRanking';
 
 function externalLink(

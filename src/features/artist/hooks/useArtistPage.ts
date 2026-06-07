@@ -1,7 +1,7 @@
 import { RouteProp, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
-import { useFollow } from '../../../contexts/FollowContext';
+import { useFollowing } from '../../artists/state/FollowingContext';
 import useTaskManager from '../../../hooks/useTaskManager';
 import { RootStackParamList } from '../../../types/navigation';
 import { useArtistApi } from '../api/artistApi';
@@ -21,7 +21,7 @@ export function useArtistPage(): ArtistPageController {
     const route = useRoute<ArtistRouteProp>();
     const { artistId } = route.params || {};
 
-    const { followingArtists, setFollowedArtist } = useFollow();
+    const { followingArtists, setFollowedArtist } = useFollowing();
     const {
         artistProfileImages,
         setArtistProfileImages,

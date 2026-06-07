@@ -2,18 +2,17 @@ import { StyleSheet } from 'react-native';
 
 export const CONTAINER_HORIZONTAL_PADDING = 30;
 
-export const getStyles = () => {
-  const colors = {
-    background: '#121212',
-    text: '#FFF',
-    inputBackground: '#333',
-    button: '#6200ee',
-    modalBackground: '#333',
-    sectionHeader: '#252525',
-    relationshipBackground: '#1E1E1E',
-  };
+const colors = {
+  background: '#121212',
+  text: '#FFF',
+  inputBackground: '#333',
+  button: '#6200ee',
+  modalBackground: '#333',
+  sectionHeader: '#252525',
+  relationshipBackground: '#1E1E1E',
+};
 
-  return StyleSheet.create({
+const styles = StyleSheet.create({
     container: {
       flex: 1,
       paddingHorizontal: CONTAINER_HORIZONTAL_PADDING,
@@ -165,10 +164,10 @@ export const getStyles = () => {
       marginBottom: 8,
       color: colors.text,
     },
-    TouchableText: {
+    inlineLink: {
       marginVertical: 10,
     },
-    TextOfTouchableText: {
+    inlineLinkText: {
       color: '#007AFF',
       fontSize: 16,
       fontWeight: '500',
@@ -313,5 +312,6 @@ export const getStyles = () => {
       lineHeight: 22,
       color: colors.text,
     },
-  });
-};
+});
+
+export const getStyles = () => styles;

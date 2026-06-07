@@ -1,4 +1,5 @@
 import type { User } from 'firebase/auth';
+import { authCopy } from './authCopy';
 import type { SecurityActionType, ValidateSecurityOptions } from '../model/types';
 
 type SecurityAuthOptions = {
@@ -52,36 +53,36 @@ export function validateSecurityForm({
     const errors: Record<string, string> = {};
 
     if (requiresPasswordInput(type, currentUser, { canUseGoogleAuth }) && !currentPassword) {
-        errors.currentPassword = 'Password is required';
+        errors.currentPassword = authCopy.security.validation.currentPasswordRequired;
     }
 
     if (type === 'password') {
-        if (!newValue) errors.newValue = 'New password is required';
-        else if (newValue.length < 6) errors.newValue = 'Minimum 6 characters';
-        if (!confirmValue) errors.confirmValue = 'Please confirm password';
-        else if (newValue !== confirmValue) errors.confirmValue = 'Passwords must match';
-        if (newValue === currentPassword) errors.newValue = 'New password must be different';
+        if (!newValue) errors.newValue = authCopy.security.validation.newPasswordRequired;
+        else if (newValue.length < 6) errors.newValue = authCopy.security.validation.minimumPasswordLength;
+        if (!confirmValue) errors.confirmValue = authCopy.security.validation.confirmPassword;
+        else if (newValue !== confirmValue) errors.confirmValue = authCopy.security.validation.passwordsMustMatch;
+        if (newValue === currentPassword) errors.newValue = authCopy.security.validation.passwordMustChange;
     }
 
     if (type === 'email') {
-        if (!newValue) errors.newValue = 'New email is required';
-        else if (!/^\S+@\S+\.\S+$/.test(newValue)) errors.newValue = 'Invalid email format';
-        if (!confirmValue) errors.confirmValue = 'Please confirm email';
-        else if (newValue !== confirmValue) errors.confirmValue = 'Emails must match';
-        if (newValue === currentUser?.email) errors.newValue = 'New email must be different';
+        if (!newValue) errors.newValue = authCopy.security.validation.newEmailRequired;
+        else if (!/^\S+@\S+\.\S+$/.test(newValue)) errors.newValue = authCopy.security.validation.invalidEmail;
+        if (!confirmValue) errors.confirmValue = authCopy.security.validation.confirmEmail;
+        else if (newValue !== confirmValue) errors.confirmValue = authCopy.security.validation.emailsMustMatch;
+        if (newValue === currentUser?.email) errors.newValue = authCopy.security.validation.emailMustChange;
     }
 
     return errors;
 }
 
 export const securityButtonTextMap: Record<SecurityActionType, string> = {
-    delete: 'Delete Account',
-    password: 'Change Password',
-    email: 'Change Email',
+    delete: authCopy.security.buttonText.delete,
+    password: authCopy.security.buttonText.password,
+    email: authCopy.security.buttonText.email,
 };
 
 export const securitySuccessMessageMap: Record<SecurityActionType, string> = {
-    delete: 'Account deleted successfully!',
-    password: 'Password changed successfully!',
-    email: 'Email changed successfully!',
+    delete: authCopy.security.success.delete,
+    password: authCopy.security.success.password,
+    email: authCopy.security.success.email,
 };

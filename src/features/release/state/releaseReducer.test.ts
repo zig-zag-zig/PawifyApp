@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Release, Track } from '../../../modules/models/models';
+import type { Release, Track } from '../../../shared/music';
 import { createInitialReleaseState, releaseReducer } from './releaseReducer';
 
 const track = (id: string): Track => ({

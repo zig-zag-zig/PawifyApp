@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View, type LayoutChangeEvent } from 'react-native';
-import type { ExternalLink } from '../modules/models/models';
+import type { ExternalLink } from '../shared/music';
 import { openExternalUrl } from '../services/externalNavigation';
 import { ExternalLinkIcon } from './externalLinks/ExternalLinkIcon';
 import {

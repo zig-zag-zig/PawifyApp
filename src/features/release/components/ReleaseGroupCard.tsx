@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
-import { CachedImageComponent, Container, SelectableText } from '../../../components/StyledComponents';
-import { ReleaseGroupReleaseListItem } from '../../../modules/models/models';
+import { CachedImageComponent, ScreenContainer, SelectableText } from '../../../components/ui';
+import { ReleaseGroupReleaseListItem } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 
 interface ReleaseGroupCardProps {
@@ -9,13 +9,15 @@ interface ReleaseGroupCardProps {
     releaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     onPress: (release: ReleaseGroupReleaseListItem) => void;
+    onContentReady: () => void;
 }
 
 const ReleaseGroupCard = ({
     releases,
     releaseCovers,
     pendingReleaseCoverIds,
-    onPress
+    onPress,
+    onContentReady,
 }: ReleaseGroupCardProps) => {
     const styles = getStyles();
     const pendingReleaseCoverIdSet = new Set(pendingReleaseCoverIds);
@@ -62,11 +64,14 @@ const ReleaseGroupCard = ({
     };
 
     return (
-        <Container>
-            <ScrollView showsVerticalScrollIndicator={false}>
+        <ScreenContainer>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={onContentReady}
+            >
                 {renderReleases()}
             </ScrollView>
-        </Container>
+        </ScreenContainer>
     );
 };
 

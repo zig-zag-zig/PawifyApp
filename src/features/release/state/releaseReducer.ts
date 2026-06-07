@@ -1,4 +1,4 @@
-import type { Release, Track } from '../../../modules/models/models';
+import type { Release, Track } from '../../../shared/music';
 import type { ReleasePageState } from '../model/types';
 
 type ReleaseAction =

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, View, Text, StyleSheet } from 'react-native';
-import { CustomButton, CustomInput, Spinner } from '../../../components/StyledComponents';
+import { Button, TextField, Spinner } from '../../../components/ui';
 import { GoogleSignInButton } from '../../../components/GoogleSignInButton';
 import { AuthFormProps } from './types';
 
@@ -37,14 +37,14 @@ const AuthForm: React.FC<AuthFormProps> = ({
                 </>
             )}
 
-            <CustomInput
+            <TextField
                 placeholder="Email"
                 value={email}
                 onChangeText={setEmail}
                 onSubmitEditing={onKeyPress}
                 email={true}
             />
-            <CustomInput
+            <TextField
                 placeholder="Password"
                 value={password}
                 onChangeText={setPassword}
@@ -54,7 +54,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
             />
 
             {mode === 'signUp' && (
-                <CustomInput
+                <TextField
                     placeholder="Confirm Password"
                     value={confirmPassword!}
                     onChangeText={setConfirmPassword!}
@@ -64,9 +64,9 @@ const AuthForm: React.FC<AuthFormProps> = ({
                 />
             )}
 
-            <CustomButton onPress={onSubmit} disabled={isLoading}>
+            <Button onPress={onSubmit} disabled={isLoading}>
                 {mode === 'signIn' ? 'Sign In' : 'Sign Up'}
-            </CustomButton>
+            </Button>
         </>
     );
 };

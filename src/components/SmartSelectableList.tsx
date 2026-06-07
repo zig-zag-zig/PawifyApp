@@ -17,6 +17,7 @@ type SmartSelectableListProps<T extends { id: string }> = {
     onEndReachedThreshold?: number;
     initialNumToRender?: number;
     windowSize?: number;
+    onContentReady: () => void;
 };
 
 export function SmartSelectableList<T extends { id: string }>(
@@ -30,6 +31,7 @@ export function SmartSelectableList<T extends { id: string }>(
         onEndReachedThreshold,
         initialNumToRender,
         windowSize,
+        onContentReady,
         flatListRef,
     }: SmartSelectableListProps<T>
 ) {
@@ -78,6 +80,7 @@ export function SmartSelectableList<T extends { id: string }>(
                         onEndReachedThreshold={onEndReachedThreshold}
                         initialNumToRender={initialNumToRender}
                         windowSize={windowSize}
+                        onContentReady={onContentReady}
                         ref={animatedListRef}
                     />
                 </>

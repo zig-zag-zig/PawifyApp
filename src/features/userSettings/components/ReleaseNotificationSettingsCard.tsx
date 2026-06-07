@@ -12,7 +12,7 @@ import {
   useReleaseNotificationSettings,
 } from '../state/ReleaseNotificationSettingsContext';
 import { getReleaseNotificationSettingsStyles } from './releaseNotificationSettingsStyles';
-import { ReleaseNotificationSettings } from '../../../modules/models/models';
+import { ReleaseNotificationSettings } from '../../../shared/music';
 
 const lookbackOptions: Array<{ label: string; value: number | null }> = [
   { label: '1 mo', value: 1 },

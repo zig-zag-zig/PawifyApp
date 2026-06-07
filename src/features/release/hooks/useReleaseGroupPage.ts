@@ -1,7 +1,8 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
-import type { ReleaseGroupReleaseListItem } from '../../../modules/models/models';
+import type { ReleaseGroupReleaseListItem } from '../../../shared/music';
+import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { ReleaseNavigationProp, RootStackParamList } from '../../../types/navigation';
 import { extractReleaseGroupReleaseCovers } from '../../../utils/taskResultMaps';
 import { useReleaseApi } from '../api/releaseApi';
@@ -36,62 +37,42 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
 
         setPendingReleaseCoverIds(missingCoverIds);
 
-        const applyPartialReleaseCovers = (result: unknown) => {
-            const covers = extractReleaseGroupReleaseCovers(result);
-            const resolvedReleaseIds = missingCoverIds.filter(releaseId => covers[releaseId] !== undefined);
-            if (resolvedReleaseIds.length === 0) {
-                return;
-            }
-
-            setReleaseGroupReleaseCovers(prev => ({
-                ...prev,
-                ...covers,
-            }));
-            setPendingReleaseCoverIds(prev =>
-                prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
-            );
-        };
-
         const resolveReleaseCoverTask = async () => {
-            try {
-                const taskResult = await waitForTaskResult(releaseCoverTaskId, {
-                    onPartialResult: partialResult => {
-                        if (isCancelled) {
-                            return;
-                        }
+            await resolveNullableTaskMap({
+                taskId: releaseCoverTaskId,
+                expectedIds: missingCoverIds,
+                waitForTaskResult,
+                extractMap: extractReleaseGroupReleaseCovers,
+                onResolvedValues: (covers, resolvedReleaseIds) => {
+                    if (isCancelled) {
+                        return;
+                    }
 
-                        applyPartialReleaseCovers(partialResult.result);
-                    },
-                    recreateTask: releaseGroupId
-                        ? async () => {
-                            const result = await getReleaseGroupReleases(releaseGroupId);
-                            return result.releaseCoverTaskId;
-                        }
-                        : undefined,
-                    recreateTaskDescription: 'getReleaseGroupReleases.releaseCoverTaskId',
-                });
-                const taskStatus = taskResult.status.toLowerCase();
-                if (isCancelled) {
-                    return;
-                }
-
-                if (taskStatus === 'completed') {
-                    const covers = extractReleaseGroupReleaseCovers(taskResult.result);
                     if (Object.keys(covers).length > 0) {
                         setReleaseGroupReleaseCovers(prev => ({
                             ...prev,
                             ...covers,
                         }));
                     }
-                }
 
-                setPendingReleaseCoverIds([]);
-            } catch (error) {
-                console.error('release-group-page: resolve release-group cover task failed', error);
-                if (!isCancelled) {
-                    setPendingReleaseCoverIds([]);
-                }
-            }
+                    setPendingReleaseCoverIds(prev =>
+                        prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
+                    );
+                },
+                onError: error => {
+                    console.error('release-group-page: resolve release-group cover task failed', error);
+                },
+                shouldFillMissingOnCompleted: () => false,
+                shouldFillMissingOnError: false,
+                shouldFillMissingOnNonCompleted: false,
+                recreateTask: releaseGroupId
+                    ? async () => {
+                        const result = await getReleaseGroupReleases(releaseGroupId);
+                        return result.releaseCoverTaskId;
+                    }
+                    : undefined,
+                recreateTaskDescription: 'getReleaseGroupReleases.releaseCoverTaskId',
+            });
         };
 
         void resolveReleaseCoverTask();
@@ -103,6 +84,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         initialReleaseCoverTaskId,
         getReleaseGroupReleases,
         releaseGroupId,
+        releaseGroupReleaseCovers,
         releases,
         setReleaseGroupReleaseCovers,
         waitForTaskResult,

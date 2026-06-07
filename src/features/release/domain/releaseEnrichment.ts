@@ -1,4 +1,4 @@
-import type { Release, Track } from '../../../modules/models/models';
+import type { Release, Track } from '../../../shared/music';
 
 export function cloneRelease(release: Release): Release {
     return JSON.parse(JSON.stringify(release)) as Release;

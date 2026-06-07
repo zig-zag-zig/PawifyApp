@@ -1,11 +1,15 @@
+import { useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useBackend } from '../../../hooks/useBackend';
+import { useApiClient } from '../../../hooks/useApiClient';
 
 export function useArtistsApi() {
     const { getAccessToken } = useAuth();
-    const backend = useBackend(getAccessToken);
+    const apiClient = useApiClient(getAccessToken);
 
-    return {
-        unfollowArtists: backend.unfollowArtists,
-    };
+    return useMemo(() => ({
+        unfollowArtists: async (artistIds: string[]) =>
+            await apiClient.request<string>('unfollowArtists', {
+                body: await apiClient.withSourcePushToken({ artistIds }),
+            }),
+    }), [apiClient]);
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CustomButton, CustomInput, Container, Spinner } from '../../../components/StyledComponents';
+import { Button, TextField, ScreenContainer, Spinner } from '../../../components/ui';
 import { useResetPasswordPage } from '../hooks/useResetPasswordPage';
 
 interface ResetPasswordFormProps {
@@ -12,28 +12,28 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
     const resetPasswordPage = useResetPasswordPage(tempToken);
 
     return (
-        <Container>
+        <ScreenContainer>
             <Spinner isLoading={resetPasswordPage.state.isLoading} />
-            <CustomInput
+            <TextField
                 placeholder="New Password"
                 value={resetPasswordPage.state.newPassword}
                 onChangeText={resetPasswordPage.onNewPasswordChanged}
                 secureText
                 showPasswordToggle
             />
-            <CustomInput
+            <TextField
                 placeholder="Confirm Password"
                 value={resetPasswordPage.state.confirmPassword}
                 onChangeText={resetPasswordPage.onConfirmPasswordChanged}
                 secureText
                 showPasswordToggle
             />
-            <CustomButton
+            <Button
                 onPress={() => void resetPasswordPage.onResetPassword()}
                 disabled={resetPasswordPage.state.isLoading}
             >
                 Reset Password
-            </CustomButton>
-        </Container>
+            </Button>
+        </ScreenContainer>
     );
 };

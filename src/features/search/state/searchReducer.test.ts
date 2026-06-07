@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Artist } from '../../../modules/models/models';
+import type { Artist } from '../../../shared/music';
 import { createInitialSearchState, searchReducer } from './searchReducer';
 
 function artist(id: string, name = id): Artist {

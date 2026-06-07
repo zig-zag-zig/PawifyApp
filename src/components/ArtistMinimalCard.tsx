@@ -1,9 +1,9 @@
 import React from 'react';
 import { LayoutChangeEvent, TouchableOpacity, useWindowDimensions, View } from 'react-native';
-import { ArtistMinimal } from '../modules/models/models';
-import { nameWithDisambiguation } from '../modules/utils/helpers';
+import { ArtistMinimal } from '../shared/music';
+import { nameWithDisambiguation } from '../shared/music';
 import { getStyles } from '../styles/styles';
-import { CachedImageComponent, SelectableText } from './StyledComponents';
+import { CachedImageComponent, SelectableText } from './ui';
 
 interface ArtistMinimalCardProps {
   artist: ArtistMinimal;

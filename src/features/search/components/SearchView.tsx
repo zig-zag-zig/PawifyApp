@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Container } from '../../../components/StyledComponents';
-import type { Artist } from '../../../modules/models/models';
+import { ScreenContainer } from '../../../components/ui';
+import type { Artist } from '../../../shared/music';
 import SearchInput from './SearchInput';
 import SearchResults from './SearchResults';
 
@@ -31,7 +31,7 @@ const SearchView = ({
     onArtistPressed,
 }: SearchViewProps) => {
     return (
-        <Container>
+        <ScreenContainer>
             <View style={styles.searchInputContainer}>
                 <SearchInput
                     query={query}
@@ -48,7 +48,7 @@ const SearchView = ({
                 onLoadMore={() => void onLoadMore()}
                 onArtistPress={onArtistPressed}
             />
-        </Container>
+        </ScreenContainer>
     );
 };
 

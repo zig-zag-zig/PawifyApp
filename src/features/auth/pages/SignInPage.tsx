@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import React from 'react';
-import { Container, TouchableText } from '../../../components/StyledComponents';
+import { ScreenContainer, InlineLink } from '../../../components/ui';
 import { RootStackParamList } from '../../../types/navigation';
 import SignInForm from '../components/SignInForm';
 
@@ -11,15 +11,15 @@ const SignInPage = () => {
     const navigation = useNavigation<SignInNavigationProp>();
 
     return (
-        <Container>
+        <ScreenContainer>
             <SignInForm />
-            <TouchableText onPress={() => navigation.navigate('SignUp')}>
+            <InlineLink onPress={() => navigation.navigate('SignUp')}>
                 Don't have an account? Sign Up
-            </TouchableText>
-            <TouchableText onPress={() => navigation.navigate('ForgotPassword')}>
+            </InlineLink>
+            <InlineLink onPress={() => navigation.navigate('ForgotPassword')}>
                 Forgot Password?
-            </TouchableText>
-        </Container>
+            </InlineLink>
+        </ScreenContainer>
     );
 };
 
