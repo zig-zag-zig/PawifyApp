@@ -40,12 +40,7 @@ function getAndroidGoogleServicesFile() {
 }
 
 function getAndroidPackage() {
-    const packageName = baseConfig.expo.android?.package;
-    if (resolveAppEnv() === 'e2e-test' && packageName) {
-        return `${packageName}.dev`;
-    }
-
-    return packageName;
+    return baseConfig.expo.android?.package;
 }
 
 function getAndroidConfig() {

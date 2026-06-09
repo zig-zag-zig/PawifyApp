@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
 import { ENV } from '../../config/env';
 import {
   describeError,
@@ -24,6 +24,17 @@ type ResolveCachedImageUriOptions = {
 
 const CACHE_DOWNLOAD_TIMEOUT_MAX_RETRIES = ENV.imageCacheTimeoutMaxRetries;
 const CACHE_DOWNLOAD_TIMEOUT_RETRY_BASE_DELAY_MS = ENV.imageCacheTimeoutRetryBaseDelayMs;
+
+const getCachedImageFile = (cacheKey: string): File => new File(Paths.cache, cacheKey);
+
+export const getCachedImageFileUri = (cacheKey: string): string => getCachedImageFile(cacheKey).uri;
+
+export const deleteCachedImageFile = async (cacheKey: string): Promise<void> => {
+  const file = getCachedImageFile(cacheKey);
+  if (file.exists) {
+    file.delete();
+  }
+};
 
 const isTimeoutError = (error: unknown): boolean => {
   if (!(error instanceof Error) || typeof error.message !== 'string') {
@@ -65,10 +76,13 @@ export const resolveCachedImageUri = async (
     type,
     updateAccessTime,
   } = options;
-  const fileUri = `${FileSystem.cacheDirectory}${prefixedCacheKey}`;
-  const tempFileUri = `${fileUri}.${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+  const file = getCachedImageFile(prefixedCacheKey);
+  const fileUri = file.uri;
+  const tempFile = getCachedImageFile(`${prefixedCacheKey}.${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`);
   const removeTempFile = async () => {
-    await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
+    if (tempFile.exists) {
+      tempFile.delete();
+    }
   };
 
   try {
@@ -76,37 +90,37 @@ export const resolveCachedImageUri = async (
       ...getImageDiagnosticPayload(),
       fileUri: shortenString(fileUri, 180),
     });
-    const fileInfo = await FileSystem.getInfoAsync(fileUri);
-    const cachedFileSize = fileInfo.exists ? fileInfo.size : 0;
+    const cachedFileSize = file.exists ? file.size : 0;
 
     if (cachedFileSize <= 0) {
-      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      if (file.exists) {
+        file.delete();
+      }
       const downloadAttemptStartedAt = Date.now();
       diagnosticLog('image', 'download-start', {
         ...getImageDiagnosticPayload(),
       });
-      const downloadResult = await FileSystem.downloadAsync(remoteImageUrl, tempFileUri);
-      const downloadedFileInfo = await FileSystem.getInfoAsync(tempFileUri);
-      const downloadedSize = downloadedFileInfo.exists ? downloadedFileInfo.size : 0;
+      const downloadedFile = await File.downloadFileAsync(remoteImageUrl, tempFile, { idempotent: true });
+      const downloadedSize = downloadedFile.exists ? downloadedFile.size : 0;
       diagnosticLog('image', 'download-done', {
         ...getImageDiagnosticPayload(),
-        status: downloadResult.status,
         downloadedSize,
         elapsedMs: elapsedSince(downloadAttemptStartedAt),
       });
 
-      if (downloadResult.status !== 200 || !downloadedFileInfo.exists || downloadedSize <= 0) {
-        throw new Error(`Invalid cached image download for ${prefixedCacheKey}, status ${downloadResult.status}`);
+      if (!downloadedFile.exists || downloadedSize <= 0) {
+        throw new Error(`Invalid cached image download for ${prefixedCacheKey}`);
       }
 
       try {
-        await FileSystem.deleteAsync(fileUri, { idempotent: true });
-        await FileSystem.moveAsync({ from: tempFileUri, to: fileUri });
+        if (file.exists) {
+          file.delete();
+        }
+        await tempFile.move(file, { overwrite: true });
       } catch (moveError) {
-        const movedFileInfo = await FileSystem.getInfoAsync(fileUri);
-        const movedFileSize = movedFileInfo.exists ? movedFileInfo.size : 0;
+        const movedFileSize = file.exists ? file.size : 0;
 
-        if (!movedFileInfo.exists || movedFileSize <= 0) {
+        if (!file.exists || movedFileSize <= 0) {
           throw moveError;
         }
 

@@ -274,7 +274,7 @@ async function runInsideEmulators() {
   process.once('SIGTERM', onSigterm);
 
   try {
-    await waitForUrl(`http://127.0.0.1:${backendPort}/v1/keep-alive`);
+    await waitForUrl(`http://127.0.0.1:${backendPort}/v1/health`);
     await runAsync('node', ['scripts/run-maestro.cjs', maestroTarget], { cwd: appRoot, env: e2eBackendEnv });
   } finally {
     process.off('SIGINT', onSigint);

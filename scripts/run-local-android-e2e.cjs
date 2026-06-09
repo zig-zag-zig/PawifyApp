@@ -98,6 +98,19 @@ function getAndroidSdkRoot() {
     || path.join(process.env.HOME ?? '', 'Android', 'Sdk');
 }
 
+function addAndroidPlatformToolsToPath() {
+  const platformTools = path.join(getAndroidSdkRoot(), 'platform-tools');
+  const adbBinary = path.join(platformTools, process.platform === 'win32' ? 'adb.exe' : 'adb');
+  if (!fs.existsSync(adbBinary)) {
+    return;
+  }
+
+  const pathEntries = (process.env.PATH ?? '').split(path.delimiter);
+  if (!pathEntries.includes(platformTools)) {
+    process.env.PATH = [platformTools, ...pathEntries].filter(Boolean).join(path.delimiter);
+  }
+}
+
 function getEmulatorBinary() {
   if (process.env.ANDROID_EMULATOR?.trim()) {
     return process.env.ANDROID_EMULATOR.trim();
@@ -355,6 +368,7 @@ let emulatorState = null;
 let deviceState = null;
 
 try {
+  addAndroidPlatformToolsToPath();
   emulatorState = ensureEmulatorForE2E();
   deviceState = prepareDeviceForE2E();
 

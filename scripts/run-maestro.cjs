@@ -11,6 +11,21 @@ const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
 let pendingDeviceCleanup = null;
 let cleanupInProgress = false;
 
+function resolveMaestroBinary() {
+  const explicitBinary = process.env.MAESTRO_BIN?.trim();
+  if (explicitBinary) {
+    return explicitBinary;
+  }
+
+  const localBinary = path.join(
+    process.env.HOME ?? '',
+    '.maestro',
+    'bin',
+    process.platform === 'win32' ? 'maestro.bat' : 'maestro',
+  );
+  return fs.existsSync(localBinary) ? localBinary : 'maestro';
+}
+
 function runPendingDeviceCleanup() {
   if (!pendingDeviceCleanup || cleanupInProgress) {
     return;
@@ -251,6 +266,7 @@ function printFlowSummary(results) {
 }
 
 function runMaestro(deviceId, maestroArgs, flowTargets) {
+  const maestroBinary = resolveMaestroBinary();
   const shouldManageAutofill = process.env.MAESTRO_DISABLE_AUTOFILL !== 'false';
   const originalAutofillService = shouldManageAutofill ? getAutofillService(deviceId) : null;
   const deviceState = prepareDeviceForMaestro(deviceId);
@@ -285,13 +301,13 @@ function runMaestro(deviceId, maestroArgs, flowTargets) {
     for (const flowTarget of flowTargets) {
       const name = flowName(flowTarget);
       console.log(`\n[e2e] Running flow: ${name}`);
-      const result = spawnSync('maestro', [...maestroArgs, flowTarget], {
+      const result = spawnSync(maestroBinary, [...maestroArgs, flowTarget], {
         stdio: 'inherit',
         env: process.env,
       });
 
       if (result.error) {
-        console.error(`[e2e] Failed to run maestro: ${result.error.message}`);
+        console.error(`[e2e] Failed to run ${maestroBinary}: ${result.error.message}`);
         results.push({ name, passed: false });
         exitStatus = 1;
         break;

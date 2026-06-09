@@ -3,14 +3,16 @@ import { initializeApp } from 'firebase/app';
 import {
     // @ts-ignore
     getReactNativePersistence,
+    connectAuthEmulator,
     initializeAuth,
 } from "firebase/auth";
 import googleServices from "../../google-services.json";
+import { ENV } from '../config/env';
 
 const firebaseConfig = {
     apiKey: googleServices.client[0].api_key[0].current_key,
-    authDomain: `${googleServices.project_info.project_id}.firebaseapp.com`,
-    projectId: googleServices.project_info.project_id,
+    authDomain: `${ENV.firebaseProjectId ?? googleServices.project_info.project_id}.firebaseapp.com`,
+    projectId: ENV.firebaseProjectId ?? googleServices.project_info.project_id,
     storageBucket: googleServices.project_info.storage_bucket,
     messagingSenderId: googleServices.project_info.project_number,
     appId: googleServices.client[0].client_info.mobilesdk_app_id,
@@ -19,3 +21,9 @@ const firebaseConfig = {
 export const auth = initializeAuth(initializeApp(firebaseConfig), {
     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
 });
+
+if (ENV.firebaseAuthEmulatorUrl) {
+    connectAuthEmulator(auth, ENV.firebaseAuthEmulatorUrl, {
+        disableWarnings: true,
+    });
+}

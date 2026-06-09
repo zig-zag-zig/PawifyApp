@@ -11,14 +11,42 @@ vi.mock('expo-constants', () => ({
   },
 }));
 
-vi.mock('expo-file-system/legacy', () => ({
-  cacheDirectory: 'file:///tmp/',
-  documentDirectory: null,
-  makeDirectoryAsync: vi.fn(),
-  deleteAsync: vi.fn(),
-  createDownloadResumable: vi.fn(),
-  getContentUriAsync: vi.fn(),
-}));
+vi.mock('expo-file-system', () => {
+  class Directory {
+    uri: string;
+    exists = false;
+    delete = vi.fn();
+
+    constructor(...parts: Array<string | { uri: string }>) {
+      this.uri = parts.map(part => typeof part === 'string' ? part : part.uri).join('/');
+    }
+
+    create = vi.fn();
+  }
+
+  class File {
+    uri: string;
+    exists = false;
+    size = 0;
+    contentUri: string;
+    delete = vi.fn();
+
+    constructor(...parts: Array<string | { uri: string }>) {
+      this.uri = parts.map(part => typeof part === 'string' ? part : part.uri).join('/');
+      this.contentUri = `content://${this.uri}`;
+    }
+
+    static createDownloadTask = vi.fn();
+  }
+
+  return {
+    Directory,
+    File,
+    Paths: {
+      cache: new Directory('file:///tmp'),
+    },
+  };
+});
 
 vi.mock('react-native', () => ({
   Platform: {

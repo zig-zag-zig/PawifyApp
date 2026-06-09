@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import googleServices from '../../google-services.json';
+import { getFirebaseAuthEmulatorUrl } from './firebaseEmulator';
 
 function parseNumberEnv(value: string | undefined, fallback: number, min = 0): number {
   if (!value) {
@@ -137,6 +138,23 @@ function parseOptionalString(value: string | undefined): string | null {
   return trimmed || null;
 }
 
+function parseOptionalFirebaseProjectId(value: string | undefined, appEnv: string): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (appEnv === 'production') {
+    throw new Error('[env] EXPO_PUBLIC_FIREBASE_PROJECT_ID cannot be set for production builds');
+  }
+
+  if (!/^[a-z][a-z0-9-]{4,29}$/i.test(trimmed)) {
+    throw new Error('[env] EXPO_PUBLIC_FIREBASE_PROJECT_ID must be a valid Firebase project id');
+  }
+
+  return trimmed;
+}
+
 function parseOptionalUrl(value: string | undefined, name: string): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -168,6 +186,8 @@ const rawEnv = {
   EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
   EXPO_PUBLIC_API_VERSION: process.env.EXPO_PUBLIC_API_VERSION,
   EXPO_PUBLIC_ARTIST_DIAGNOSTICS: process.env.EXPO_PUBLIC_ARTIST_DIAGNOSTICS,
+  EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: process.env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
+  EXPO_PUBLIC_FIREBASE_PROJECT_ID: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
   EXPO_PUBLIC_SENTRY_ENABLED: process.env.EXPO_PUBLIC_SENTRY_ENABLED,
   EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: process.env.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE,
@@ -188,15 +208,18 @@ const googleWebClientId = getRequiredConfigValue(
   'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID or google-services.json client[0].oauth_client[client_type=3].client_id',
 );
 const sentryDsn = parseOptionalUrl(rawEnv.EXPO_PUBLIC_SENTRY_DSN, 'EXPO_PUBLIC_SENTRY_DSN');
+const appEnv = resolveExtraValue('appEnv') ?? (__DEV__ ? 'development' : 'production');
 
 export const ENV = {
   apiBaseUrl: parseApiBaseUrl(getRequiredEnv('EXPO_PUBLIC_API_BASE_URL')),
   apiVersion: parseApiVersion(rawEnv.EXPO_PUBLIC_API_VERSION, resolveApiVersionFallback()),
   appBuildVersion: Constants.nativeBuildVersion ?? null,
-  appEnv: resolveExtraValue('appEnv') ?? (__DEV__ ? 'development' : 'production'),
+  appEnv,
   appVersion: resolveAppVersion(),
   googleWebClientId,
   artistDiagnosticsEnabled: parseBooleanEnv(rawEnv.EXPO_PUBLIC_ARTIST_DIAGNOSTICS, false),
+  firebaseAuthEmulatorUrl: getFirebaseAuthEmulatorUrl(rawEnv.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST, appEnv),
+  firebaseProjectId: parseOptionalFirebaseProjectId(rawEnv.EXPO_PUBLIC_FIREBASE_PROJECT_ID, appEnv),
   sentryDsn,
   sentryEnabled: Boolean(sentryDsn) && parseBooleanEnv(rawEnv.EXPO_PUBLIC_SENTRY_ENABLED, true),
   sentryTracesSampleRate: parseFloatEnv(rawEnv.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE, 0, 0, 1),

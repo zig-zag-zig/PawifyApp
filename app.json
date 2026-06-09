@@ -3,7 +3,7 @@
     "sdkVersion": "56.0.0",
     "name": "Pawify",
     "slug": "pawify",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -38,7 +38,7 @@
       },
       "package": "vip.chi_chi.pawify",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],
@@ -62,6 +62,7 @@
     },
     "plugins": [
       "./plugins/expo-android-build-variants-plugin",
+      "./plugins/expo-e2e-cleartext-plugin",
       "expo-dev-client",
       "expo-secure-store",
       [

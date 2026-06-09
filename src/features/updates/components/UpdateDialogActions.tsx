@@ -2,9 +2,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { updateCopy } from '../domain/updateCopy';
-import type { AppRelease, UpdateDownloadProgress } from '../model/types';
+import type { AppRelease } from '../model/types';
 import { appUpdateModalStyles as styles } from './appUpdateModalStyles';
-import { getProgressLabel } from './updateModalFormatting';
 
 type ModalButtonProps = {
   label: string;
@@ -20,7 +19,6 @@ type UpdateDialogActionsProps = {
   checking: boolean;
   updating: boolean;
   showUpdateAction: boolean;
-  downloadProgress: UpdateDownloadProgress | null;
   onClose: () => void;
   onCheckAgain: () => void;
   onUpdate: () => void;
@@ -66,7 +64,6 @@ export function UpdateDialogActions({
   checking,
   updating,
   showUpdateAction,
-  downloadProgress,
   onClose,
   onCheckAgain,
   onUpdate,
@@ -85,11 +82,10 @@ export function UpdateDialogActions({
         />
         {showUpdateAction && availableRelease ? (
           <ModalButton
-            label={updating ? getProgressLabel(downloadProgress) : availableRelease.downloadLabel}
+            label={updating ? 'Downloading' : availableRelease.downloadLabel}
             onPress={onUpdate}
-            icon="download"
-            loading={updating}
-            disabled={updating}
+            icon={updating ? undefined : 'download'}
+            disabled={updating || !availableRelease.canInstallInApp}
           />
         ) : !isAvailable ? (
           <ModalButton

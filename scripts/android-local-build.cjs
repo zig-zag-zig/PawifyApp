@@ -318,7 +318,15 @@ function readDynamicExpoConfig() {
 }
 
 function readAndroidPackageName() {
-  return readDynamicExpoConfig().android?.package;
+  const packageName = readDynamicExpoConfig().android?.package;
+  if (!packageName) {
+    return packageName;
+  }
+
+  const suffix = variant === 'debug'
+    ? env.EXPO_ANDROID_DEBUG_APPLICATION_ID_SUFFIX?.trim()
+    : '';
+  return suffix ? `${packageName}${suffix}` : packageName;
 }
 
 function runAdbBestEffort(commandArgs) {

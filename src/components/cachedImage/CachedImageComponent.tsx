@@ -1,11 +1,15 @@
-import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, ImageStyle, StyleSheet, View } from 'react-native';
 import { useCache } from '../../contexts/CacheContext';
 import { PulsingPlaceholder } from './CachedImagePlaceholders';
 import useTaskManager from '../../hooks/useTaskManager';
 import { ENV } from '../../config/env';
-import { getCacheKeyFromUrl, resolveCachedImageUri } from './cachedImageFileCache';
+import {
+  deleteCachedImageFile,
+  getCachedImageFileUri,
+  getCacheKeyFromUrl,
+  resolveCachedImageUri,
+} from './cachedImageFileCache';
 import {
   describeError,
   diagnosticLog,
@@ -261,7 +265,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
       return;
     }
 
-    const fileUri = `${FileSystem.cacheDirectory}${prefixedCacheKey}`;
+    const fileUri = getCachedImageFileUri(prefixedCacheKey);
     setIsLoading(false);
 
     if (localUri !== fileUri) {
@@ -295,7 +299,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
     }
 
     void (async () => {
-      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      await deleteCachedImageFile(prefixedCacheKey);
       if (canCommitImageState()) {
         setLocalUri(remoteImageUrl);
       }

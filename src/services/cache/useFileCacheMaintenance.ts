@@ -1,11 +1,11 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
 import { useCallback, useEffect, useRef } from 'react';
 
-const CACHE_DIR = FileSystem.cacheDirectory;
+const CACHE_DIR = Paths.cache;
 const MAX_CACHE_SIZE = 200 * 1024 * 1024;
 const MAX_CACHE_AGE_DAYS = 60;
 const CACHE_FILE_PREFIX = 'expo-cached-image-';
-const ACCESS_TIMES_FILE = CACHE_DIR ? `${CACHE_DIR}access-times.json` : null;
+const ACCESS_TIMES_FILE = new File(CACHE_DIR, 'access-times.json');
 const cleanupMinIntervalMs = 30_000;
 const accessTimeFlushDelayMs = 750;
 
@@ -15,13 +15,30 @@ type CacheFileDetails = {
   accessTime: number;
 };
 
+function deleteFileIfExists(file: File): void {
+  if (file.exists) {
+    file.delete();
+  }
+}
+
+function getCacheFile(fileName: string): File {
+  return new File(CACHE_DIR, fileName);
+}
+
+function writeAccessTimes(accessTimes: Record<string, number>): void {
+  if (!ACCESS_TIMES_FILE.exists) {
+    ACCESS_TIMES_FILE.create({ intermediates: true, overwrite: true });
+  }
+  ACCESS_TIMES_FILE.write(JSON.stringify(accessTimes));
+}
+
 async function readAccessTimes(): Promise<Record<string, number>> {
-  if (!ACCESS_TIMES_FILE) {
+  if (!ACCESS_TIMES_FILE.exists) {
     return {};
   }
 
   try {
-    const accessTimesData = await FileSystem.readAsStringAsync(ACCESS_TIMES_FILE);
+    const accessTimesData = await ACCESS_TIMES_FILE.text();
     return JSON.parse(accessTimesData);
   } catch (error) {
     console.warn('cache: read access-times file failed', error);
@@ -37,11 +54,6 @@ export function useFileCacheMaintenance() {
   const accessTimeFlushInFlightRef = useRef(false);
 
   const flushAccessTimes = useCallback(async (): Promise<void> => {
-    if (!CACHE_DIR || !ACCESS_TIMES_FILE) {
-      console.warn('cache: update access time skipped (cache directory or access-times file unavailable)');
-      return;
-    }
-
     if (accessTimeFlushInFlightRef.current) {
       return;
     }
@@ -57,7 +69,7 @@ export function useFileCacheMaintenance() {
     try {
       const accessTimes = await readAccessTimes();
       Object.assign(accessTimes, pendingAccessTimes);
-      await FileSystem.writeAsStringAsync(ACCESS_TIMES_FILE, JSON.stringify(accessTimes));
+      writeAccessTimes(accessTimes);
     } catch (error) {
       console.error('cache: update access time failed', error);
     } finally {
@@ -93,18 +105,13 @@ export function useFileCacheMaintenance() {
       lastCleanupStartedAtRef.current = now;
     }
 
-    if (!CACHE_DIR || !ACCESS_TIMES_FILE) {
-      console.warn('cache: cleanup skipped (cache directory or access-times file unavailable)');
-      cleanupInFlightRef.current = false;
-      return;
-    }
-
     if (!skipSizeCheck && accessTimeFlushInFlightRef.current) {
       cleanupInFlightRef.current = false;
       return;
     }
 
     try {
+      CACHE_DIR.create({ intermediates: true, idempotent: true });
       const accessTimes = await readAccessTimes();
       let accessTimesChanged = false;
       const pendingAccessTimes = pendingAccessTimesRef.current;
@@ -118,28 +125,26 @@ export function useFileCacheMaintenance() {
         accessTimesChanged = true;
       }
 
-      const files = await FileSystem.readDirectoryAsync(CACHE_DIR);
+      const files = CACHE_DIR.list();
       const fileDetails = await Promise.all(
         files.map(async (file) => {
-          if (!file.startsWith(CACHE_FILE_PREFIX)) {
+          if (!(file instanceof File) || !file.name.startsWith(CACHE_FILE_PREFIX)) {
             return null;
           }
 
-          const filePath = `${CACHE_DIR}${file}`;
-          const fileInfo = await FileSystem.getInfoAsync(filePath);
-          const size = fileInfo.exists ? fileInfo.size : 0;
+          const size = file.exists ? file.size : 0;
 
-          if (fileInfo.exists && size > 0) {
+          if (file.exists && size > 0) {
             return {
-              file,
+              file: file.name,
               size,
-              accessTime: accessTimes[file] || 0,
+              accessTime: accessTimes[file.name] || 0,
             };
           }
 
-          await FileSystem.deleteAsync(filePath, { idempotent: true });
-          if (accessTimes[file] !== undefined) {
-            delete accessTimes[file];
+          deleteFileIfExists(file);
+          if (accessTimes[file.name] !== undefined) {
+            delete accessTimes[file.name];
             accessTimesChanged = true;
           }
           return null;
@@ -158,7 +163,7 @@ export function useFileCacheMaintenance() {
       const maxAgeTimestamp = Date.now() - (MAX_CACHE_AGE_DAYS * 24 * 60 * 60 * 1000);
       const filesToDeleteForAge = validFiles.filter(f => f.accessTime < maxAgeTimestamp);
       for (const file of filesToDeleteForAge) {
-        await FileSystem.deleteAsync(`${CACHE_DIR}${file.file}`, { idempotent: true });
+        deleteFileIfExists(getCacheFile(file.file));
         if (accessTimes[file.file] !== undefined) {
           delete accessTimes[file.file];
           accessTimesChanged = true;
@@ -179,7 +184,7 @@ export function useFileCacheMaintenance() {
             continue;
           }
 
-          await FileSystem.deleteAsync(`${CACHE_DIR}${leastRecentlyAccessedFile.file}`, { idempotent: true });
+          deleteFileIfExists(getCacheFile(leastRecentlyAccessedFile.file));
           totalSize -= leastRecentlyAccessedFile.size;
           if (accessTimes[leastRecentlyAccessedFile.file] !== undefined) {
             delete accessTimes[leastRecentlyAccessedFile.file];
@@ -189,7 +194,7 @@ export function useFileCacheMaintenance() {
       }
 
       if (accessTimesChanged) {
-        await FileSystem.writeAsStringAsync(ACCESS_TIMES_FILE, JSON.stringify(accessTimes));
+        writeAccessTimes(accessTimes);
       }
     } catch (error) {
       console.error('cache: cleanup failed', error);
@@ -201,19 +206,11 @@ export function useFileCacheMaintenance() {
   }, [flushAccessTimes]);
 
   const initializeCacheCleanup = useCallback(async (): Promise<void> => {
-    if (!CACHE_DIR) {
-      console.warn('cache: initialization skipped (cache directory unavailable)');
-      return;
-    }
-
     try {
-      await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+      CACHE_DIR.create({ intermediates: true, idempotent: true });
 
-      if (ACCESS_TIMES_FILE) {
-        const fileInfo = await FileSystem.getInfoAsync(ACCESS_TIMES_FILE);
-        if (!fileInfo.exists) {
-          await FileSystem.writeAsStringAsync(ACCESS_TIMES_FILE, JSON.stringify({}));
-        }
+      if (!ACCESS_TIMES_FILE.exists) {
+        writeAccessTimes({});
       }
 
       await cleanUpCache();
@@ -223,11 +220,6 @@ export function useFileCacheMaintenance() {
   }, [cleanUpCache]);
 
   const updateAccessTime = useCallback(async (file: string): Promise<void> => {
-    if (!CACHE_DIR || !ACCESS_TIMES_FILE) {
-      console.warn('cache: update access time skipped (cache directory or access-times file unavailable)');
-      return;
-    }
-
     pendingAccessTimesRef.current[file] = Date.now();
     scheduleAccessTimeFlush();
   }, [scheduleAccessTimeFlush]);

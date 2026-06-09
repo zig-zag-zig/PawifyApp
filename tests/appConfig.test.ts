@@ -57,9 +57,10 @@ describe('Expo app config', () => {
     const config = loadDynamicExpoConfig('e2e-test');
 
     expect(config.extra.appEnv).toBe('e2e-test');
-    expect(config.android.package).toBe('vip.chi_chi.pawify.dev');
+    expect(config.android.package).toBe('vip.chi_chi.pawify');
     expect(config.android.googleServicesFile).toBe('./google-services.development.json');
     expect(config.android.usesCleartextTraffic).toBe(true);
+    expect(config.plugins).toContain('./plugins/expo-e2e-cleartext-plugin');
     expect(config.plugins).not.toContain('@sentry/react-native/expo');
   });
 });

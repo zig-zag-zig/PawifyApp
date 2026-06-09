@@ -50,12 +50,14 @@ export const AppUpdateModal = ({
     }
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
+      if (!updating) {
+        onClose();
+      }
       return true;
     });
 
     return () => subscription.remove();
-  }, [onClose, visible]);
+  }, [onClose, updating, visible]);
 
   if (!visible) {
     return null;
@@ -90,7 +92,6 @@ export const AppUpdateModal = ({
           checking={checking}
           updating={updating}
           showUpdateAction={showUpdateAction}
-          downloadProgress={downloadProgress}
           onClose={onClose}
           onCheckAgain={onCheckAgain}
           onUpdate={onUpdate}

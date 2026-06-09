@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import * as FileSystem from 'expo-file-system/legacy';
+import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { ENV } from '../../../config/env';
 import { openExternalUrl } from '../../../services/externalNavigation';
@@ -159,13 +159,8 @@ function sanitizeAssetFileName(release: AppRelease): string {
   return sanitized.toLowerCase().endsWith('.apk') ? sanitized : `${sanitized}.apk`;
 }
 
-function getDownloadDirectory(): string {
-  const root = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-  if (!root) {
-    throw new Error('File storage is not available on this device');
-  }
-
-  return `${root}updates/`;
+function getDownloadDirectory(): Directory {
+  return new Directory(Paths.cache, 'updates');
 }
 
 function getDownloadHeaders(release: AppRelease): Record<string, string> {
@@ -295,46 +290,58 @@ async function downloadAndInstallApk(
   }
 
   const downloadDirectory = getDownloadDirectory();
-  await FileSystem.makeDirectoryAsync(downloadDirectory, { intermediates: true });
+  await cleanDownloadedUpdates();
+  downloadDirectory.create({ intermediates: true, idempotent: true });
 
-  const fileUri = `${downloadDirectory}${sanitizeAssetFileName(release)}`;
-  await FileSystem.deleteAsync(fileUri, { idempotent: true });
+  const destinationFile = new File(downloadDirectory, sanitizeAssetFileName(release));
 
-  const download = FileSystem.createDownloadResumable(
-    release.assetDownloadUrl,
-    fileUri,
-    { headers: getDownloadHeaders(release) },
-    (event) => {
-      const expectedBytes = event.totalBytesExpectedToWrite > 0
-        ? event.totalBytesExpectedToWrite
-        : release.assetSizeBytes;
-      const progress = expectedBytes
-        ? Math.min(event.totalBytesWritten / expectedBytes, 1)
-        : null;
+  try {
+    const download = File.createDownloadTask(
+      release.assetDownloadUrl,
+      destinationFile,
+      {
+        headers: getDownloadHeaders(release),
+        onProgress: (event) => {
+          const expectedBytes = event.totalBytes > 0
+            ? event.totalBytes
+            : release.assetSizeBytes;
+          const progress = expectedBytes
+            ? Math.min(event.bytesWritten / expectedBytes, 1)
+            : null;
 
-      onProgress?.(createProgress(
-        'downloading',
-        progress,
-        event.totalBytesWritten,
-        expectedBytes,
-      ));
-    },
-  );
+          onProgress?.(createProgress(
+            'downloading',
+            progress,
+            event.bytesWritten,
+            expectedBytes,
+          ));
+        },
+      },
+    );
 
-  onProgress?.(createProgress('downloading', 0, 0, release.assetSizeBytes));
+    onProgress?.(createProgress('downloading', 0, 0, release.assetSizeBytes));
 
-  const result = await download.downloadAsync();
-  if (!result) {
-    throw new Error(updateCopy.errors.downloadCancelled);
+    const result = await download.downloadAsync();
+    if (!result) {
+      throw new Error(updateCopy.errors.downloadCancelled);
+    }
+
+    const downloadedSize = result.size > 0 ? result.size : release.assetSizeBytes;
+    onProgress?.(createProgress('opening-installer', 1, downloadedSize, release.assetSizeBytes));
+    await androidApkInstaller.installApk(result.contentUri);
+  } catch (error) {
+    if (destinationFile.exists) {
+      destinationFile.delete();
+    }
+    throw error;
   }
+}
 
-  if (result.status < 200 || result.status >= 300) {
-    throw new Error(`Update download failed (${result.status})`);
+async function cleanDownloadedUpdates(): Promise<void> {
+  const downloadDirectory = getDownloadDirectory();
+  if (downloadDirectory.exists) {
+    downloadDirectory.delete();
   }
-
-  onProgress?.(createProgress('opening-installer', 1, release.assetSizeBytes, release.assetSizeBytes));
-  const contentUri = await FileSystem.getContentUriAsync(result.uri);
-  await androidApkInstaller.installApk(contentUri);
 }
 
 export const appUpdateService = {
@@ -369,4 +376,5 @@ export const appUpdateService = {
   },
 
   downloadAndInstallUpdate: downloadAndInstallApk,
+  cleanDownloadedUpdates,
 };
