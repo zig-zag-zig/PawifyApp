@@ -316,7 +316,6 @@ if (!insideEmulators) {
       'auth,firestore,database',
       command,
     ], {
-      cwd: backendRoot,
       env: backendEnv,
     });
   } catch (error) {
