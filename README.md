@@ -133,6 +133,110 @@ npm run deps:update
 
 `deps:update` may change `package.json` or `package-lock.json`; use it when updating packages, not as part of every build.
 
+## Testing
+
+Run all unit tests:
+
+```bash
+npm test
+```
+
+Run TypeScript checks:
+
+```bash
+npm run typecheck
+```
+
+Run both (the fast quality gate):
+
+```bash
+npm run verify
+```
+
+### Test structure
+
+Tests live alongside their source files (`src/**/*.test.ts`) or in `tests/` for cross-cutting concerns. The test runner is [Vitest](https://vitest.dev/) with `environment: 'node'`.
+
+```text
+tests/
+  appConfig.test.ts           Expo config and splash color tests
+  dateUtil.test.ts            Date parsing, formatting, sort tests
+  e2e/                        Firebase emulator and fixture server tests
+src/
+  config/
+    envParsing.test.ts        Environment variable parsing tests
+    firebaseEmulator.test.ts  Emulator URL normalization tests
+  services/
+    apiErrors.test.ts         API error classification tests
+    api/apiClient.test.ts     API client request lifecycle tests
+    eventService.test.ts      Event dedup, filtering, listener tests
+    taskResultCache.test.ts   Cache LRU and terminal status tests
+    externalNavigation.test.ts  Resume delay timing tests
+    backgroundEventStorage.test.ts  Storage parsing edge case tests
+    userFacingErrors.test.ts  Error message routing tests
+    notifications/notificationEvents.test.ts  Payload parsing tests
+  utils/
+    nullableMaps.test.ts      Map merge semantics tests
+    taskResultMaps.test.ts    Task result extraction tests
+  shared/
+    taskResults/              Payload merging and nullable map tests
+  features/
+    artist/domain/            Release sections, age calculation tests
+    artists/domain/           Artist sorting tests
+    auth/domain/              Credential validation, security rules tests
+    release/domain/           Pagination, enrichment, grouping tests
+    search/domain/            Artist deduplication tests
+    updates/                  Update service and modal formatting tests
+  components/
+    externalLinks/            Link ranking tests
+    cachedImage/              Cache key hashing tests
+  hooks/
+    useGoogleAuth.test.ts     Google sign-in error helper tests
+```
+
+### Testing React hooks
+
+The default vitest environment is `node`, which is fast and sufficient for most tests (pure functions, reducers, services).
+
+To test React hooks that use `useState`, `useCallback`, etc., you need a DOM environment. The required dev dependencies are already installed:
+
+```
+@testing-library/react, @testing-library/dom, react-dom, jsdom
+```
+
+Write hook tests with the `// @vitest-environment jsdom` directive at the top and use `renderHook`/`act` from `@testing-library/react`:
+
+```ts
+// @vitest-environment jsdom
+import { renderHook, act } from '@testing-library/react';
+import { useSelectionManager } from './useSelectionManager';
+
+it('toggles selection', () => {
+  const { result } = renderHook(() => useSelectionManager([{ id: '1' }]));
+  act(() => result.current.toggleSelect('1'));
+  expect(result.current.selectedIds.has('1')).toBe(true);
+});
+```
+
+Use `@testing-library/react` (not `@testing-library/react-native`) since React Native doesn't include `react-dom` and `@testing-library/react-native` has transform compatibility issues with vitest v4. The `// @vitest-environment jsdom` directive is the per-file environment override — vitest v4 removed the `environmentMatchGlobs` config option.
+
+### Testing singletons with module-level state
+
+Services like `eventService`, `taskResultCache`, and `externalNavigation` use module-level mutable state. Each exports a `resetForTesting()` function that clears internal state between tests. Use `vi.resetModules()` in `afterEach` to get fresh module instances, or call `resetForTesting()` directly:
+
+```ts
+afterEach(() => {
+  vi.resetModules();
+});
+
+async function createService() {
+  const mod = await import('./eventService');
+  return mod.EventService;
+}
+```
+
+Use `npm run verify` before pushing app logic changes, and use `npm run doctor` after package or Expo SDK changes.
+
 ## Android Builds
 
 Development/debug builds install with the launcher name `Pawify Dev`, while production release builds install as `Pawify`. Their separate Android package names allow both to be installed side by side.
@@ -224,24 +328,13 @@ npm run e2e -- --clean --dry-run
 
 The e2e APK is written under `android/app/build/outputs/apk/e2e/Pawify-e2e.apk`, separate from the normal `debug/` and `release/` APK output folders.
 
-Local e2e runs always target an Android emulator and refuse connected physical devices. The runner starts the `PurrivacyPawifyE2E` AVD when no emulator is already running. Set `PAWIFY_E2E_AVD=YourAvdName` to use a different AVD, `PAWIFY_E2E_HEADLESS=true` to start it without a window, or `PAWIFY_E2E_KEEP_EMULATOR=true` to leave an emulator started by the script running after tests.
+Local e2e runs always target an Android emulator and refuse connected physical devices. The runner starts the `PawifyE2E` AVD when no emulator is already running. Set `PAWIFY_E2E_AVD=YourAvdName` to use a different AVD, `PAWIFY_E2E_HEADLESS=true` to start it without a window, or `PAWIFY_E2E_KEEP_EMULATOR=true` to leave an emulator started by the script running after tests.
 
 Normal debug and release installs may target a physical phone; only the local e2e runner is emulator-only.
 
 Maestro runs each flow separately so its steps remain visible, continues through flow failures, and prints passed and failed flow totals with their names at the end.
 
 PawifyApp e2e uses backend port `10000` and Firebase Auth emulator port `9199`, so it does not collide with PurrivacyApp e2e.
-
-## Testing
-
-Run individual checks when you want a tighter loop:
-
-```bash
-npm test
-npm run typecheck
-```
-
-Use `npm run verify` before pushing app logic changes, and use `npm run doctor` after package or Expo SDK changes.
 
 ### Android Signing
 
@@ -257,11 +350,20 @@ Back up `credentials.json` and the entire `.credentials/android/` directory in a
 ```text
 src/
   components/       Shared UI components
+  config/           Environment parsing, Firebase emulator config
   contexts/         App-wide state providers
   features/         Feature modules for auth, artists, search, releases, and updates
+  hooks/            Shared React hooks (task manager, selection, Google auth)
   navigation/       React Navigation stacks and tabs
   services/         API, events, task results, updates, and storage helpers
+  shared/           Shared task result types and utilities
   styles/           Shared styling
+  types/            Shared TypeScript types
+  utils/            Pure utility functions (arrays, diagnostics, maps)
+tests/
+  appConfig.test.ts Expo config tests
+  dateUtil.test.ts  Date utility tests (submodule source)
+  e2e/              Firebase emulator and fixture server tests
 ```
 
 ## Security Notes
