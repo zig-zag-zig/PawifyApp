@@ -42,3 +42,4 @@ android/keystores/
 ios*
 android/*
 .codex
+*-debug.log
