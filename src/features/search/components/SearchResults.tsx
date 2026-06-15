@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import { ActivityIndicator, FlatList, ListRenderItem, StyleSheet, Text, View } from 'react-native';
+import { FlatList, ListRenderItem, StyleSheet, View } from 'react-native';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
 import { InlineLink, Spinner } from '../../../components/ui';
 import { useContentReady } from '../../../hooks/useContentReady';
@@ -66,7 +66,6 @@ const SearchResults = ({
         ...artists.map((artist): SearchListItem => ({ type: 'artist', artist })),
         ...(canLoadMore || (isLoading && artists.length > 0) ? [{ type: 'footer' as const }] : []),
     ], [artists, canLoadMore, isLoading]);
-    const spinnerColor = '#FFF';
     const isInitialLoading = isLoading && artists.length === 0;
     const { isWaitingForContent, onContentReady } = useContentReady(
         isInitialLoading,
@@ -74,21 +73,16 @@ const SearchResults = ({
     );
 
     const renderLoadMore = useCallback(() => {
-        if (isLoading) {
+        if (canLoadMore || isLoading) {
             return (
-                <View style={styles.footerSpinner}>
-                    <ActivityIndicator size="small" color={spinnerColor} />
-                    <Text style={[styles.footerText, { color: spinnerColor }]}>Loading more</Text>
-                </View>
+                <InlineLink onPress={onLoadMore} isLoading={isLoading}>
+                    Load more
+                </InlineLink>
             );
         }
 
-        if (canLoadMore) {
-            return <InlineLink onPress={onLoadMore}>Load more</InlineLink>;
-        }
-
         return null;
-    }, [canLoadMore, isLoading, onLoadMore, spinnerColor]);
+    }, [canLoadMore, isLoading, onLoadMore]);
 
     const renderItem = useCallback<ListRenderItem<SearchListItem>>(({ item }) => {
         if (item.type === 'footer') {
@@ -147,16 +141,6 @@ const styles = StyleSheet.create({
     },
     emptyContentContainer: {
         flexGrow: 1,
-    },
-    footerSpinner: {
-        minHeight: 72,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-    },
-    footerText: {
-        fontSize: 14,
-        fontWeight: '600',
     },
 });
 

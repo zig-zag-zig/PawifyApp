@@ -159,7 +159,7 @@ const ReleasesSection = ({
         }
 
         return (
-            <InlineLink onPress={() => onLoadMore(item.title)}>
+            <InlineLink onPress={() => onLoadMore(item.title)} isLoading={isLoadingReleaseGroup}>
                 Load More
             </InlineLink>
         );
