@@ -1,6 +1,7 @@
 import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
 import { buildInitialLoadedItemsByType, DEFAULT_RELEASE_ITEMS_TO_SHOW } from '../domain/releaseSections';
 import type { ArtistPageState, PendingTaskKey } from '../model/types';
+import { mergeUniqueIds, removeIds } from '../../../utils/arrays';
 
 export type ArtistPageAction =
     | { type: 'artistLoadStarted' }
@@ -24,25 +25,6 @@ export type ArtistPageAction =
     | { type: 'releaseSectionLoadMore'; sectionTitle: string }
     | { type: 'errorCleared' }
     | { type: 'resetForArtistChange' };
-
-function mergeUniqueIds(existingIds: string[], incomingIds: string[]): string[] {
-    if (incomingIds.length === 0) {
-        return existingIds;
-    }
-
-    const merged = new Set(existingIds);
-    incomingIds.forEach(id => merged.add(id));
-    return [...merged];
-}
-
-function removeIds(existingIds: string[], idsToRemove: string[]): string[] {
-    if (existingIds.length === 0 || idsToRemove.length === 0) {
-        return existingIds;
-    }
-
-    const idsToRemoveSet = new Set(idsToRemove);
-    return existingIds.filter(id => !idsToRemoveSet.has(id));
-}
 
 export function createInitialArtistPageState(): ArtistPageState {
     return {

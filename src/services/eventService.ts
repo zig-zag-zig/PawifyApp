@@ -175,5 +175,13 @@ export const EventService = {
             pendingEventCount: pendingEvents.size,
         });
         EventService.consumeTaskCompletedEvent(taskId);
+    },
+
+    resetForTesting: () => {
+        pendingEvents.clear();
+        eventListeners.clear();
+        handledTaskIds.clear();
+        handledTaskIdOrder.length = 0;
+        clientPushToken = null;
     }
 };

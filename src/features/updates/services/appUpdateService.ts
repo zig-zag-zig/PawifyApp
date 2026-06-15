@@ -7,6 +7,8 @@ import { updateCopy } from '../domain/updateCopy';
 import type { AppRelease, UpdateCheckResult, UpdateDownloadProgress } from '../model/types';
 import { androidApkInstaller } from './androidApkInstaller';
 import { getUpdatePreference, setUpdatePreference } from './updatePreferenceStorage';
+import { compareVersions, normalizeVersion, parseRepoUrl } from '../domain/versionUtils';
+import type { ParsedRepo } from '../domain/versionUtils';
 
 type GitHubReleaseAsset = {
   name?: string;
@@ -27,11 +29,6 @@ type GitHubRelease = {
   assets?: GitHubReleaseAsset[];
 };
 
-type ParsedRepo = {
-  owner: string;
-  repo: string;
-};
-
 const GITHUB_API_VERSION = '2022-11-28';
 const SKIPPED_RELEASE_TAG_KEY = 'app-update-skipped-release-tag';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
@@ -42,52 +39,6 @@ export class AppUpdateNoReleaseError extends Error {
     super(message);
     this.name = 'AppUpdateNoReleaseError';
   }
-}
-
-function parseRepoUrl(repoUrl: string | null): ParsedRepo | null {
-  if (!repoUrl) return null;
-
-  const parsed = new URL(repoUrl);
-  const [owner, rawRepo] = parsed.pathname.split('/').filter(Boolean);
-  const repo = rawRepo?.replace(/\.git$/i, '');
-
-  if (!owner || !repo) return null;
-
-  return { owner, repo };
-}
-
-function normalizeVersion(value: string): string {
-  return value.trim().replace(/^v/i, '').split('+')[0];
-}
-
-function parseVersionParts(value: string): number[] | null {
-  const normalized = normalizeVersion(value).split('-')[0];
-  const parts = normalized.split('.');
-
-  if (parts.length === 0 || parts.some(part => !/^\d+$/.test(part))) {
-    return null;
-  }
-
-  return parts.map(part => Number.parseInt(part, 10));
-}
-
-function compareVersions(a: string, b: string): number {
-  const aParts = parseVersionParts(a);
-  const bParts = parseVersionParts(b);
-
-  if (!aParts || !bParts) {
-    return normalizeVersion(a) === normalizeVersion(b) ? 0 : 1;
-  }
-
-  const length = Math.max(aParts.length, bParts.length);
-  for (let i = 0; i < length; i += 1) {
-    const left = aParts[i] ?? 0;
-    const right = bParts[i] ?? 0;
-    if (left > right) return 1;
-    if (left < right) return -1;
-  }
-
-  return 0;
 }
 
 function getCurrentVersion(): string {

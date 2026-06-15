@@ -98,3 +98,9 @@ export const createMissingTaskResult = <T>(taskId: string, error: ApiCallError):
     },
   };
 };
+
+export const resetForTesting = () => {
+  taskResultCache.clear();
+  taskResultCacheOrder.length = 0;
+  pendingTaskResultWaits.clear();
+};

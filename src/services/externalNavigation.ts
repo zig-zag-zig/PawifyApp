@@ -69,3 +69,9 @@ export async function openExternalUrl(url: string) {
   markExternalNavigationStarted();
   await Linking.openURL(url);
 }
+
+export function resetForTesting() {
+  lastExternalNavigationStartedAt = 0;
+  resumeQuietUntil = 0;
+  scheduledWorkCount = 0;
+}

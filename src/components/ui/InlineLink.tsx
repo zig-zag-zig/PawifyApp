@@ -1,11 +1,14 @@
-import type { ReactNode } from 'react';
-import { Text, TouchableOpacity, type StyleProp, type TextStyle } from 'react-native';
+import { type ReactNode } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type TextStyle } from 'react-native';
 import { getStyles } from '../../styles/styles';
+
+const inlineLinkColor = '#007AFF';
 
 type InlineLinkProps = {
   onPress: () => void;
   children: ReactNode;
   centered?: boolean;
+  isLoading?: boolean;
   style?: StyleProp<TextStyle>;
 };
 
@@ -13,13 +16,36 @@ export const InlineLink = ({
   onPress,
   children,
   centered = true,
+  isLoading = false,
   style,
 }: InlineLinkProps) => {
   const styles = getStyles();
 
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.inlineLink, centered && { alignItems: 'center' }]}>
-      <Text style={[styles.inlineLinkText, style]}>{children}</Text>
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.inlineLink,
+        centered && { alignItems: 'center' },
+        isLoading && localStyles.loading,
+      ]}
+    >
+      <Text style={[styles.inlineLinkText, style, isLoading && localStyles.loadingText]}>
+        {children}
+      </Text>
+      {isLoading && <ActivityIndicator size="small" color={inlineLinkColor} />}
     </TouchableOpacity>
   );
 };
+
+const localStyles = StyleSheet.create({
+  loading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginLeft: 14,
+    marginRight: 8,
+  },
+});

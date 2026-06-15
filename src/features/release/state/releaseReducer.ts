@@ -1,5 +1,6 @@
 import type { Release, Track } from '../../../shared/music';
 import type { ReleasePageState } from '../model/types';
+import { removeIds } from '../../../utils/arrays';
 
 type ReleaseAction =
     | { type: 'releaseLoadStarted' }
@@ -38,15 +39,6 @@ export function createInitialReleaseState(): ReleasePageState {
         releaseExists: null,
         checkingExistence: true,
     };
-}
-
-function removeIds(existingIds: string[], idsToRemove: string[]): string[] {
-    if (existingIds.length === 0 || idsToRemove.length === 0) {
-        return existingIds;
-    }
-
-    const idsToRemoveSet = new Set(idsToRemove);
-    return existingIds.filter(id => !idsToRemoveSet.has(id));
 }
 
 export function releaseReducer(state: ReleasePageState, action: ReleaseAction): ReleasePageState {
