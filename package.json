@@ -8,6 +8,7 @@
     "android": "node scripts/with-env.cjs development -- expo run:android",
     "ios": "node scripts/with-env.cjs development -- expo run:ios",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm test",
     "doctor": "node scripts/expo-maintenance-check.cjs",

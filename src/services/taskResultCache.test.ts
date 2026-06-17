@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mockDiagnostics } from '../test/mocks';
+import {
+    isTerminalTaskStatus,
+    cacheTaskResult,
+    getCachedTaskResult,
+    createMissingTaskResult,
+    setPendingTaskResultWait,
+    getPendingTaskResultWait,
+    deletePendingTaskResultWait,
+    resetForTesting,
+} from './taskResultCache';
 
-vi.mock('../utils/diagnostics', () => ({
-    describeValueShape: vi.fn(() => ({})),
-    diagnosticLog: vi.fn(),
-    diagnosticWarn: vi.fn(),
-}));
+vi.mock('../utils/diagnostics', () => mockDiagnostics());
 
 vi.mock('../services/eventService', () => ({
     EventService: {
@@ -14,50 +21,39 @@ vi.mock('../services/eventService', () => ({
 
 describe('taskResultCache', () => {
     afterEach(() => {
-        vi.resetModules();
+        resetForTesting();
     });
 
-    async function loadModule() {
-        return import('./taskResultCache');
-    }
-
     describe('isTerminalTaskStatus', () => {
-        it('returns true for "completed"', async () => {
-            const { isTerminalTaskStatus } = await loadModule();
+        it('returns true for "completed"', () => {
             expect(isTerminalTaskStatus('completed')).toBe(true);
         });
 
-        it('returns true for "failed"', async () => {
-            const { isTerminalTaskStatus } = await loadModule();
+        it('returns true for "failed"', () => {
             expect(isTerminalTaskStatus('failed')).toBe(true);
         });
 
-        it('returns true for "error"', async () => {
-            const { isTerminalTaskStatus } = await loadModule();
+        it('returns true for "error"', () => {
             expect(isTerminalTaskStatus('error')).toBe(true);
         });
 
-        it('is case-insensitive', async () => {
-            const { isTerminalTaskStatus } = await loadModule();
+        it('is case-insensitive', () => {
             expect(isTerminalTaskStatus('Completed')).toBe(true);
             expect(isTerminalTaskStatus('FAILED')).toBe(true);
             expect(isTerminalTaskStatus('Error')).toBe(true);
         });
 
-        it('returns false for "pending"', async () => {
-            const { isTerminalTaskStatus } = await loadModule();
+        it('returns false for "pending"', () => {
             expect(isTerminalTaskStatus('pending')).toBe(false);
         });
 
-        it('returns false for "running"', async () => {
-            const { isTerminalTaskStatus } = await loadModule();
+        it('returns false for "running"', () => {
             expect(isTerminalTaskStatus('running')).toBe(false);
         });
     });
 
     describe('cacheTaskResult / getCachedTaskResult', () => {
-        it('stores and retrieves results', async () => {
-            const { cacheTaskResult, getCachedTaskResult } = await loadModule();
+        it('stores and retrieves results', () => {
             const result = {
                 taskId: 't1',
                 type: 'test',
@@ -68,13 +64,11 @@ describe('taskResultCache', () => {
             expect(getCachedTaskResult('t1')).toBe(result);
         });
 
-        it('returns undefined for uncached task', async () => {
-            const { getCachedTaskResult } = await loadModule();
+        it('returns undefined for uncached task', () => {
             expect(getCachedTaskResult('missing')).toBeUndefined();
         });
 
-        it('evicts oldest when exceeding 250 limit', async () => {
-            const { cacheTaskResult, getCachedTaskResult } = await loadModule();
+        it('evicts oldest when exceeding 250 limit', () => {
             for (let i = 0; i < 251; i++) {
                 cacheTaskResult(`t${i}`, { taskId: `t${i}`, type: 'test', status: 'completed', createdAt: '' } as any);
             }
@@ -84,8 +78,7 @@ describe('taskResultCache', () => {
     });
 
     describe('createMissingTaskResult', () => {
-        it('produces correct shape', async () => {
-            const { createMissingTaskResult } = await loadModule();
+        it('produces correct shape', () => {
             const error = Object.assign(new Error('test'), {
                 statusCode: 500,
                 userMessage: 'Server error',
@@ -99,8 +92,7 @@ describe('taskResultCache', () => {
             expect(err.message).toBe('Server error');
         });
 
-        it('falls back to error.message when userMessage missing', async () => {
-            const { createMissingTaskResult } = await loadModule();
+        it('falls back to error.message when userMessage missing', () => {
             const error = Object.assign(new Error('raw error'), {
                 statusCode: 500,
             }) as any;
@@ -111,8 +103,7 @@ describe('taskResultCache', () => {
     });
 
     describe('pending task result wait lifecycle', () => {
-        it('set, get, delete', async () => {
-            const { setPendingTaskResultWait, getPendingTaskResultWait, deletePendingTaskResultWait } = await loadModule();
+        it('set, get, delete', () => {
             const promise = Promise.resolve({ taskId: 't1', type: 'test', status: 'completed', createdAt: '' } as any);
             setPendingTaskResultWait('t1', promise);
             const wait = getPendingTaskResultWait('t1');
@@ -123,8 +114,7 @@ describe('taskResultCache', () => {
             expect(getPendingTaskResultWait('t1')).toBeUndefined();
         });
 
-        it('returns undefined for non-existent wait', async () => {
-            const { getPendingTaskResultWait } = await loadModule();
+        it('returns undefined for non-existent wait', () => {
             expect(getPendingTaskResultWait('missing')).toBeUndefined();
         });
     });

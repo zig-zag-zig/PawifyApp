@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mockDiagnostics } from '../../test/mocks';
 
 vi.mock('expo-file-system', () => ({
     File: class {
@@ -16,10 +17,7 @@ vi.mock('../../config/env', () => ({
 }));
 
 vi.mock('../../utils/diagnostics', () => ({
-    describeError: vi.fn(() => ({})),
-    diagnosticLog: vi.fn(),
-    diagnosticWarn: vi.fn(),
-    elapsedSince: vi.fn(() => 1),
+    ...mockDiagnostics(),
     shortenString: vi.fn((s: string) => s),
 }));
 
@@ -61,5 +59,17 @@ describe('getCacheKeyFromUrl', () => {
         const key1 = fn('https://example.com/image1.jpg');
         const key2 = fn('https://example.com/image2.jpg');
         expect(key1).not.toBe(key2);
+    });
+});
+
+describe('deleteCachedImageFile', () => {
+    async function loadModule() {
+        const mod = await import('./cachedImageFileCache');
+        return mod.deleteCachedImageFile;
+    }
+
+    it('no-ops when file does not exist', async () => {
+        const fn = await loadModule();
+        await expect(fn('nonexistent-key')).resolves.toBeUndefined();
     });
 });

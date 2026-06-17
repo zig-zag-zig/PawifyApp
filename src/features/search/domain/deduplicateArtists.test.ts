@@ -28,4 +28,29 @@ describe('artist deduplication', () => {
             [artist('existing', 'Existing Name')],
         ).map(item => item.id)).toEqual(['new']);
     });
+
+    it('returns empty array when newArtists is empty', () => {
+        expect(deduplicateArtists([], [artist('a')])).toEqual([]);
+    });
+
+    it('returns all newArtists when existingArtists is empty', () => {
+        const result = deduplicateArtists([artist('a'), artist('b')], []);
+        expect(result.map(a => a.id)).toEqual(['a', 'b']);
+    });
+
+    it('returns empty when all newArtists are duplicates', () => {
+        const result = deduplicateArtists(
+            [artist('a'), artist('b')],
+            [artist('a'), artist('b'), artist('c')],
+        );
+        expect(result).toEqual([]);
+    });
+
+    it('keeps all when no duplicates', () => {
+        const result = deduplicateArtists(
+            [artist('a'), artist('b')],
+            [artist('c'), artist('d')],
+        );
+        expect(result.map(a => a.id)).toEqual(['a', 'b']);
+    });
 });
