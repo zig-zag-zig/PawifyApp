@@ -1,193 +1,161 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mockDiagnostics } from '../test/mocks';
+import { EventService } from './eventService';
 
-vi.mock('../utils/diagnostics', () => ({
-    describeValueShape: vi.fn(() => ({})),
-    diagnosticLog: vi.fn(),
-    diagnosticWarn: vi.fn(),
-}));
+vi.mock('../utils/diagnostics', () => mockDiagnostics());
 
-// We need to reset module state between tests.
-// The EventService uses module-level mutable state, so we re-import per test group.
 describe('EventService', () => {
     afterEach(() => {
-        vi.resetModules();
+        EventService.resetForTesting();
     });
 
-    async function createService() {
-        const mod = await import('./eventService');
-        return mod.EventService;
-    }
-
     describe('addEvent', () => {
-        it('returns true for new events', async () => {
-            const svc = await createService();
-            expect(svc.addEvent('test-event')).toBe(true);
+        it('returns true for new events', () => {
+            expect(EventService.addEvent('test-event')).toBe(true);
         });
 
-        it('returns false for duplicate events', async () => {
-            const svc = await createService();
-            svc.addEvent('test-event');
-            expect(svc.addEvent('test-event')).toBe(false);
+        it('returns false for duplicate events', () => {
+            EventService.addEvent('test-event');
+            expect(EventService.addEvent('test-event')).toBe(false);
         });
 
-        it('returns true for different event names', async () => {
-            const svc = await createService();
-            expect(svc.addEvent('event-a')).toBe(true);
-            expect(svc.addEvent('event-b')).toBe(true);
+        it('returns true for different event names', () => {
+            expect(EventService.addEvent('event-a')).toBe(true);
+            expect(EventService.addEvent('event-b')).toBe(true);
         });
     });
 
     describe('consumeEvent', () => {
-        it('removes and returns event payload', async () => {
-            const svc = await createService();
-            svc.addEvent('test-event', { data: 'value' });
-            const payload = svc.consumeEvent('test-event');
+        it('removes and returns event payload', () => {
+            EventService.addEvent('test-event', { data: 'value' });
+            const payload = EventService.consumeEvent('test-event');
             expect(payload).toEqual({ data: 'value' });
         });
 
-        it('returns undefined for non-existent event', async () => {
-            const svc = await createService();
-            expect(svc.consumeEvent('missing')).toBeUndefined();
+        it('returns undefined for non-existent event', () => {
+            expect(EventService.consumeEvent('missing')).toBeUndefined();
         });
 
-        it('returns undefined after consuming', async () => {
-            const svc = await createService();
-            svc.addEvent('test-event');
-            svc.consumeEvent('test-event');
-            expect(svc.consumeEvent('test-event')).toBeUndefined();
+        it('returns undefined after consuming', () => {
+            EventService.addEvent('test-event');
+            EventService.consumeEvent('test-event');
+            expect(EventService.consumeEvent('test-event')).toBeUndefined();
         });
     });
 
     describe('task ID dedup', () => {
-        it('deduplicates taskCompleted events with colon format', async () => {
-            const svc = await createService();
-            expect(svc.addEvent('taskCompleted:task-123')).toBe(true);
-            expect(svc.addEvent('taskCompleted:task-123')).toBe(false);
+        it('deduplicates taskCompleted events with colon format', () => {
+            expect(EventService.addEvent('taskCompleted:task-123')).toBe(true);
+            expect(EventService.addEvent('taskCompleted:task-123')).toBe(false);
         });
 
-        it('marks task as handled after markTaskHandled', async () => {
-            const svc = await createService();
-            svc.markTaskHandled('task-123');
-            expect(svc.hasHandledTask('task-123')).toBe(true);
-            expect(svc.addEvent('taskCompleted:task-123')).toBe(false);
+        it('marks task as handled after markTaskHandled', () => {
+            EventService.markTaskHandled('task-123');
+            expect(EventService.hasHandledTask('task-123')).toBe(true);
+            expect(EventService.addEvent('taskCompleted:task-123')).toBe(false);
         });
 
-        it('hasHandledTask returns false for unknown task', async () => {
-            const svc = await createService();
-            expect(svc.hasHandledTask('unknown')).toBe(false);
+        it('hasHandledTask returns false for unknown task', () => {
+            expect(EventService.hasHandledTask('unknown')).toBe(false);
         });
     });
 
     describe('consumeTaskCompletedEvent', () => {
-        it('removes specific task event', async () => {
-            const svc = await createService();
-            svc.addEvent('taskCompleted:task-1', { data: 'specific' });
-            svc.consumeTaskCompletedEvent('task-1');
-            expect(svc.getPendingEvents().has('taskCompleted:task-1')).toBe(false);
+        it('removes specific task event', () => {
+            EventService.addEvent('taskCompleted:task-1', { data: 'specific' });
+            EventService.consumeTaskCompletedEvent('task-1');
+            expect(EventService.getPendingEvents().has('taskCompleted:task-1')).toBe(false);
         });
 
-        it('removes generic taskCompleted if taskId matches', async () => {
-            const svc = await createService();
-            svc.addEvent('taskCompleted', { taskId: 'task-1' });
-            svc.consumeTaskCompletedEvent('task-1');
-            expect(svc.getPendingEvents().has('taskCompleted')).toBe(false);
+        it('removes generic taskCompleted if taskId matches', () => {
+            EventService.addEvent('taskCompleted', { taskId: 'task-1' });
+            EventService.consumeTaskCompletedEvent('task-1');
+            expect(EventService.getPendingEvents().has('taskCompleted')).toBe(false);
         });
 
-        it('does not remove generic taskCompleted if taskId differs', async () => {
-            const svc = await createService();
-            svc.addEvent('taskCompleted', { taskId: 'task-1' });
-            svc.consumeTaskCompletedEvent('task-2');
-            expect(svc.getPendingEvents().has('taskCompleted')).toBe(true);
+        it('does not remove generic taskCompleted if taskId differs', () => {
+            EventService.addEvent('taskCompleted', { taskId: 'task-1' });
+            EventService.consumeTaskCompletedEvent('task-2');
+            expect(EventService.getPendingEvents().has('taskCompleted')).toBe(true);
         });
     });
 
     describe('source push token filtering', () => {
-        it('ignores events from own push token for client source events', async () => {
-            const svc = await createService();
-            svc.setClientPushToken('my-token');
-            expect(svc.addEvent('releases', { sourcePushToken: 'my-token' })).toBe(false);
+        it('ignores events from own push token for client source events', () => {
+            EventService.setClientPushToken('my-token');
+            expect(EventService.addEvent('releases', { sourcePushToken: 'my-token' })).toBe(false);
         });
 
-        it('accepts events from other push tokens', async () => {
-            const svc = await createService();
-            svc.setClientPushToken('my-token');
-            expect(svc.addEvent('releases', { sourcePushToken: 'other-token' })).toBe(true);
+        it('accepts events from other push tokens', () => {
+            EventService.setClientPushToken('my-token');
+            expect(EventService.addEvent('releases', { sourcePushToken: 'other-token' })).toBe(true);
         });
 
-        it('accepts events without push token', async () => {
-            const svc = await createService();
-            svc.setClientPushToken('my-token');
-            expect(svc.addEvent('releases')).toBe(true);
+        it('accepts events without push token', () => {
+            EventService.setClientPushToken('my-token');
+            expect(EventService.addEvent('releases')).toBe(true);
         });
 
-        it('does not filter non-client-source events', async () => {
-            const svc = await createService();
-            svc.setClientPushToken('my-token');
-            expect(svc.addEvent('taskCompleted:task-1', { sourcePushToken: 'my-token' })).toBe(true);
+        it('does not filter non-client-source events', () => {
+            EventService.setClientPushToken('my-token');
+            expect(EventService.addEvent('taskCompleted:task-1', { sourcePushToken: 'my-token' })).toBe(true);
         });
     });
 
     describe('listeners', () => {
-        it('notifies listeners on new events', async () => {
-            const svc = await createService();
+        it('notifies listeners on new events', () => {
             const listener = vi.fn();
-            svc.addListener(listener);
-            svc.addEvent('test-event', { data: 'value' });
+            EventService.addListener(listener);
+            EventService.addEvent('test-event', { data: 'value' });
             expect(listener).toHaveBeenCalledWith('test-event', { data: 'value' });
         });
 
-        it('does not notify for duplicate events', async () => {
-            const svc = await createService();
+        it('does not notify for duplicate events', () => {
             const listener = vi.fn();
-            svc.addListener(listener);
-            svc.addEvent('test-event');
+            EventService.addListener(listener);
+            EventService.addEvent('test-event');
             listener.mockClear();
-            svc.addEvent('test-event');
+            EventService.addEvent('test-event');
             expect(listener).not.toHaveBeenCalled();
         });
 
-        it('unsubscribe stops notifications', async () => {
-            const svc = await createService();
+        it('unsubscribe stops notifications', () => {
             const listener = vi.fn();
-            const unsubscribe = svc.addListener(listener);
+            const unsubscribe = EventService.addListener(listener);
             unsubscribe();
-            svc.addEvent('test-event');
+            EventService.addEvent('test-event');
             expect(listener).not.toHaveBeenCalled();
         });
     });
 
     describe('getPendingEvents', () => {
-        it('returns copy of pending events', async () => {
-            const svc = await createService();
-            svc.addEvent('event-a', { data: 1 });
-            svc.addEvent('event-b', { data: 2 });
-            const events = svc.getPendingEvents();
+        it('returns copy of pending events', () => {
+            EventService.addEvent('event-a', { data: 1 });
+            EventService.addEvent('event-b', { data: 2 });
+            const events = EventService.getPendingEvents();
             expect(events.size).toBe(2);
             expect(events.get('event-a')).toEqual({ data: 1 });
         });
 
-        it('returns a copy, not the original map', async () => {
-            const svc = await createService();
-            svc.addEvent('event-a');
-            const events = svc.getPendingEvents();
+        it('returns a copy, not the original map', () => {
+            EventService.addEvent('event-a');
+            const events = EventService.getPendingEvents();
             events.clear();
-            expect(svc.getPendingEvents().size).toBe(1);
+            expect(EventService.getPendingEvents().size).toBe(1);
         });
     });
 
     describe('client push token', () => {
-        it('stores and retrieves push token', async () => {
-            const svc = await createService();
-            expect(svc.getClientPushToken()).toBeNull();
-            svc.setClientPushToken('token-123');
-            expect(svc.getClientPushToken()).toBe('token-123');
+        it('stores and retrieves push token', () => {
+            expect(EventService.getClientPushToken()).toBeNull();
+            EventService.setClientPushToken('token-123');
+            expect(EventService.getClientPushToken()).toBe('token-123');
         });
 
-        it('can be set to null', async () => {
-            const svc = await createService();
-            svc.setClientPushToken('token-123');
-            svc.setClientPushToken(null);
-            expect(svc.getClientPushToken()).toBeNull();
+        it('can be set to null', () => {
+            EventService.setClientPushToken('token-123');
+            EventService.setClientPushToken(null);
+            expect(EventService.getClientPushToken()).toBeNull();
         });
     });
 });

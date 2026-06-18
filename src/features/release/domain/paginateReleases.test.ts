@@ -27,4 +27,21 @@ describe('release pagination helpers', () => {
         expect(paginateReleases(releases, 2, 2).map(item => item.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
         expect(canLoadMoreReleases(releases, 2, 2)).toBe(false);
     });
+
+    it('handles empty releases list', () => {
+        expect(paginateReleases([], 0, 10)).toEqual([]);
+        expect(canLoadMoreReleases([], 0, 10)).toBe(false);
+    });
+
+    it('handles single item', () => {
+        const releases = ['a'].map(release);
+        expect(paginateReleases(releases, 0, 10)).toHaveLength(1);
+        expect(canLoadMoreReleases(releases, 0, 10)).toBe(false);
+    });
+
+    it('handles last page exactly matching list length', () => {
+        const releases = ['a', 'b', 'c', 'd'].map(release);
+        expect(paginateReleases(releases, 1, 2)).toHaveLength(4);
+        expect(canLoadMoreReleases(releases, 1, 2)).toBe(false);
+    });
 });

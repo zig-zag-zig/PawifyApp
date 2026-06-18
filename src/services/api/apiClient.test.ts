@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mockDiagnostics } from '../../test/mocks';
 
 vi.mock('../../config/env', () => ({
   ENV: {
@@ -7,15 +8,7 @@ vi.mock('../../config/env', () => ({
   },
 }));
 
-vi.mock('../../utils/diagnostics', () => ({
-  describeError: vi.fn(() => ({})),
-  describeIds: vi.fn(() => ({})),
-  describeValueShape: vi.fn(() => ({})),
-  diagnosticError: vi.fn(),
-  diagnosticLog: vi.fn(),
-  diagnosticWarn: vi.fn(),
-  elapsedSince: vi.fn(() => 1),
-}));
+vi.mock('../../utils/diagnostics', () => mockDiagnostics());
 
 vi.mock('../taskResultWaiter', () => ({
   waitForTaskResultFromSignals: vi.fn(),

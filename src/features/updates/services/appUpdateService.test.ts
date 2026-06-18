@@ -118,67 +118,90 @@ afterEach(() => {
 });
 
 describe('appUpdateService', () => {
-  it('falls back to the releases list when the latest endpoint returns 404', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createFetchResponse(404))
-      .mockResolvedValueOnce(createFetchResponse(200, [createRelease()]));
+  describe('checkForUpdate', () => {
+    it('falls back to the releases list when the latest endpoint returns 404', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(createFetchResponse(404))
+        .mockResolvedValueOnce(createFetchResponse(200, [createRelease()]));
 
-    vi.stubGlobal('fetch', fetchMock);
+      vi.stubGlobal('fetch', fetchMock);
 
-    const result = await appUpdateService.checkForUpdate();
+      const result = await appUpdateService.checkForUpdate();
 
-    expect(result.currentVersion).toBe('1.0.0');
-    expect(result.isAvailable).toBe(false);
-    expect(result.release.tagName).toBe('v1.0.0');
-    expect(result.release.assetName).toBe('Pawify.apk');
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      'https://api.github.com/repos/zig-zag-zig/PawifyApp/releases/latest',
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://api.github.com/repos/zig-zag-zig/PawifyApp/releases?per_page=10',
-      expect.any(Object),
-    );
+      expect(result.currentVersion).toBe('1.0.0');
+      expect(result.isAvailable).toBe(false);
+      expect(result.release.tagName).toBe('v1.0.0');
+      expect(result.release.assetName).toBe('Pawify.apk');
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://api.github.com/repos/zig-zag-zig/PawifyApp/releases/latest',
+        expect.any(Object),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://api.github.com/repos/zig-zag-zig/PawifyApp/releases?per_page=10',
+        expect.any(Object),
+      );
+    });
+
+    it('uses a neutral no-release error when GitHub has no stable public release', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(createFetchResponse(404))
+        .mockResolvedValueOnce(createFetchResponse(200, [
+          createRelease({ prerelease: true }),
+        ]));
+
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(appUpdateService.checkForUpdate())
+        .rejects
+        .toBeInstanceOf(AppUpdateNoReleaseError);
+    });
+
+    it('handles network failure gracefully', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
+
+      await expect(appUpdateService.checkForUpdate())
+        .rejects
+        .toThrow();
+    });
+
+    it('checks iOS releases for notes without exposing download or install actions', async () => {
+      (Platform as { OS: string }).OS = 'ios';
+      const fetchMock = vi.fn().mockResolvedValueOnce(createFetchResponse(200, createRelease({
+        tag_name: 'v1.0.1',
+      })));
+
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await appUpdateService.checkForUpdate();
+
+      expect(appUpdateService.isInstallSupported()).toBe(false);
+      expect(result.isAvailable).toBe(true);
+      expect(result.release.assetName).toBeNull();
+      expect(result.release.assetDownloadUrl).toBeNull();
+      expect(result.release.canInstallInApp).toBe(false);
+      expect(result.release.downloadLabel).toBe('Release Notes');
+
+      await appUpdateService.downloadAndInstallUpdate(result.release);
+      await appUpdateService.openUpdate(result.release);
+
+      expect(openExternalUrl).not.toHaveBeenCalled();
+    });
   });
 
-  it('uses a neutral no-release error when GitHub has no stable public release', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createFetchResponse(404))
-      .mockResolvedValueOnce(createFetchResponse(200, [
-        createRelease({ prerelease: true }),
-      ]));
+  describe('openUpdate', () => {
+    it('opens GitHub release URL for Android', async () => {
+      (Platform as { OS: string }).OS = 'android';
+      const release = {
+        htmlUrl: 'https://github.com/zig-zag-zig/PawifyApp/releases/tag/v1.0.1',
+      } as any;
 
-    vi.stubGlobal('fetch', fetchMock);
+      await appUpdateService.openUpdate(release);
 
-    await expect(appUpdateService.checkForUpdate())
-      .rejects
-      .toBeInstanceOf(AppUpdateNoReleaseError);
-  });
-
-  it('checks iOS releases for notes without exposing download or install actions', async () => {
-    (Platform as { OS: string }).OS = 'ios';
-    const fetchMock = vi.fn().mockResolvedValueOnce(createFetchResponse(200, createRelease({
-      tag_name: 'v1.0.1',
-    })));
-
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await appUpdateService.checkForUpdate();
-
-    expect(appUpdateService.isInstallSupported()).toBe(false);
-    expect(result.isAvailable).toBe(true);
-    expect(result.release.assetName).toBeNull();
-    expect(result.release.assetDownloadUrl).toBeNull();
-    expect(result.release.canInstallInApp).toBe(false);
-    expect(result.release.downloadLabel).toBe('Release Notes');
-
-    await appUpdateService.downloadAndInstallUpdate(result.release);
-    await appUpdateService.openUpdate(result.release);
-
-    expect(openExternalUrl).not.toHaveBeenCalled();
+      expect(openExternalUrl).toHaveBeenCalledWith(release.htmlUrl);
+    });
   });
 });
