@@ -1,4 +1,4 @@
-appId: vip.chi_chi.pawify.dev
+appId: vip.chi_chi.pawify
 ---
 - launchApp:
     clearState: true
