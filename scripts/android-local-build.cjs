@@ -432,6 +432,20 @@ bumpVersionIfRequested();
 run('npx', prebuildArgs);
 run('node', ['scripts/configure-android-gradle.cjs']);
 run('node', ['scripts/sync-android-version.cjs']);
+
+// Force Gradle to regenerate the JS bundle so it picks up new environment variables
+if (!dryRun) {
+  const generatedAssetsDir = path.join(androidRoot, 'app', 'build', 'generated', 'assets', 'react');
+  const generatedResDir = path.join(androidRoot, 'app', 'build', 'generated', 'res', 'react');
+
+  for (const dir of [generatedAssetsDir, generatedResDir]) {
+    if (fs.existsSync(dir)) {
+      console.log(`[android-build] clearing cached JS bundle: ${path.relative(projectRoot, dir)}`);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+}
+
 run(gradlew, gradleArgs, { cwd: androidRoot });
 
 const apkPath = moveNamedApk();
