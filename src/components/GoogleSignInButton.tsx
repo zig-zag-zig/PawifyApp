@@ -4,7 +4,7 @@ import Svg, { G, Path, Defs, ClipPath, Rect } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
 import { isGoogleSignInCancellation } from '../hooks/useGoogleAuth';
 import { getUserFacingErrorMessage } from '../services/userFacingErrors';
-import { useToast } from './ToastContext';
+import { useToast } from '../contexts/ToastContext';
 
 const GoogleLogo = () => (
     <Svg width="20" height="20" viewBox="0 0 21 20" fill="none">

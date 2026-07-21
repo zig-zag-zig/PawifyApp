@@ -1,7 +1,7 @@
 {
   "name": "pawify",
   "license": "0BSD",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "main": "index.ts",
   "scripts": {
     "start": "node scripts/with-env.cjs development -- npx expo start",
@@ -38,20 +38,20 @@
     "@react-navigation/native": "^7.0.14",
     "@react-navigation/stack": "^7.1.1",
     "@sentry/react-native": "~7.11.0",
-    "expo": "~56.0.12",
+    "expo": "~56.0.16",
     "expo-constants": "~56.0.17",
-    "expo-dev-client": "~56.0.20",
+    "expo-dev-client": "~56.0.23",
     "expo-device": "~56.0.4",
     "expo-file-system": "~56.0.7",
     "expo-font": "~56.0.5",
     "expo-linear-gradient": "~56.0.4",
-    "expo-linking": "~56.0.14",
-    "expo-notifications": "~56.0.18",
+    "expo-linking": "~56.0.15",
+    "expo-notifications": "~56.0.21",
     "expo-secure-store": "~56.0.4",
-    "expo-splash-screen": "~56.0.10",
+    "expo-splash-screen": "~56.0.13",
     "expo-system-ui": "~56.0.5",
-    "expo-task-manager": "~56.0.19",
-    "expo-updates": "~56.0.19",
+    "expo-task-manager": "~56.0.22",
+    "expo-updates": "~56.0.22",
     "firebase": "^12.12.1",
     "react": "19.2.3",
     "react-native": "0.85.3",
@@ -78,7 +78,8 @@
     "vitest": "^4.1.7"
   },
   "overrides": {
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "tar": "^7.5.20"
   },
   "private": true
 }

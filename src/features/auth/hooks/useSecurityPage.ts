@@ -7,10 +7,9 @@ import {
     reauthenticateWithCredential,
     reauthenticateWithCredential as reauthWithCred,
     updatePassword,
-    deleteUser,
 } from 'firebase/auth';
 import { useCallback, useMemo, useReducer } from 'react';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import useGoogleAuth from '../../../hooks/useGoogleAuth';
 import { auth } from '../../../firebase/firebaseAuth';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
@@ -29,11 +28,14 @@ import { createInitialSecurityState, securityReducer } from '../state/authReduce
 
 type SecurityNavigationProp = StackNavigationProp<RootStackParamList, 'Security'>;
 
-async function deleteAccount(deleteUserAccount: () => Promise<string>) {
+export async function deleteAccount(deleteUserAccount: () => Promise<string>) {
     if (!auth.currentUser) return false;
 
+    // The backend owns Firebase identity and account-data deletion. Calling the
+    // client-side deleteUser() here would target an identity the backend has
+    // already removed, throwing a false-negative failure even though deletion
+    // succeeded. Local session cleanup (firebaseSignOut) happens via signOut().
     await deleteUserAccount();
-    await deleteUser(auth.currentUser);
     return true;
 }
 
@@ -134,7 +136,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
         });
         dispatch({ type: 'formErrorsChanged', value: errors });
         if (Object.keys(errors).length > 0) {
-            return { success: false, requiresSignout: false };
+            return { success: false, requiresSignout: false, accountDeleted: false };
         }
 
         setLoginWithReauthenticateWithCredential(true);
@@ -147,12 +149,12 @@ export function useSecurityPage(actionType: SecurityActionType) {
                 const result = await useGoogleAuth.signInWithGoogle();
                 const idToken = result?.idToken;
                 if (!idToken) {
-                    return { success: false, requiresSignout: true };
+                    return { success: false, requiresSignout: true, accountDeleted: false };
                 }
                 const credential = GoogleAuthProvider.credential(idToken);
                 await reauthWithCred(currentUser, credential);
             } catch (error) {
-                return { success: false, requiresSignout: true };
+                return { success: false, requiresSignout: true, accountDeleted: false };
             }
         } else if (reauthMethod === 'password') {
             const credential = EmailAuthProvider.credential(currentUser.email, state.currentPassword);
@@ -162,6 +164,7 @@ export function useSecurityPage(actionType: SecurityActionType) {
         }
 
         let success = false;
+        let accountDeleted = false;
 
         if (actionType === 'password') {
             await updatePassword(currentUser, state.newValue);
@@ -171,25 +174,34 @@ export function useSecurityPage(actionType: SecurityActionType) {
             success = true;
         } else if (actionType === 'delete') {
             success = await deleteAccount(deleteUserAccount);
+            accountDeleted = success;
         }
 
-        if (success) {
+        // revokeToken invalidates other sessions for the still-existing user. After
+        // account deletion the Firebase identity is gone, and any still-valid ID
+        // token should be rejected by the backend (the deletion endpoint should
+        // clear application session state; the backend must verify token validity /
+        // user existence).  Skip revokeToken for delete.
+        if (success && !accountDeleted) {
             await revokeToken();
         }
 
         return {
             success,
             requiresSignout: success,
+            accountDeleted,
         };
     };
 
     const onSubmit = async () => {
         dispatch({ type: 'loadingChanged', value: true });
         let requiresSignout = false;
+        let accountDeleted = false;
 
         try {
             const result = await executeSecurityAction();
             requiresSignout = result.requiresSignout;
+            accountDeleted = result.accountDeleted;
 
             if (result.success) {
                 showToast(securitySuccessMessageMap[actionType], 'success');
@@ -212,10 +224,20 @@ export function useSecurityPage(actionType: SecurityActionType) {
             }
         } finally {
             setLoginWithReauthenticateWithCredential(false);
-            if (requiresSignout) {
-                await signOut();
+            try {
+                if (requiresSignout) {
+                    // After deletion the backend has already removed the device push
+                    // token, so skip the (now-failing) remote cleanup during sign-out.
+                    await signOut(accountDeleted ? { skipRemotePushTokenCleanup: true } : undefined);
+                }
+            } catch (error) {
+                // Post-commit local cleanup is best effort; account deletion is
+                // already committed.  Do not let sign-out failures reach the
+                // generic failure-toast path or leave the loading spinner stuck.
+                console.warn('security-page: post-commit sign-out failed', error);
+            } finally {
+                dispatch({ type: 'loadingChanged', value: false });
             }
-            dispatch({ type: 'loadingChanged', value: false });
         }
     };
 

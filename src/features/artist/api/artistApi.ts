@@ -5,7 +5,6 @@ import type {
     ArtistDetailsResponse,
     ArtistReleasesResponse,
     ReleaseGroupReleasesResponse,
-    TaskResultResponse,
 } from '../../../types/apiTypes';
 
 export function useArtistApi() {
@@ -13,11 +12,6 @@ export function useArtistApi() {
     const apiClient = useApiClient(getAccessToken);
 
     return useMemo(() => {
-        const getTaskResult = async <T,>(taskId: string) =>
-            await apiClient.request<TaskResultResponse<T>>('getTaskResult', {
-                body: { taskId },
-            });
-
         return {
             followArtist: async (artistId: string) =>
                 await apiClient.request<string>('followArtist', {
@@ -39,8 +33,8 @@ export function useArtistApi() {
                 await apiClient.request<ReleaseGroupReleasesResponse>('getReleaseGroupReleases', {
                     body: { releaseGroupId },
                 }),
-            waitForTaskResult: async <T,>(taskId: string, options?: Parameters<typeof apiClient.waitForTaskResult<T>>[2]) =>
-                await apiClient.waitForTaskResult<T>(taskId, getTaskResult, options),
+            waitForTaskResult: async <T,>(taskId: string, options?: Parameters<typeof apiClient.waitForTaskResultById<T>>[1]) =>
+                await apiClient.waitForTaskResultById<T>(taskId, options),
         };
     }, [apiClient]);
 }

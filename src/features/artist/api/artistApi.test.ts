@@ -11,6 +11,7 @@ const mockApiClient = {
     request: vi.fn(),
     withSourcePushToken: vi.fn(),
     waitForTaskResult: vi.fn(),
+    waitForTaskResultById: vi.fn(),
 };
 
 vi.mock('../../../hooks/useApiClient', () => ({
@@ -86,14 +87,14 @@ describe('useArtistApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('waitForTaskResult delegates to apiClient.waitForTaskResult', async () => {
+    it('waitForTaskResult delegates to apiClient.waitForTaskResultById', async () => {
         const taskResult = { taskId: 't1', type: 'test', status: 'completed', createdAt: '' };
-        vi.mocked(mockApiClient.waitForTaskResult).mockResolvedValueOnce(taskResult);
+        vi.mocked(mockApiClient.waitForTaskResultById).mockResolvedValueOnce(taskResult);
 
         const { result } = renderHook(() => useArtistApi());
         const output = await result.current.waitForTaskResult('t1');
 
-        expect(mockApiClient.waitForTaskResult).toHaveBeenCalledWith('t1', expect.any(Function), undefined);
+        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1', undefined);
         expect(output).toBe(taskResult);
     });
 });

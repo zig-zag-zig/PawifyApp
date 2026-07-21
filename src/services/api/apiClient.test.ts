@@ -103,6 +103,39 @@ describe('apiClient', () => {
     });
   });
 
+  it('waitForTaskResultById delegates to waitForTaskResultFromSignals and request', async () => {
+    const { waitForTaskResultFromSignals } = await import('../taskResultWaiter');
+    vi.mocked(waitForTaskResultFromSignals).mockResolvedValueOnce({
+      taskId: 'task-1',
+      type: 'test-type',
+      status: 'completed',
+      createdAt: '2024-01-01T00:00:00Z',
+      result: { data: 'ok' },
+      subtaskIds: ['sub-1'],
+      completedSubtaskIds: ['sub-1'],
+      subtaskCount: 1,
+      completedSubtaskCount: 1,
+    });
+
+    const client = createApiClient({
+      fetchFn: vi.fn() as unknown as typeof fetch,
+      getAccessToken: async () => 'token-1',
+    });
+
+    const result = await client.waitForTaskResultById('task-1');
+
+    expect(waitForTaskResultFromSignals).toHaveBeenCalledWith(
+      'task-1',
+      expect.any(Function),
+      undefined,
+    );
+    expect(result).toMatchObject({
+      taskId: 'task-1',
+      status: 'completed',
+      result: { data: 'ok' },
+    });
+  });
+
   it('adds a source push token when one is available', async () => {
     const client = createApiClient({
       getAccessToken: async () => 'token-1',

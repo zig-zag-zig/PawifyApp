@@ -34,6 +34,7 @@ export type ApiClient = {
     getTaskResult: <TResult>(taskId: string) => Promise<TaskResultResponse<TResult>>,
     options?: WaitForTaskResultOptions,
   ) => Promise<TaskResultResponse<T>>;
+  waitForTaskResultById: <T>(taskId: string, options?: WaitForTaskResultOptions) => Promise<TaskResultResponse<T>>;
   getDeviceId: () => Promise<string>;
 };
 
@@ -240,10 +241,22 @@ export function createApiClient({
     return waitForTaskResultFromSignals<T>(taskId, getTaskResult, options);
   };
 
+  const waitForTaskResultById = async <T,>(
+    taskId: string,
+    options?: WaitForTaskResultOptions,
+  ): Promise<TaskResultResponse<T>> => {
+    const getTaskResult = <TResult>(innerTaskId: string) =>
+      request<TaskResultResponse<TResult>>('getTaskResult', {
+        body: { taskId: innerTaskId },
+      });
+    return waitForTaskResultFromSignals<T>(taskId, getTaskResult, options);
+  };
+
   return {
     request,
     withSourcePushToken,
     waitForTaskResult,
+    waitForTaskResultById,
     getDeviceId,
   };
 }

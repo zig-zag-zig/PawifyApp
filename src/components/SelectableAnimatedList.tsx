@@ -2,6 +2,10 @@ import React, { forwardRef, useImperativeHandle } from 'react';
 import { Animated, FlatList } from 'react-native';
 import { useAnimatedDelete } from '../hooks/useAnimatedDelete';
 
+export type SelectableAnimatedListHandle = {
+    handleRemoveSelected: (ids: Set<string>, onRemovalComplete: () => void) => void;
+};
+
 type SelectableAnimatedListProps<T extends { id: string }> = {
     items: T[];
     onRemoveSelected: (ids: string[]) => void;
@@ -9,7 +13,7 @@ type SelectableAnimatedListProps<T extends { id: string }> = {
         item: T;
         animValue: Animated.Value;
     }) => React.ReactElement | null;
-    flatListRef: React.RefObject<any>;
+    flatListRef: React.RefObject<FlatList<T> | null>;
     onEndReached?: () => void;
     onEndReachedThreshold?: number;
     initialNumToRender?: number;
@@ -29,7 +33,7 @@ const SelectableAnimatedList = forwardRef(function SelectableAnimatedList<T exte
         windowSize,
         onContentReady,
     }: SelectableAnimatedListProps<T>,
-    ref: React.Ref<any>
+    ref: React.Ref<SelectableAnimatedListHandle>
 ) {
     const {
         animationRefs,
@@ -61,7 +65,7 @@ const SelectableAnimatedList = forwardRef(function SelectableAnimatedList<T exte
         />
     );
 }) as <T extends { id: string }>(
-    props: SelectableAnimatedListProps<T> & { ref?: React.Ref<any> }
+    props: SelectableAnimatedListProps<T> & { ref?: React.Ref<SelectableAnimatedListHandle> }
 ) => React.ReactElement;
 
 export default SelectableAnimatedList;

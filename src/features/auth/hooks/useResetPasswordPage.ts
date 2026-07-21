@@ -2,7 +2,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useReducer } from 'react';
 import { signInWithCustomToken, updatePassword } from 'firebase/auth';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { auth } from '../../../firebase/firebaseAuth';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { RootStackParamList } from '../../../types/navigation';

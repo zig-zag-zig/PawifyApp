@@ -3,7 +3,7 @@
     "sdkVersion": "56.0.0",
     "name": "Pawify",
     "slug": "pawify",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -38,7 +38,7 @@
       },
       "package": "vip.chi_chi.pawify",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],

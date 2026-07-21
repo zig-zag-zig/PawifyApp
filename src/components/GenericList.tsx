@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
+import { FlatList } from 'react-native';
 import { ScreenContainer } from './ui';
 import { ConfirmationPrompt } from './ConfirmationPrompt';
-import { SmartSelectableList } from './SmartSelectableList';
+import { SmartSelectableList, type SelectableCardRenderProps } from './SmartSelectableList';
 import { useRemoveConfirmation } from '../hooks/useRemoveConfirmation';
 import { useContentReady } from '../hooks/useContentReady';
 import { useGlobalSpinner } from '../contexts/GlobalSpinnerContext';
-import { useToast } from '../components/ToastContext';
+import { useToast } from '../contexts/ToastContext';
 
 export function GenericList<T extends { id: string }>({
     items,
@@ -31,13 +32,13 @@ export function GenericList<T extends { id: string }>({
     bannerVisible: boolean;
     setBannerVisible: (v: boolean) => void;
     onRemoveSelected: (ids: string[]) => void;
-    renderCard: any;
+    renderCard: (props: SelectableCardRenderProps<T>) => React.ReactNode;
     infoBannerMessage: string;
     promptMessage: string;
     selectionManagerRef: React.RefObject<{
         clearSelection: () => void;
     } | null>;
-    flatListRef: React.RefObject<any>;
+    flatListRef: React.RefObject<FlatList<T> | null>;
     onEndReached?: () => void;
     onEndReachedThreshold?: number;
     initialNumToRender?: number;

@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useApiClient } from '../../../hooks/useApiClient';
 import type {
+    NewReleasesResponse,
     ReleaseGroupReleasesResponse,
     ReleaseResponse,
-    TaskResultResponse,
 } from '../../../types/apiTypes';
 
 export function useReleaseApi() {
@@ -12,11 +12,6 @@ export function useReleaseApi() {
     const apiClient = useApiClient(getAccessToken);
 
     return useMemo(() => {
-        const getTaskResult = async <T,>(taskId: string) =>
-            await apiClient.request<TaskResultResponse<T>>('getTaskResult', {
-                body: { taskId },
-            });
-
         return {
             getRelease: async (releaseId: string) =>
                 await apiClient.request<ReleaseResponse>('getRelease', {
@@ -26,8 +21,14 @@ export function useReleaseApi() {
                 await apiClient.request<ReleaseGroupReleasesResponse>('getReleaseGroupReleases', {
                     body: { releaseGroupId },
                 }),
-            waitForTaskResult: async <T,>(taskId: string, options?: Parameters<typeof apiClient.waitForTaskResult<T>>[2]) =>
-                await apiClient.waitForTaskResult<T>(taskId, getTaskResult, options),
+            getNewReleases: async () =>
+                await apiClient.request<NewReleasesResponse>('getNewReleases', { method: 'GET' }),
+            removeNewReleases: async (releaseIds: string[]) =>
+                await apiClient.request<string>('removeNewReleases', {
+                    body: await apiClient.withSourcePushToken({ releaseIds }),
+                }),
+            waitForTaskResult: async <T,>(taskId: string, options?: Parameters<typeof apiClient.waitForTaskResultById<T>>[1]) =>
+                await apiClient.waitForTaskResultById<T>(taskId, options),
         };
     }, [apiClient]);
 }
