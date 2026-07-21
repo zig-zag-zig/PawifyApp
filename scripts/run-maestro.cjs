@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const ports = [10000, 9199];
+const ports = [10001, 9199];
 const target = process.argv[2] ?? '.maestro';
 const reversedPorts = [];
 const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };

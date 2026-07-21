@@ -10,7 +10,7 @@ const { startDaprFixtureServer } = require('../tests/e2e/daprFixtureServer.cjs')
 
 const appRoot = path.resolve(__dirname, '..');
 const backendRoot = path.resolve(appRoot, '..', 'Pawify');
-const backendPort = Number(process.env.PAWIFY_E2E_BACKEND_PORT || 10000);
+const backendPort = Number(process.env.PAWIFY_E2E_BACKEND_PORT || 10001);
 const firebaseProject = process.env.PAWIFY_E2E_FIREBASE_PROJECT || 'demo-pawify-e2e';
 const firebaseAuthHost = process.env.PAWIFY_E2E_FIREBASE_AUTH_HOST || '127.0.0.1:9199';
 const firestoreHost = process.env.PAWIFY_E2E_FIRESTORE_HOST || '127.0.0.1:8180';
@@ -212,6 +212,65 @@ function waitForUrl(url, timeoutMs = 30000) {
   });
 }
 
+function waitForUrlOrChildExit(url, child, childLabel, timeoutMs = 30000) {
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    if (child.exitCode !== null) {
+      reject(new CommandError(
+        `[e2e] ${childLabel} exited with code ${child.exitCode} before health check started`
+      ));
+      return;
+    }
+    if (child.signalCode !== null) {
+      reject(new CommandError(
+        `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check started`
+      ));
+      return;
+    }
+
+    const attempt = () => {
+      const request = http.get(url, (response) => {
+        response.resume();
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          resolve();
+          return;
+        }
+        retry();
+      });
+
+      request.on('error', retry);
+      request.setTimeout(1000, () => {
+        request.destroy();
+        retry();
+      });
+    };
+
+    const retry = () => {
+      if (child.exitCode !== null) {
+        reject(new CommandError(
+          `[e2e] ${childLabel} exited with code ${child.exitCode} before health check succeeded`
+        ));
+        return;
+      }
+      if (child.signalCode !== null) {
+        reject(new CommandError(
+          `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check succeeded`
+        ));
+        return;
+      }
+
+      if (Date.now() - startedAt > timeoutMs) {
+        reject(new Error(`Timed out waiting for ${url}`));
+        return;
+      }
+      setTimeout(attempt, 500);
+    };
+
+    attempt();
+  });
+}
+
 function stopChild(child, label) {
   return new Promise((resolve) => {
     if (!child || child.exitCode !== null || child.signalCode !== null) {
@@ -256,7 +315,6 @@ async function runInsideEmulators() {
   }
 
   runSync('npm', ['run', getBackendBuildScript()], { cwd: backendRoot, env: e2eBackendEnv });
-
   const backend = spawn(process.execPath, ['--enable-source-maps', 'lib/index.js'], {
     cwd: backendRoot,
     env: e2eBackendEnv,
@@ -274,7 +332,7 @@ async function runInsideEmulators() {
   process.once('SIGTERM', onSigterm);
 
   try {
-    await waitForUrl(`http://127.0.0.1:${backendPort}/v1/health`);
+    await waitForUrlOrChildExit(`http://127.0.0.1:${backendPort}/v1/health`, backend, 'Pawify backend');
     await runAsync('node', ['scripts/run-maestro.cjs', maestroTarget], { cwd: appRoot, env: e2eBackendEnv });
   } finally {
     process.off('SIGINT', onSigint);
