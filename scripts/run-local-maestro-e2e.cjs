@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -212,6 +213,75 @@ function waitForUrl(url, timeoutMs = 30000) {
   });
 }
 
+function checkPortInUse(host, port) {
+  return new Promise((resolve) => {
+    const client = net.createConnection({ host, port }, () => {
+      client.destroy();
+      resolve(true);
+    });
+    client.on('error', () => resolve(false));
+  });
+}
+
+function waitForUrlOrChildExit(url, child, childLabel, timeoutMs = 30000) {
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    if (child.exitCode !== null) {
+      reject(new CommandError(
+        `[e2e] ${childLabel} exited with code ${child.exitCode} before health check started`
+      ));
+      return;
+    }
+    if (child.signalCode !== null) {
+      reject(new CommandError(
+        `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check started`
+      ));
+      return;
+    }
+
+    const attempt = () => {
+      const request = http.get(url, (response) => {
+        response.resume();
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          resolve();
+          return;
+        }
+        retry();
+      });
+
+      request.on('error', retry);
+      request.setTimeout(1000, () => {
+        request.destroy();
+        retry();
+      });
+    };
+
+    const retry = () => {
+      if (child.exitCode !== null) {
+        reject(new CommandError(
+          `[e2e] ${childLabel} exited with code ${child.exitCode} before health check succeeded`
+        ));
+        return;
+      }
+      if (child.signalCode !== null) {
+        reject(new CommandError(
+          `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check succeeded`
+        ));
+        return;
+      }
+
+      if (Date.now() - startedAt > timeoutMs) {
+        reject(new Error(`Timed out waiting for ${url}`));
+        return;
+      }
+      setTimeout(attempt, 500);
+    };
+
+    attempt();
+  });
+}
+
 function stopChild(child, label) {
   return new Promise((resolve) => {
     if (!child || child.exitCode !== null || child.signalCode !== null) {
@@ -255,6 +325,14 @@ async function runInsideEmulators() {
     console.log(`[e2e] Dapr fixtures=${daprFixtureServer.url}`);
   }
 
+  const portInUse = await checkPortInUse('127.0.0.1', backendPort);
+  if (portInUse) {
+    throw new CommandError(
+      `[e2e] Port ${backendPort} is already in use. Please stop any existing process on :${backendPort} (e.g., docker pawify-api) before running e2e tests.\n` +
+      `  Try: docker ps --filter publish=${backendPort}  or  lsof -i :${backendPort}`
+    );
+  }
+
   runSync('npm', ['run', getBackendBuildScript()], { cwd: backendRoot, env: e2eBackendEnv });
 
   const backend = spawn(process.execPath, ['--enable-source-maps', 'lib/index.js'], {
@@ -274,7 +352,7 @@ async function runInsideEmulators() {
   process.once('SIGTERM', onSigterm);
 
   try {
-    await waitForUrl(`http://127.0.0.1:${backendPort}/v1/health`);
+    await waitForUrlOrChildExit(`http://127.0.0.1:${backendPort}/v1/health`, backend, 'Pawify backend');
     await runAsync('node', ['scripts/run-maestro.cjs', maestroTarget], { cwd: appRoot, env: e2eBackendEnv });
   } finally {
     process.off('SIGINT', onSigint);
