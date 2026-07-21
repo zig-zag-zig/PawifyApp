@@ -1,10 +1,11 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { InteractionManager } from 'react-native';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import type { ReleaseGroupReleasesResponse } from '../../../types/apiTypes';
+// Intentional cross-feature shared domain import (release normalization used by artist page).
 import { normalizeReleaseGroupReleasesResponse } from '../../release/domain/releaseGroupReleases';
 import {
     ArtistNavigationProp,

@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import {
   useReleaseNotificationSettings,

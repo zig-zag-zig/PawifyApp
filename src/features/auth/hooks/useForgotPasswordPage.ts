@@ -1,6 +1,6 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useReducer } from 'react';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { ResetPasswordNavigationProp } from '../../../types/navigation';
 import { usePublicAuthApi } from '../api/authApi';

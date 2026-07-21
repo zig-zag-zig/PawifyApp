@@ -1,18 +1,26 @@
 import React, { useRef } from 'react';
+import { Animated, FlatList } from 'react-native';
 import SelectableListManager from './SelectableListManager';
-import SelectableAnimatedList from './SelectableAnimatedList';
+import SelectableAnimatedList, {
+    type SelectableAnimatedListHandle,
+} from './SelectableAnimatedList';
 
-type AnimatedListRef = {
-    handleRemoveSelected: (ids: Set<string>, onRemovalComplete: () => void) => void;
+export type SelectableCardRenderProps<T extends { id: string }> = {
+    item: T;
+    isSelected: boolean;
+    isInSelectionMode: boolean;
+    onPress: () => void;
+    onLongPress: () => void;
+    animValue: Animated.Value;
 };
 
 type SmartSelectableListProps<T extends { id: string }> = {
     items: T[];
     selectionItems?: T[];
     onRemoveSelected: (ids: string[]) => void;
-    renderCard: any;
-    selectionManagerRef: React.RefObject<any>;
-    flatListRef: React.RefObject<any>;
+    renderCard: (props: SelectableCardRenderProps<T>) => React.ReactNode;
+    selectionManagerRef: React.RefObject<{ clearSelection: () => void } | null>;
+    flatListRef: React.RefObject<FlatList<T> | null>;
     onEndReached?: () => void;
     onEndReachedThreshold?: number;
     initialNumToRender?: number;
@@ -35,7 +43,7 @@ export function SmartSelectableList<T extends { id: string }>(
         flatListRef,
     }: SmartSelectableListProps<T>
 ) {
-    const animatedListRef = useRef<AnimatedListRef | null>(null);
+    const animatedListRef = useRef<SelectableAnimatedListHandle | null>(null);
 
     return (
         <SelectableListManager
@@ -62,10 +70,7 @@ export function SmartSelectableList<T extends { id: string }>(
                     <SelectableAnimatedList
                         items={items}
                         onRemoveSelected={onRemoveSelected}
-                        renderItem={({ item, animValue }: {
-                            item: T;
-                            animValue: any;
-                        }) =>
+                        renderItem={({ item, animValue }) =>
                             renderCard({
                                 item,
                                 isSelected: selectedIds.has(item.id),
@@ -73,7 +78,7 @@ export function SmartSelectableList<T extends { id: string }>(
                                 onPress: () => toggleSelect(item.id),
                                 onLongPress: () => toggleSelect(item.id),
                                 animValue,
-                            })
+                            }) as React.ReactElement
                         }
                         flatListRef={flatListRef}
                         onEndReached={onEndReached}

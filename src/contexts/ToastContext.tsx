@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { InfoBanner } from './InfoBanner';
+import { InfoBanner } from '../components/InfoBanner';
 
 type ToastType = 'error' | 'success' | 'info';
 type ToastPosition = 'top' | 'bottom';

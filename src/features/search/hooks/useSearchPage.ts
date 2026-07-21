@@ -6,6 +6,7 @@ import type { Artist } from '../../../shared/music';
 import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages } from '../../../utils/taskResultMaps';
+import { appendUniqueArtists } from '../domain/deduplicateArtists';
 import { ArtistNavigationProp } from '../../../types/navigation';
 import { useSearchApi } from '../api/searchApi';
 import type { SearchPageController, SearchPageUiState } from '../model/types';
@@ -72,25 +73,6 @@ const normalizeSearchPageResult = (value: unknown): SearchPageResult => {
     };
 };
 
-const appendUniqueArtists = (
-    target: Artist[],
-    artists: Artist[],
-    seenArtistIds: Set<string>,
-): Artist[] => {
-    const addedArtists: Artist[] = [];
-
-    for (const artist of artists) {
-        if (seenArtistIds.has(artist.id)) {
-            continue;
-        }
-
-        seenArtistIds.add(artist.id);
-        target.push(artist);
-        addedArtists.push(artist);
-    }
-
-    return addedArtists;
-};
 
 const getPageCount = (result: SearchPageResult): number => (
     Number.isFinite(result.count) ? result.count : result.artists.length

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
 import { ScreenContainer } from '../../../components/ui';
 import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
@@ -16,7 +16,7 @@ interface ReleasesViewProps {
     onRemoveSelected: (releaseIds: string[]) => void;
     onLoadMore: () => void;
     onReleasePressed: (release: NewReleaseListItem, isInSelectionMode: boolean, onSelect: () => void) => void;
-    flatListRef: React.RefObject<any>;
+    flatListRef: React.RefObject<FlatList<NewReleaseListItem> | null>;
     selectionManagerRef: React.RefObject<{ clearSelection: () => void } | null>;
 }
 

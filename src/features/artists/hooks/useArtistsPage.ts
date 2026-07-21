@@ -1,6 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import { useEffect, useMemo, useReducer, useRef } from 'react';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { useCache } from '../../../contexts/CacheContext';
 import { useFollowing } from '../state/FollowingContext';
 import { useEventDrivenBanner } from '../../../hooks/useEventDrivenBanner';

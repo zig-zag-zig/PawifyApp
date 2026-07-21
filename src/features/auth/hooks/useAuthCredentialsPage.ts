@@ -1,5 +1,5 @@
 import { useReducer } from 'react';
-import { useToast } from '../../../components/ToastContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { useAuthApi } from '../api/authApi';
 import { validateAuthCredentials } from '../domain/validateAuthCredentials';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
 import type { ArtistMinimal } from '../../../shared/music';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
@@ -15,7 +15,7 @@ interface ArtistsViewProps {
     onBannerVisibilityChanged: (visible: boolean) => void;
     onRemoveSelected: (artistIds: string[]) => void;
     onArtistPressed: (artistId: string, isInSelectionMode: boolean, onSelect: () => void) => void;
-    flatListRef: React.RefObject<any>;
+    flatListRef: React.RefObject<FlatList<ArtistMinimal> | null>;
     selectionManagerRef: React.RefObject<{ clearSelection: () => void } | null>;
 }
 
