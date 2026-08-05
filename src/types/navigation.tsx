@@ -17,6 +17,7 @@ export type RootStackParamList = {
         releaseGroupId?: string;
         releases: ReleaseGroupReleaseListItem[];
         initialReleaseCoverTaskId?: string | null;
+        initialReleaseCovers?: Record<string, string | null>;
     };
     Auth: undefined;
     Home: undefined;

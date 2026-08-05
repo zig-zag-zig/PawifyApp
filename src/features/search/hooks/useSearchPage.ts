@@ -3,7 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import useTaskManager from '../../../hooks/useTaskManager';
 import type { Artist } from '../../../shared/music';
-import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages } from '../../../utils/taskResultMaps';
 import { appendUniqueArtists } from '../domain/deduplicateArtists';
@@ -29,17 +29,16 @@ type SearchTaskResult = {
     allResultsFetched: boolean;
     isAppending: boolean;
     profileImageTasks: SearchProfileImageTask[];
+    resolvedProfileImages: Record<string, string | null>;
 };
 
 type SearchPageResult = {
     artists: Artist[];
     count: number;
-    profileImageTaskId?: string;
+    profileImageTaskId?: string | null;
+    profileImages: Record<string, string | null>;
 };
 
-const hasOwn = <T extends object>(value: T, property: PropertyKey): boolean => (
-    Object.prototype.hasOwnProperty.call(value, property)
-);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
     value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -64,12 +63,13 @@ const normalizeSearchPageResult = (value: unknown): SearchPageResult => {
         : artists.length;
     const profileImageTaskId = typeof value.profileImageTaskId === 'string' && value.profileImageTaskId.length > 0
         ? value.profileImageTaskId
-        : undefined;
+        : null;
 
     return {
         artists,
         count,
         profileImageTaskId,
+        profileImages: normalizeNullableStringMap(value.profileImages),
     };
 };
 
@@ -126,6 +126,7 @@ export function useSearchPage(): SearchPageController {
                 async (): Promise<SearchTaskResult> => {
                     const artists: Artist[] = [];
                     const profileImageTasks: SearchProfileImageTask[] = [];
+                    const resolvedProfileImages: Record<string, string | null> = {};
                     const seenArtistIds = new Set(existingArtistIds);
                     let nextOffset = searchOffset;
                     let allResultsFetched = false;
@@ -139,16 +140,23 @@ export function useSearchPage(): SearchPageController {
                         const addedArtists = appendUniqueArtists(artists, pageArtists, seenArtistIds);
                         const fetchedCount = pageArtists.length;
 
+                        Object.assign(resolvedProfileImages, pageResult.profileImages);
+
                         const count = getPageCount(pageResult);
                         nextOffset = pageOffset + fetchedCount;
 
                         if (pageResult.profileImageTaskId && addedArtists.length > 0) {
-                            profileImageTasks.push({
-                                taskId: pageResult.profileImageTaskId,
-                                query,
-                                offset: pageOffset,
-                                artistIds: addedArtists.map(artist => artist.id),
-                            });
+                            const pendingArtistIdsForPage = addedArtists
+                                .map(artist => artist.id)
+                                .filter(artistId => resolvedProfileImages[artistId] === undefined);
+                            if (pendingArtistIdsForPage.length > 0) {
+                                profileImageTasks.push({
+                                    taskId: pageResult.profileImageTaskId,
+                                    query,
+                                    offset: pageOffset,
+                                    artistIds: pendingArtistIdsForPage,
+                                });
+                            }
                         }
 
                         const reachedEnd = fetchedCount === 0
@@ -166,6 +174,7 @@ export function useSearchPage(): SearchPageController {
                         allResultsFetched,
                         isAppending,
                         profileImageTasks,
+                        resolvedProfileImages,
                     };
                 },
                 'searchArtists',
@@ -229,24 +238,32 @@ export function useSearchPage(): SearchPageController {
         if (result.isAppending) {
             appendRetryCountRef.current = 0;
         }
+
+        // Merge immediate maps into local cache first; explicit nulls are
+        // resolved, only absent ids stay pending.
+        if (Object.keys(result.resolvedProfileImages).length > 0) {
+            setArtistProfileImages(prev => mergeNullableStringMaps(prev, result.resolvedProfileImages));
+        }
+        const mergedProfileImages = mergeNullableStringMaps(artistProfileImages, result.resolvedProfileImages);
         const missingArtistImageIds = result.artists
             .map(artist => artist.id)
-            .filter(artistId => !hasOwn(artistProfileImages, artistId));
+            .filter(artistId => mergedProfileImages[artistId] === undefined);
+        const pendingImageTasks = result.profileImageTasks
+            .map(profileImageTask => ({
+                ...profileImageTask,
+                artistIds: profileImageTask.artistIds.filter(artistId =>
+                    mergedProfileImages[artistId] === undefined
+                ),
+            }))
+            .filter(profileImageTask => profileImageTask.artistIds.length > 0);
 
-        if (missingArtistImageIds.length > 0 && result.profileImageTasks.length > 0) {
+        if (missingArtistImageIds.length > 0 && pendingImageTasks.length > 0) {
             setPendingArtistImageIds(prev => Array.from(new Set([...prev, ...missingArtistImageIds])));
 
-            void Promise.all(result.profileImageTasks.map(async (profileImageTask) => {
-                const missingArtistImageIdsForTask = profileImageTask.artistIds
-                    .filter(artistId => !hasOwn(artistProfileImages, artistId));
-
-                if (missingArtistImageIdsForTask.length === 0) {
-                    return;
-                }
-
+            void Promise.all(pendingImageTasks.map(async (profileImageTask) => {
                 await resolveNullableTaskMap({
                     taskId: profileImageTask.taskId,
-                    expectedIds: missingArtistImageIdsForTask,
+                    expectedIds: profileImageTask.artistIds,
                     waitForTaskResult,
                     extractMap: extractArtistProfileImages,
                     onResolvedValues: (artistImages, resolvedArtistIds) => {
@@ -264,6 +281,12 @@ export function useSearchPage(): SearchPageController {
                             SEARCH_PAGE_SIZE,
                             profileImageTask.offset
                         );
+                        // Merge replayed immediate map so resolved values survive
+                        // even when the replayed task id is null (all cached).
+                        setArtistProfileImages(prev => mergeNullableStringMaps(
+                            prev,
+                            normalizeNullableStringMap(replayedResult.profileImages)
+                        ));
                         return replayedResult.profileImageTaskId;
                     },
                     recreateTaskDescription: 'searchArtists.profileImageTaskId',

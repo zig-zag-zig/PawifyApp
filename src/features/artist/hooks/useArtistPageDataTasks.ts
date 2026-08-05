@@ -63,6 +63,16 @@ type ArtistPageDataTasksOptions = {
         expectedReleaseGroupIds?: string[],
         recreateOptions?: TaskRecreateOptions,
     ) => Promise<TaskResolution>;
+    mergeProfileImagesWithDiagnostics: (
+        images: Record<string, string | null | undefined>,
+        expectedArtistIds: string[],
+        reason: string,
+    ) => void;
+    mergeReleaseGroupCoversWithDiagnostics: (
+        covers: Record<string, string | null | undefined>,
+        expectedReleaseGroupIds: string[],
+        reason: string,
+    ) => void;
     setOptimisticFollowing: Dispatch<SetStateAction<boolean | null>>;
     taskStartedAtRef: RefObject<Record<string, number>>;
     tasks: QueuedTask[];
@@ -89,6 +99,8 @@ export function useArtistPageDataTasks({
     resolvingSettledTaskIdsRef,
     resolveArtistProfileImageTask,
     resolveReleaseGroupCoverTask,
+    mergeProfileImagesWithDiagnostics,
+    mergeReleaseGroupCoversWithDiagnostics,
     setOptimisticFollowing,
     taskStartedAtRef,
     tasks,
@@ -241,6 +253,8 @@ export function useArtistPageDataTasks({
         removeTask,
         resolveArtistProfileImageTask,
         resolveReleaseGroupCoverTask,
+        mergeProfileImagesWithDiagnostics,
+        mergeReleaseGroupCoversWithDiagnostics,
         resolvingSettledTaskIdsRef,
         taskStartedAtRef,
         tasks,

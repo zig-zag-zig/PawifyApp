@@ -1,5 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { fillMissingIdsWithNull, mergeNullableStringMaps } from './nullableMaps';
+import {
+  fillMissingIdsWithNull,
+  getIdsMissingFromValues,
+  mergeNullableStringMaps,
+  normalizeNullableStringMap,
+} from './nullableMaps';
+
+describe('getIdsMissingFromValues', () => {
+    it('returns only ids that are absent (undefined) from the map', () => {
+        expect(getIdsMissingFromValues(['a', 'b', 'c'], { a: 'url', b: null })).toEqual(['c']);
+    });
+
+    it('treats null as resolved', () => {
+        expect(getIdsMissingFromValues(['a', 'b'], { a: null, b: undefined })).toEqual(['b']);
+    });
+
+    it('returns all ids for an empty map', () => {
+        expect(getIdsMissingFromValues(['a', 'b'], {})).toEqual(['a', 'b']);
+    });
+});
+
+describe('normalizeNullableStringMap', () => {
+    it('keeps strings and nulls, drops undefined and non-strings', () => {
+        expect(normalizeNullableStringMap({ a: 'url', b: null, c: undefined, d: 42 })).toEqual({
+            a: 'url',
+            b: null,
+        });
+    });
+
+    it('trims empty strings to null', () => {
+        expect(normalizeNullableStringMap({ a: '  ' })).toEqual({ a: null });
+    });
+
+    it('returns empty map for non-record values', () => {
+        expect(normalizeNullableStringMap(undefined)).toEqual({});
+        expect(normalizeNullableStringMap(null)).toEqual({});
+        expect(normalizeNullableStringMap(['a'])).toEqual({});
+    });
+});
 
 describe('fillMissingIdsWithNull', () => {
     it('fills undefined IDs with null', () => {

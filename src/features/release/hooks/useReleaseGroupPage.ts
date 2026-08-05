@@ -4,6 +4,7 @@ import { useCache } from '../../../contexts/CacheContext';
 import type { ReleaseGroupReleaseListItem } from '../../../shared/music';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { ReleaseNavigationProp, RootStackParamList } from '../../../types/navigation';
+import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { extractReleaseGroupReleaseCovers } from '../../../utils/taskResultMaps';
 import { useReleaseApi } from '../api/releaseApi';
 import type { ReleaseGroupPageController, ReleaseGroupPageUiState } from '../model/types';
@@ -16,19 +17,27 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const { releaseGroupReleaseCovers, setReleaseGroupReleaseCovers } = useCache();
     const { getReleaseGroupReleases, waitForTaskResult } = useReleaseApi();
     const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
-    const { releaseGroupId, releases, initialReleaseCoverTaskId } = route.params;
+    const { releaseGroupId, releases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
 
     useEffect(() => {
         const releaseCoverTaskId = initialReleaseCoverTaskId;
+        const immediateCovers = normalizeNullableStringMap(initialReleaseCovers);
+
+        // Merge immediate covers so cached values render without polling.
+        if (Object.keys(immediateCovers).length > 0) {
+            setReleaseGroupReleaseCovers(prev => mergeNullableStringMaps(prev, immediateCovers));
+        }
+
         if (!releaseCoverTaskId) {
             setPendingReleaseCoverIds([]);
             return;
         }
 
         let isCancelled = false;
+        const mergedCovers = mergeNullableStringMaps(releaseGroupReleaseCovers, immediateCovers);
         const missingCoverIds = releases
             .map(release => release.id)
-            .filter(releaseId => releaseGroupReleaseCovers[releaseId] === undefined);
+            .filter(releaseId => mergedCovers[releaseId] === undefined);
 
         if (missingCoverIds.length === 0) {
             setPendingReleaseCoverIds([]);

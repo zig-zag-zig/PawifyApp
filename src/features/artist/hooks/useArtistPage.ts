@@ -169,6 +169,7 @@ export function useArtistPage(): ArtistPageController {
         removeTask,
         resolvingMemberTaskIdsRef,
         resolveArtistProfileImageTask,
+        mergeProfileImagesWithDiagnostics,
         taskStartedAtRef,
         tasks,
     });
@@ -196,6 +197,8 @@ export function useArtistPage(): ArtistPageController {
         resolvingSettledTaskIdsRef,
         resolveArtistProfileImageTask,
         resolveReleaseGroupCoverTask,
+        mergeProfileImagesWithDiagnostics,
+        mergeReleaseGroupCoversWithDiagnostics,
         setOptimisticFollowing,
         taskStartedAtRef,
         tasks,

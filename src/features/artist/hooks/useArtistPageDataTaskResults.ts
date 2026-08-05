@@ -5,6 +5,11 @@ import type {
     ArtistReleasesResponse,
 } from '../../../types/apiTypes';
 import {
+    getIdsMissingFromValues,
+    mergeNullableStringMaps,
+    normalizeNullableStringMap,
+} from '../../../utils/nullableMaps';
+import {
     describeError,
     describeIds,
     describeNullableStringMap,
@@ -44,18 +49,21 @@ type ArtistPageDataTaskResultsOptions = {
         expectedReleaseGroupIds?: string[],
         recreateOptions?: TaskRecreateOptions,
     ) => Promise<TaskResolution>;
+    mergeProfileImagesWithDiagnostics: (
+        images: Record<string, string | null | undefined>,
+        expectedArtistIds: string[],
+        reason: string,
+    ) => void;
+    mergeReleaseGroupCoversWithDiagnostics: (
+        covers: Record<string, string | null | undefined>,
+        expectedReleaseGroupIds: string[],
+        reason: string,
+    ) => void;
     resolvingSettledTaskIdsRef: RefObject<Set<string>>;
     taskStartedAtRef: RefObject<Record<string, number>>;
     tasks: QueuedTask[];
     updatePendingTask: (key: PendingTaskKey, taskId: string | null) => void;
 };
-
-function getIdsMissingFromCache(
-    ids: string[],
-    cache: Record<string, string | null | undefined>
-): string[] {
-    return ids.filter(id => cache[id] === undefined);
-}
 
 export function useArtistPageDataTaskResults({
     artistProfileImages,
@@ -69,6 +77,8 @@ export function useArtistPageDataTaskResults({
     removeTask,
     resolveArtistProfileImageTask,
     resolveReleaseGroupCoverTask,
+    mergeProfileImagesWithDiagnostics,
+    mergeReleaseGroupCoversWithDiagnostics,
     resolvingSettledTaskIdsRef,
     taskStartedAtRef,
     tasks,
@@ -141,8 +151,17 @@ export function useArtistPageDataTaskResults({
                 profileImageTaskId: artistImageTaskId,
                 artistShape: describeValueShape(artistData),
             });
+            const immediateProfileImages = normalizeNullableStringMap(task.result?.profileImages);
+            if (Object.keys(immediateProfileImages).length > 0) {
+                mergeProfileImagesWithDiagnostics(
+                    immediateProfileImages,
+                    [artistData.id],
+                    'artist-details-immediate'
+                );
+            }
+            const mergedArtistImages = mergeNullableStringMaps(artistProfileImages, immediateProfileImages);
             const pendingArtistImageIds = artistImageTaskId
-                ? getIdsMissingFromCache([artistData.id], artistProfileImages)
+                ? getIdsMissingFromValues([artistData.id], mergedArtistImages)
                 : [];
             diagnosticLog('artist-page', 'artist-profile-image-pending-calculated', {
                 currentArtistId: artistIdRef.current,
@@ -163,6 +182,11 @@ export function useArtistPageDataTaskResults({
                 {
                     recreateTask: async () => {
                         const result = await getArtistDetails(artistData.id);
+                        mergeProfileImagesWithDiagnostics(
+                            normalizeNullableStringMap(result.profileImages),
+                            [artistData.id],
+                            'artist-details-replay'
+                        );
                         return result.profileImageTaskId;
                     },
                     recreateTaskDescription: 'getArtistDetails.profileImageTaskId',
@@ -246,10 +270,22 @@ export function useArtistPageDataTaskResults({
 
             const releaseGroups = task?.result?.releaseGroups ?? [];
             const releaseGroupCoverTaskId = task?.result?.releaseGroupCoverTaskId;
-            const pendingReleaseGroupCoverIds = releaseGroupCoverTaskId
-                ? getIdsMissingFromCache(
+            const immediateReleaseGroupCovers = normalizeNullableStringMap(task?.result?.releaseGroupCovers);
+            if (Object.keys(immediateReleaseGroupCovers).length > 0) {
+                mergeReleaseGroupCoversWithDiagnostics(
+                    immediateReleaseGroupCovers,
                     releaseGroups.map(releaseGroup => releaseGroup.id),
-                    releaseGroupCovers
+                    'artist-releases-immediate'
+                );
+            }
+            const mergedReleaseGroupCovers = mergeNullableStringMaps(
+                releaseGroupCovers,
+                immediateReleaseGroupCovers
+            );
+            const pendingReleaseGroupCoverIds = releaseGroupCoverTaskId
+                ? getIdsMissingFromValues(
+                    releaseGroups.map(releaseGroup => releaseGroup.id),
+                    mergedReleaseGroupCovers
                 )
                 : [];
 
@@ -284,6 +320,11 @@ export function useArtistPageDataTaskResults({
                         }
 
                         const result = await getArtistReleases(currentArtistId);
+                        mergeReleaseGroupCoversWithDiagnostics(
+                            normalizeNullableStringMap(result.releaseGroupCovers),
+                            releaseGroups.map(releaseGroup => releaseGroup.id),
+                            'artist-releases-replay'
+                        );
                         return result.releaseGroupCoverTaskId;
                     },
                     recreateTaskDescription: 'getArtistReleases.releaseGroupCoverTaskId',

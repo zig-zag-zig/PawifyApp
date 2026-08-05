@@ -2,7 +2,7 @@ import type {
   Artist,
   ArtistMinimal,
   ArtistReleaseGroup,
-  NewReleasesResult,
+  NewRelease,
   Release,
   ReleaseGroupReleaseListItem,
   ReleaseNotificationSettings
@@ -10,37 +10,48 @@ import type {
 
 export interface FollowingResponse {
   artists: ArtistMinimal[];
-  profileImageTaskId: string;
+  profileImageTaskId: string | null;
+  profileImages: Record<string, string | null>;
 }
 
 export interface ArtistDetailsResponse {
   artist: Artist;
-  profileImageTaskId: string;
+  profileImageTaskId: string | null;
+  profileImages: Record<string, string | null>;
 }
 
 export interface SearchArtistsResponse {
   artists: Artist[];
   count: number;
-  profileImageTaskId: string;
+  profileImageTaskId: string | null;
+  profileImages: Record<string, string | null>;
 }
 
 export interface ArtistReleasesResponse {
   releaseGroups: ArtistReleaseGroup[];
-  releaseGroupCoverTaskId: string;
+  releaseGroupCoverTaskId: string | null;
+  releaseGroupCovers: Record<string, string | null>;
 }
 
 export interface ReleaseGroupReleasesResponse {
   releases: ReleaseGroupReleaseListItem[];
-  releaseCoverTaskId: string;
+  releaseCoverTaskId: string | null;
+  releaseCovers: Record<string, string | null>;
 }
 
 export interface ReleaseResponse {
   release: Release;
-  lyricsTaskId: string;
-  profileImageTaskId: string;
+  lyricsTaskId: string | null;
+  profileImageTaskId: string | null;
+  trackLyrics: Record<string, string | null>;
+  profileImages: Record<string, string | null>;
 }
 
-export type NewReleasesResponse = NewReleasesResult;
+export interface NewReleasesResponse {
+  releases: NewRelease[];
+  releaseCoverTaskId: string | null;
+  releaseCovers: Record<string, string | null>;
+}
 export type ReleaseNotificationSettingsResponse = ReleaseNotificationSettings;
 
 export interface TaskResultResponse<T = unknown> {

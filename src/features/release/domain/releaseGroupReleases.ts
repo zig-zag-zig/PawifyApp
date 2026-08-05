@@ -17,6 +17,9 @@ export function normalizeReleaseGroupReleasesResponse(
     releases: record.releases,
     releaseCoverTaskId: typeof record.releaseCoverTaskId === 'string'
       ? record.releaseCoverTaskId
-      : '',
+      : null,
+    releaseCovers: record.releaseCovers && typeof record.releaseCovers === 'object'
+      ? record.releaseCovers
+      : {},
   };
 }
