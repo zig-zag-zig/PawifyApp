@@ -5,12 +5,13 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useReleaseApi } from '../api/releaseApi';
 import { useOnAppForeground } from '../../../hooks/useOnAppForeground';
 import useTaskManager from '../../../hooks/useTaskManager';
-import type { NewRelease, NewReleaseCoverTaskResult, NewReleasesResult, RemoteValueState } from '../../../shared/music';
+import type { NewRelease, NewReleaseCoverTaskResult, RemoteValueState } from '../../../shared/music';
+import type { NewReleasesResponse } from '../../../types/apiTypes';
 import { EventService } from '../../../services/eventService';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { mergeUniqueIds } from '../../../utils/arrays';
 import { shouldRunForegroundRefresh } from '../../../utils/foregroundRefreshPolicy';
-import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import type { NullableStringMap } from '../../../utils/nullableMaps';
 import { extractNewReleaseCovers } from '../../../utils/taskResultMaps';
 
@@ -175,6 +176,9 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
       },
       recreateTask: async () => {
         const result = await releaseApi.getNewReleases();
+        // Merge replayed immediate covers so resolved values survive even when
+        // the replayed task id is null (all cached).
+        applyReleaseCovers(normalizeNullableStringMap(result.releaseCovers));
         return result.releaseCoverTaskId;
       },
       recreateTaskDescription: 'getNewReleases.releaseCoverTaskId',
@@ -195,10 +199,13 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
           initialLoadRequestedRef.current = false;
         }
       } else {
-        const result = task.result as NewReleasesResult | undefined;
+        const result = task.result as NewReleasesResponse | undefined;
+        const immediateCovers = normalizeNullableStringMap(result?.releaseCovers);
         const releases = (result?.releases ?? []).map((release): NewReleaseListItem => ({
           ...release,
-          cover_url: undefined,
+          cover_url: immediateCovers[release.id] !== undefined
+            ? immediateCovers[release.id]
+            : undefined,
         }));
         setNewReleases(releases);
         setHasLoadedOnce(true);

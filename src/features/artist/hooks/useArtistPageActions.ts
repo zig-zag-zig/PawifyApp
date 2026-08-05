@@ -257,6 +257,7 @@ export function useArtistPageActions({
                 releaseGroupId: releaseGroup.id,
                 releases: releaseGroupResult.releases,
                 initialReleaseCoverTaskId: releaseGroupResult.releaseCoverTaskId,
+                initialReleaseCovers: releaseGroupResult.releaseCovers,
             });
             didNavigate = true;
         } catch (error) {

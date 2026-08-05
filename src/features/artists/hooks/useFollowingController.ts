@@ -10,7 +10,7 @@ import { EventService } from '../../../services/eventService';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { mergeUniqueIds, removeIds } from '../../../utils/arrays';
 import { shouldRunForegroundRefresh } from '../../../utils/foregroundRefreshPolicy';
-import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { extractArtistProfileImages } from '../../../utils/taskResultMaps';
 
 export interface FollowingContextValue {
@@ -138,6 +138,12 @@ export function useFollowingController(): FollowingContextValue {
       shouldFillMissingOnCompleted: taskResult => (taskResult.subtaskCount ?? 0) === 0,
       recreateTask: async () => {
         const result = await artistsApi.getFollowing();
+        // Merge replayed immediate maps so resolved values survive even when
+        // the replayed task id is null (all cached).
+        setArtistProfileImages(prev => mergeNullableStringMaps(
+          prev,
+          normalizeNullableStringMap(result.profileImages)
+        ));
         return result.profileImageTaskId;
       },
       recreateTaskDescription: 'getFollowing.profileImageTaskId',
@@ -255,16 +261,25 @@ export function useFollowingController(): FollowingContextValue {
 
           const result = task.result as {
             artists: ArtistMinimal[];
-            profileImageTaskId?: string;
+            profileImageTaskId?: string | null;
+            profileImages?: Record<string, string | null>;
           } | undefined;
           const artists = applyFollowOverrides(result?.artists ?? []);
           setFollowingArtists(artists);
           setHasLoadedFollowingOnce(true);
 
+          const immediateProfileImages = normalizeNullableStringMap(result?.profileImages);
+          if (Object.keys(immediateProfileImages).length > 0) {
+            setArtistProfileImages(prev => mergeNullableStringMaps(prev, immediateProfileImages));
+          }
+
           if (result?.profileImageTaskId) {
             const missingImageIds = artists
               .map(artist => artist.id)
-              .filter(artistId => artistProfileImagesRef.current[artistId] === undefined);
+              .filter(artistId => {
+                const currentValue = artistProfileImagesRef.current[artistId];
+                return currentValue === undefined && immediateProfileImages[artistId] === undefined;
+              });
 
             if (missingImageIds.length > 0) {
               setPendingArtistImageIds(prev => mergeUniqueIds(prev, missingImageIds));

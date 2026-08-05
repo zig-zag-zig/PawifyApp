@@ -1,7 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import { resolveNullableTaskMap, type ResolveNullableTaskMapPhase } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages, extractReleaseGroupCovers } from '../../../utils/taskResultMaps';
-import { fillMissingIdsWithNull } from '../../../utils/nullableMaps';
 import type { TaskResultResponse } from '../../../types/apiTypes';
 import type { WaitForTaskResultOptions } from '../../../services/taskResultWaiter';
 import {
@@ -67,16 +66,14 @@ export function useArtistPageTaskResolvers({
         recreateOptions?: TaskRecreateOptions
     ): Promise<TaskResolution> => {
         if (!profileImageTaskId) {
+            // Full migration: a null task id means the backend resolved every
+            // requested id via the immediate map; nothing is pending. Do not
+            // null-fill expected ids (they are already resolved or absent).
             if (expectedArtistIds.length > 0) {
                 diagnosticWarn('artist-page', 'profile-image-task-missing', {
                     currentArtistId: artistIdRef.current,
                     expectedArtistIds: describeIds(expectedArtistIds),
                 });
-                mergeProfileImagesWithDiagnostics(
-                    fillMissingIdsWithNull(expectedArtistIds, {}),
-                    expectedArtistIds,
-                    'missing-profile-image-task-id'
-                );
             }
             return { settled: true };
         }

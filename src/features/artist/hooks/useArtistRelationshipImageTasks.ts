@@ -11,6 +11,7 @@ import {
     elapsedSince,
 } from '../../../utils/diagnostics';
 import { isTaskSettled } from '../domain/taskUtils';
+import { normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import type { ArtistPageAction } from '../state/artistReducer';
 
 type AddTaskOptions = {
@@ -46,6 +47,11 @@ type ArtistRelationshipImageTasksOptions = {
         expectedArtistIds?: string[],
         recreateOptions?: TaskRecreateOptions,
     ) => Promise<TaskResolution>;
+    mergeProfileImagesWithDiagnostics: (
+        images: Record<string, string | null | undefined>,
+        expectedArtistIds: string[],
+        reason: string,
+    ) => void;
     taskStartedAtRef: RefObject<Record<string, number>>;
     tasks: QueuedTask[];
 };
@@ -63,6 +69,7 @@ export function useArtistRelationshipImageTasks({
     removeTask,
     resolvingMemberTaskIdsRef,
     resolveArtistProfileImageTask,
+    mergeProfileImagesWithDiagnostics,
     taskStartedAtRef,
     tasks,
 }: ArtistRelationshipImageTasksOptions) {
@@ -132,12 +139,28 @@ export function useArtistRelationshipImageTasks({
                     artistIdFromResult: memberResult?.artist?.id,
                     resultShape: describeValueShape(memberResult),
                 });
+                const immediateMemberImages = normalizeNullableStringMap(memberResult?.profileImages);
+                if (Object.keys(immediateMemberImages).length > 0) {
+                    mergeProfileImagesWithDiagnostics(
+                        immediateMemberImages,
+                        [memberTask.id],
+                        'member-details-immediate'
+                    );
+                }
+                const memberImageTaskId = typeof memberResult?.profileImageTaskId === 'string'
+                    ? memberResult.profileImageTaskId
+                    : null;
                 const memberTaskResolution = await resolveArtistProfileImageTask(
-                    memberResult?.profileImageTaskId,
-                    [memberTask.id],
+                    memberImageTaskId,
+                    immediateMemberImages[memberTask.id] === undefined ? [memberTask.id] : [],
                     {
                         recreateTask: async () => {
                             const result = await getArtistDetails(memberTask.id);
+                            mergeProfileImagesWithDiagnostics(
+                                normalizeNullableStringMap(result.profileImages),
+                                [memberTask.id],
+                                'member-details-replay'
+                            );
                             return result.profileImageTaskId;
                         },
                         recreateTaskDescription: 'getArtistDetails.profileImageTaskId',

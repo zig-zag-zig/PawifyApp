@@ -3,11 +3,8 @@ import { useEffect, useReducer, useRef } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import type { Release } from '../../../shared/music';
 import { openExternalUrl } from '../../../services/externalNavigation';
-import {
-    extractArtistProfileImages,
-    extractReleaseTrackLyrics
-} from '../../../utils/taskResultMaps';
-import { mergeNullableStringMaps } from '../../../utils/nullableMaps';
+import { extractArtistProfileImages, extractReleaseTrackLyrics } from '../../../utils/taskResultMaps';
+import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { RootStackParamList } from '../../../types/navigation';
 import { useReleaseApi } from '../api/releaseApi';
@@ -83,6 +80,8 @@ export function useReleasePage(): ReleasePageController {
             let resolvedRelease: Release;
             let lyricsTaskId: string | null;
             let profileImageTaskId: string | null;
+            let immediateTrackLyrics: Record<string, string | null> = {};
+            let immediateProfileImages: Record<string, string | null> = {};
 
             try {
                 const releaseResponse = await getRelease(releaseId);
@@ -93,6 +92,8 @@ export function useReleasePage(): ReleasePageController {
                 resolvedRelease = cloneRelease(releaseResponse.release);
                 lyricsTaskId = releaseResponse.lyricsTaskId;
                 profileImageTaskId = releaseResponse.profileImageTaskId;
+                immediateTrackLyrics = normalizeNullableStringMap(releaseResponse.trackLyrics);
+                immediateProfileImages = normalizeNullableStringMap(releaseResponse.profileImages);
             } catch (error) {
                 console.error('release-page: fetch release payload failed', error);
                 if (!isCancelled) {
@@ -101,13 +102,25 @@ export function useReleasePage(): ReleasePageController {
                 return;
             }
 
-            let mergedTrackLyrics = collectTrackLyricsForRelease(
-                resolvedRelease,
-                releaseTracksLyricsRef.current
+            // Merge the server's immediate maps into local caches first;
+            // explicit nulls are resolved (no lyrics/image), only absent ids
+            // remain pending behind a background task.
+            setReleaseTracksLyrics(prev => mergeNullableStringMaps(prev, immediateTrackLyrics));
+            setArtistProfileImages(prev => mergeNullableStringMaps(prev, immediateProfileImages));
+
+            let mergedTrackLyrics = mergeNullableStringMaps(
+                collectTrackLyricsForRelease(
+                    resolvedRelease,
+                    releaseTracksLyricsRef.current
+                ),
+                immediateTrackLyrics
             );
-            let mergedArtistImages = collectArtistImagesForRelease(
-                resolvedRelease,
-                artistProfileImagesRef.current
+            let mergedArtistImages = mergeNullableStringMaps(
+                collectArtistImagesForRelease(
+                    resolvedRelease,
+                    artistProfileImagesRef.current
+                ),
+                immediateProfileImages
             );
 
             const pendingLyricTrackIds = lyricsTaskId
@@ -154,6 +167,16 @@ export function useReleasePage(): ReleasePageController {
                     },
                     recreateTask: async () => {
                         const replayedRelease = await getRelease(releaseId);
+                        // Merge replayed immediate maps so resolved values survive
+                        // even when the replayed task id is null (all cached).
+                        setReleaseTracksLyrics(prev => mergeNullableStringMaps(
+                            prev,
+                            normalizeNullableStringMap(replayedRelease.trackLyrics)
+                        ));
+                        setArtistProfileImages(prev => mergeNullableStringMaps(
+                            prev,
+                            normalizeNullableStringMap(replayedRelease.profileImages)
+                        ));
                         return replayedRelease.lyricsTaskId;
                     },
                     recreateTaskDescription: 'getRelease.lyricsTaskId',
@@ -189,6 +212,10 @@ export function useReleasePage(): ReleasePageController {
                     },
                     recreateTask: async () => {
                         const replayedRelease = await getRelease(releaseId);
+                        setArtistProfileImages(prev => mergeNullableStringMaps(
+                            prev,
+                            normalizeNullableStringMap(replayedRelease.profileImages)
+                        ));
                         return replayedRelease.profileImageTaskId;
                     },
                     recreateTaskDescription: 'getRelease.profileImageTaskId',
