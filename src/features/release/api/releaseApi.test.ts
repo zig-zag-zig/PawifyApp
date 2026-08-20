@@ -48,14 +48,14 @@ describe('useReleaseApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('waitForTaskResult delegates to apiClient.waitForTaskResultById', async () => {
+    it('waitForTaskResultById delegates to apiClient.waitForTaskResultById', async () => {
         const taskResult = { taskId: 't1', type: 'test', status: 'completed', createdAt: '' };
         vi.mocked(mockApiClient.waitForTaskResultById).mockResolvedValueOnce(taskResult);
 
         const { result } = renderHook(() => useReleaseApi());
-        const output = await result.current.waitForTaskResult('t1');
+        const output = await result.current.waitForTaskResultById('t1');
 
-        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1', undefined);
+        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1');
         expect(output).toBe(taskResult);
     });
 

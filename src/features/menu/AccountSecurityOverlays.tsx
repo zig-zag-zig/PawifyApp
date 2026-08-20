@@ -1,7 +1,7 @@
 import React from 'react';
-import { ConfirmationPrompt } from '../ConfirmationPrompt';
+import { ConfirmationPrompt } from '../../components/ConfirmationPrompt';
 import { LinkPasswordModal } from './LinkPasswordModal';
-import { authCopy } from '../../features/auth/domain/authCopy';
+import { authCopy } from '../auth/domain/authCopy';
 
 interface AccountSecurityOverlaysProps {
   deletePromptVisible: boolean;

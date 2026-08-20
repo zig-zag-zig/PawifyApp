@@ -27,8 +27,7 @@ export function useReleaseApi() {
                 await apiClient.requestText('removeNewReleases', {
                     body: await apiClient.withSourcePushToken({ releaseIds }),
                 }),
-            waitForTaskResult: async <T,>(taskId: string, options?: Parameters<typeof apiClient.waitForTaskResultById<T>>[1]) =>
-                await apiClient.waitForTaskResultById<T>(taskId, options),
+            waitForTaskResultById: apiClient.waitForTaskResultById,
         };
     }, [apiClient]);
 }

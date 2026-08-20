@@ -52,7 +52,7 @@ export function useReleasePage(): ReleasePageController {
         artistProfileImages,
         setArtistProfileImages
     } = useCache();
-    const { getRelease, waitForTaskResult } = useReleaseApi();
+    const { getRelease, waitForTaskResultById } = useReleaseApi();
     const [state, dispatch] = useReducer(
         releaseReducer,
         undefined,
@@ -145,7 +145,7 @@ export function useReleasePage(): ReleasePageController {
                 await resolveNullableTaskMap({
                     taskId: lyricsTaskId,
                     expectedIds: pendingLyricTrackIds,
-                    waitForTaskResult,
+                    waitForTaskResult: waitForTaskResultById,
                     extractMap: extractReleaseTrackLyrics,
                     onResolvedValues: (trackLyrics, resolvedTrackIds) => {
                         if (isCancelled) {
@@ -190,7 +190,7 @@ export function useReleasePage(): ReleasePageController {
                 await resolveNullableTaskMap({
                     taskId: profileImageTaskId,
                     expectedIds: pendingArtistImageIds,
-                    waitForTaskResult,
+                    waitForTaskResult: waitForTaskResultById,
                     extractMap: extractArtistProfileImages,
                     onResolvedValues: (artistImages, resolvedArtistIds) => {
                         if (isCancelled) {
@@ -237,7 +237,7 @@ export function useReleasePage(): ReleasePageController {
         releaseId,
         setArtistProfileImages,
         setReleaseTracksLyrics,
-        waitForTaskResult,
+        waitForTaskResultById,
     ]);
 
     const uiState: ReleasePageUiState = {

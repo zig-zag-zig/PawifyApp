@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { MenuItem } from './MenuItem';
 import { getMenuStyles } from './menuStyles';
-import { useAppUpdate } from '../../features/updates/state/UpdateContext';
+import { useAppUpdate } from '../updates/state/UpdateContext';
 
 export function UpdateMenuSection() {
   const appUpdate = useAppUpdate();

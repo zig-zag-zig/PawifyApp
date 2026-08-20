@@ -1,11 +1,11 @@
 import { View, ScrollView } from 'react-native';
-import { ScreenContainer } from './ui';
-import { getMenuStyles } from './menu/menuStyles';
-import { UpdateMenuSection } from './menu/UpdateMenuSection';
-import { useAccountSecurityController } from './menu/useAccountSecurityController';
-import { AccountSecurityRows } from './menu/AccountSecurityRows';
-import { AccountSecurityOverlays } from './menu/AccountSecurityOverlays';
-import { ReleaseNotificationSettingsCard } from '../features/userSettings/components/ReleaseNotificationSettingsCard';
+import { ScreenContainer } from '../../components/ui';
+import { getMenuStyles } from './menuStyles';
+import { UpdateMenuSection } from './UpdateMenuSection';
+import { useAccountSecurityController } from './useAccountSecurityController';
+import { AccountSecurityRows } from './AccountSecurityRows';
+import { AccountSecurityOverlays } from './AccountSecurityOverlays';
+import { ReleaseNotificationSettingsCard } from '../userSettings/components/ReleaseNotificationSettingsCard';
 
 export default function Menu() {
   const styles = getMenuStyles();

@@ -14,7 +14,6 @@ export function useArtistsApi() {
             }),
         getFollowing: async () =>
             await apiClient.request<FollowingResponse>('getFollowing', { method: 'GET' }),
-        waitForTaskResult: async <T,>(taskId: string, options?: Parameters<typeof apiClient.waitForTaskResultById<T>>[1]) =>
-            await apiClient.waitForTaskResultById<T>(taskId, options),
+waitForTaskResultById: apiClient.waitForTaskResultById,
     }), [apiClient]);
 }

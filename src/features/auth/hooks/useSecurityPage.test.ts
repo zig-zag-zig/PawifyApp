@@ -18,7 +18,7 @@ vi.mock('@react-navigation/native', () => ({
     useNavigation: vi.fn(),
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
-vi.mock('../../../hooks/useGoogleAuth', () => ({ useGoogleAuth: {} }));
+vi.mock('../hooks/useGoogleAuth', () => ({ useGoogleAuth: {} }));
 vi.mock('../api/authApi', () => ({ useAuthApi: () => ({}) }));
 // break the ToastContext → InfoBanner → @expo/vector-icons chain
 vi.mock('../../../contexts/ToastContext', () => ({ useToast: () => ({ showToast: vi.fn() }) }));

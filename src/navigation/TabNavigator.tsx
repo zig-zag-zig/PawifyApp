@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Menu from '../components/Menu';
+import Menu from '../features/menu/MenuPage';
 import ArtistsPage from '../features/artists/pages/ArtistsPage';
 import ReleasesPage from '../features/release/pages/ReleasesPage';
 import SearchPage from '../features/search/pages/SearchPage';

@@ -1,6 +1,6 @@
 import type { User } from 'firebase/auth';
 import { Platform } from 'react-native';
-import useGoogleAuth, { getGoogleSignInErrorCode } from '../../../hooks/useGoogleAuth';
+import useGoogleAuth, { getGoogleSignInErrorCode } from '../hooks/useGoogleAuth';
 import { auth } from '../../../firebase/firebaseAuth';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 

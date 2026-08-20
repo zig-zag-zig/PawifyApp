@@ -15,7 +15,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const route = useRoute<ReleaseGroupRouteProp>();
     const navigation = useNavigation<ReleaseNavigationProp>();
     const { releaseGroupReleaseCovers, setReleaseGroupReleaseCovers } = useCache();
-    const { getReleaseGroupReleases, waitForTaskResult } = useReleaseApi();
+    const { getReleaseGroupReleases, waitForTaskResultById } = useReleaseApi();
     const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
     const { releaseGroupId, releases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
 
@@ -50,7 +50,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
             await resolveNullableTaskMap({
                 taskId: releaseCoverTaskId,
                 expectedIds: missingCoverIds,
-                waitForTaskResult,
+                waitForTaskResult: waitForTaskResultById,
                 extractMap: extractReleaseGroupReleaseCovers,
                 onResolvedValues: (covers, resolvedReleaseIds) => {
                     if (isCancelled) {
@@ -96,7 +96,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         releaseGroupReleaseCovers,
         releases,
         setReleaseGroupReleaseCovers,
-        waitForTaskResult,
+        waitForTaskResultById,
     ]);
 
     const state: ReleaseGroupPageUiState = {

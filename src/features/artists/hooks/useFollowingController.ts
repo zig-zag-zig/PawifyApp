@@ -103,7 +103,7 @@ export function useFollowingController(): FollowingContextValue {
     await resolveNullableTaskMap({
       taskId: profileImageTaskId,
       expectedIds: artistIds,
-      waitForTaskResult: artistsApi.waitForTaskResult,
+      waitForTaskResult: artistsApi.waitForTaskResultById,
       extractMap: extractArtistProfileImages,
       onResolvedValues: (artistProfileImages, resolvedArtistIds) => {
         setArtistProfileImages(prev => mergeNullableStringMaps(prev, artistProfileImages));

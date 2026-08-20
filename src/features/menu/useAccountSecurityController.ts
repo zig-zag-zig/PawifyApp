@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SecurityNavigationProp } from '../../types/navigation';
 import { useToast } from '../../contexts/ToastContext';
 import { getUserFacingErrorMessage } from '../../services/userFacingErrors';
-import { authCopy } from '../../features/auth/domain/authCopy';
+import { authCopy } from '../auth/domain/authCopy';
 
 export function useAccountSecurityController() {
   const { signOut, linkGoogle, linkPassword, unlinkProvider, user } = useAuth();

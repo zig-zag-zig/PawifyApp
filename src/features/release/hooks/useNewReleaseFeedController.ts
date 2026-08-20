@@ -174,7 +174,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     await resolveNullableTaskMap<NewReleaseCoverTaskResult>({
       taskId: releaseCoverTaskId,
       expectedIds: releaseIds,
-      waitForTaskResult: releaseApi.waitForTaskResult,
+      waitForTaskResult: releaseApi.waitForTaskResultById,
       extractMap: extractNewReleaseCovers,
       onResolvedValues: (covers, resolvedReleaseIds) => {
         if (releaseCoverTaskIdRef.current !== releaseCoverTaskId) {
