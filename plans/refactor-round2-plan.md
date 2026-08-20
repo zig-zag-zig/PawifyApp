@@ -162,3 +162,22 @@ suggested remediation is downgrading expo 56 -> 53, which is rejected.
 Accepted risk: metro consumes image-size at build time on repo-local assets
 only. Revisit with the SDK 57 upgrade (already required by the Hermes V1
 expo-doctor check).
+
+**Follow-up (post-SDK-57):** the image-size advisory persisted after the SDK 57
+upgrade (metro 0.84.4 still resolves image-size 1.2.1; advisory range <=2.0.2
+with `patched: None` — even the maintainer's Apr-2025 fix release is inside
+the vulnerable range; no open PRs). Research confirmed it cannot be replaced
+(metro-internal, pinned by expo) and is only used at build time to read
+image dimensions of repo-local assets (`metro/src/Assets.js`).
+
+Fix: `scripts/release-audit.cjs` — a self-expiring allowlist module for the
+release gate:
+- any advisory NOT in `KNOWN_ACCEPTED_ADVISORIES` blocks the gate
+- advisory chains resolved transitively (npm reports the same leaf advisory
+  at every chain level: expo -> @expo/metro -> metro -> image-size)
+- SELF-EXPIRING: if an accepted id stops appearing in the audit report
+  (upstream fix lands), the gate fails loudly demanding the entry's removal
+- validated: real audit passes (8 packages accepted), stale entry -> exit 1,
+  injected new advisory -> blocks
+`release-check.cjs` now calls the module (was a hard `npm audit` fail).
+Full `release-check.cjs` run: **PASSED** (all steps incl. rebuild + apksigner).

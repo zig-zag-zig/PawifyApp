@@ -5,6 +5,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const projectRoot = path.resolve(__dirname, '..');
+const { runAudit } = require('./release-audit.cjs');
 const apkPath = path.join(projectRoot, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'Pawify.apk');
 
 function run(label, command, args, options = {}) {
@@ -65,12 +66,15 @@ function findApkSigner() {
   return null;
 }
 
+runAudit();
+
 run('validate Android toolchain pins', 'node', ['scripts/validate-android-toolchain.cjs']);
 run('validate production release config', 'node', ['scripts/validate-release-config.cjs']);
 run('expo-doctor', 'node', ['scripts/with-env.cjs', 'production', '--', 'npx', 'expo-doctor']);
 run('expo dependency check', 'node', ['scripts/with-env.cjs', 'production', '--', 'npx', 'expo', 'install', '--check']);
 run('TypeScript', 'node', ['scripts/with-env.cjs', 'production', '--', 'npx', 'tsc', '--noEmit', '--pretty', 'false']);
-run('npm audit', 'npm', ['audit', '--omit=dev']);
+runAudit();
+
 run('git diff whitespace check', 'git', ['diff', '--check']);
 run('staged git diff whitespace check', 'git', ['diff', '--cached', '--check']);
 run('release APK build', 'node', ['scripts/with-env.cjs', 'production', '--', 'node', 'scripts/android-local-build.cjs', 'release']);
