@@ -30,21 +30,31 @@ function parseStoredEvents(value: string | null): StoredBackgroundEvent[] {
     }
 }
 
-export async function addPendingBackgroundEvent(
+// Serializes the read-modify-write cycle so concurrent adds cannot drop
+// each other's events (background notifications arrive serialized in
+// practice, but the guarantee should not depend on that).
+let pendingWrite: Promise<unknown> = Promise.resolve();
+
+export function addPendingBackgroundEvent(
     eventName: string,
     payload?: EventPayload
-) {
-    const currentEvents = parseStoredEvents(
-        await AsyncStorage.getItem(pendingBackgroundEventsKey)
-    );
-    const nextEvents = currentEvents.filter(event => event.eventName !== eventName);
+): Promise<void> {
+    const write = pendingWrite.then(async () => {
+        const currentEvents = parseStoredEvents(
+            await AsyncStorage.getItem(pendingBackgroundEventsKey)
+        );
+        const nextEvents = currentEvents.filter(event => event.eventName !== eventName);
 
-    nextEvents.push({ eventName, payload });
+        nextEvents.push({ eventName, payload });
 
-    await AsyncStorage.setItem(
-        pendingBackgroundEventsKey,
-        JSON.stringify(nextEvents)
-    );
+        await AsyncStorage.setItem(
+            pendingBackgroundEventsKey,
+            JSON.stringify(nextEvents)
+        );
+    });
+
+    pendingWrite = write.catch(() => undefined);
+    return write;
 }
 
 export async function takePendingBackgroundEvents(): Promise<StoredBackgroundEvent[]> {

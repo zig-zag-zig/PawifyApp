@@ -89,3 +89,26 @@ Baseline at plan time: typecheck clean, 72 files / 641 tests.
 | R2.4 | verify | visual spot-check (no diffs expected) |
 | R2.5 | verify | Sentry breadcrumb smoke (dev) |
 | R2.6 | verify | — |
+
+## Execution status (2026-08-20, all committed on `refactor/phase-0-inventory`)
+
+| Phase | Commit | Verify |
+|---|---|---|
+| R2.1 correctness | `07b1a39` | 73 files / 654 tests |
+| R2.2 image task store | `faab3d1` | 74 files / 656 tests |
+| R2.3 SRP cleanup | `c7d1fe6` | 74 files / 656 tests |
+| R2.4 theme tokens | `5483b16` | 74 files / 656 tests |
+| R2.5 observability + tests | `cfe78bd` | 75 files / 661 tests |
+| R2.6 polish + docs | (this commit) | 75 files / 661 tests |
+
+Notes:
+- R2.2 also fixed image tasks never settling (`downloadAndCacheImage`
+  resolved `undefined`, leaving zombie queue entries that re-ran on every
+  foreground replay).
+- R2.5 introduced `services/monitoring/reportError` (Sentry registers as the
+  reporter at init) so core modules stay free of the Sentry SDK import.
+- Deferred items (unchanged): ScreenContainer safe-area (device check),
+  google-services.json tracking (product decision), dateUtil test (submodule
+  code).
+- Every phase self-reviewed (oracle quota-blocked until 08-25; retroactive
+  oracle pass still queued in the ledger).
