@@ -27,6 +27,21 @@ const ARTIST_DIAGNOSTICS_RUN_ID = new Date(diagnosticsRunStartedAt).toISOString(
 
 type DiagnosticLevel = 'log' | 'warn' | 'error';
 
+const apiDiagnosticsEndpoints = new Set([
+    'getArtistDetails',
+    'getArtistReleases',
+    'getReleaseGroupReleases',
+    'getTaskResult',
+]);
+
+/**
+ * NOTE: intentionally NOT gated by ARTIST_DIAGNOSTICS_ENABLED — these API
+ * request/response logs shipped always-on for the allowlisted endpoints.
+ */
+export function shouldLogApiDiagnostics(endpoint: string): boolean {
+    return apiDiagnosticsEndpoints.has(endpoint);
+}
+
 export function shouldLogArtistTaskDiagnostics(operationName?: string, origin?: string): boolean {
   if (!ARTIST_DIAGNOSTICS_ENABLED) {
     return false;

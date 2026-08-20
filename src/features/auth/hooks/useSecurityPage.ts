@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { useCallback, useMemo, useReducer } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import useGoogleAuth from '../../../hooks/useGoogleAuth';
+import useGoogleAuth from '../hooks/useGoogleAuth';
 import { auth } from '../../../firebase/firebaseAuth';
 import { getUserFacingErrorMessage } from '../../../services/userFacingErrors';
 import { RootStackParamList } from '../../../types/navigation';

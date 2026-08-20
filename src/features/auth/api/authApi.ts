@@ -12,9 +12,9 @@ export function useAuthApi() {
         signUp: auth.signUp,
         signOut: auth.signOut,
         setLoginWithReauthenticateWithCredential: auth.setLoginWithReauthenticateWithCredential,
-        revokeToken: async () => await apiClient.request<string>('revokeToken', { method: 'GET' }),
-        deleteUserAccount: async () => await apiClient.request<string>('deleteUserAccount'),
-        changeEmail: async (email: string) => await apiClient.request<string>('changeEmail', {
+        revokeToken: async () => await apiClient.requestText('revokeToken', { method: 'GET' }),
+        deleteUserAccount: async () => await apiClient.requestText('deleteUserAccount'),
+        changeEmail: async (email: string) => await apiClient.requestText('changeEmail', {
             body: { email },
         }),
     }), [apiClient, auth]);
@@ -25,11 +25,11 @@ export function usePublicAuthApi() {
     const apiClient = useApiClient(getAnonymousToken);
 
     return useMemo(() => ({
-        sendOtp: async (email: string) => await apiClient.request<string>('sendOtp', {
+        sendOtp: async (email: string) => await apiClient.requestText('sendOtp', {
             body: { email },
             requiresAuth: false,
         }),
-        verifyOtp: async (email: string, otp: string) => await apiClient.request<string>('verifyOtp', {
+        verifyOtp: async (email: string, otp: string) => await apiClient.requestText('verifyOtp', {
             body: { email, otp },
             requiresAuth: false,
         }),
@@ -41,6 +41,6 @@ export function useTempTokenAuthApi(tempToken: string) {
     const apiClient = useApiClient(getTempToken);
 
     return useMemo(() => ({
-        revokeToken: async () => await apiClient.request<string>('revokeToken', { method: 'GET' }),
+        revokeToken: async () => await apiClient.requestText('revokeToken', { method: 'GET' }),
     }), [apiClient]);
 }

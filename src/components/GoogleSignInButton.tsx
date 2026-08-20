@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform, TouchableOpacity, Text, View, StyleSheet } from 'react-native';
 import Svg, { G, Path, Defs, ClipPath, Rect } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
-import { isGoogleSignInCancellation } from '../hooks/useGoogleAuth';
+import { isGoogleSignInCancellation } from '../features/auth/hooks/useGoogleAuth';
 import { getUserFacingErrorMessage } from '../services/userFacingErrors';
 import { useToast } from '../contexts/ToastContext';
 

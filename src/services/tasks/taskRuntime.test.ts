@@ -396,4 +396,89 @@ describe('createTaskManagerStore', () => {
             expect(listener).not.toHaveBeenCalled();
         });
     });
+
+    describe('inactive-app deferral and failure settling', () => {
+        let appStateHandler: ((state: string) => void) | null = null;
+
+        const captureAppStateHandler = () => {
+            vi.mocked(AppState.addEventListener).mockImplementation(((
+                _type: string,
+                handler: (state: string) => void,
+            ) => {
+                appStateHandler = handler;
+                return { remove: vi.fn() };
+            }) as unknown as typeof AppState.addEventListener);
+        };
+
+        beforeEach(() => {
+            appStateHandler = null;
+            (AppState as unknown as { currentState: string }).currentState = 'active';
+        });
+
+        afterEach(() => {
+            (AppState as unknown as { currentState: string }).currentState = 'active';
+        });
+
+        it('defers execution requested while inactive and replays once on foreground (any policy)', async () => {
+            captureAppStateHandler();
+            (AppState as unknown as { currentState: string }).currentState = 'background';
+
+            const store = createTaskManagerStore();
+            const run = vi.fn(async () => 'deferred-result');
+            const task = store.addTask(run, 'deferredOp', { replayPolicy: 'none' });
+            store.start();
+
+            const result = await store.executeTask(task);
+            expect(result).toBeNull();
+            expect(run).not.toHaveBeenCalled();
+            expect(store.getState().tasks[0].deferredUntilActive).toBe(true);
+
+            (AppState as unknown as { currentState: string }).currentState = 'active';
+            appStateHandler!('active');
+
+            await vi.waitFor(() => {
+                expect(store.getState().tasks[0].result).toBe('deferred-result');
+            });
+            expect(run).toHaveBeenCalledTimes(1);
+
+            // One-shot: further foreground transitions must not re-run the
+            // now-settled task.
+            appStateHandler!('background');
+            appStateHandler!('active');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(run).toHaveBeenCalledTimes(1);
+            expect(store.getState().tasks[0].result).toBe('deferred-result');
+
+            store.destroy();
+        });
+
+        it('settles a failure with an error even when the app goes inactive mid-run', async () => {
+            captureAppStateHandler();
+            (AppState as unknown as { currentState: string }).currentState = 'active';
+
+            const store = createTaskManagerStore();
+            let rejectRun: ((error: Error) => void) | null = null;
+            const task = store.addTask(
+                () => new Promise<string>((_, reject) => {
+                    rejectRun = reject;
+                }),
+                'midRunFailure',
+                { replayPolicy: 'none' },
+            );
+            store.start();
+
+            const execution = store.executeTask(task);
+            // The app goes to the background while the run promise is pending.
+            appStateHandler!('background');
+            rejectRun!(new Error('mid-run boom'));
+
+            await expect(execution).resolves.toBeNull();
+            const settled = store.getState().tasks[0];
+            expect(settled.error).toBeInstanceOf(Error);
+            expect((settled.error as Error).message).toBe('mid-run boom');
+            expect(settled.result).toBeUndefined();
+
+            store.destroy();
+        });
+    });
 });

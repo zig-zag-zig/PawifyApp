@@ -1,59 +1,43 @@
 import * as Device from 'expo-device';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
-import * as TaskManager from 'expo-task-manager';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import { EventService } from '../services/eventService';
 import { getExternalNavigationResumeDelayMs } from '../services/externalNavigation';
+import { captureAppError } from '../services/monitoring/reportError';
 import { takePendingBackgroundEvents } from '../services/backgroundEventStorage';
-import { getStoredPushToken } from '../services/pushTokenStorage';
 import {
   extractNotificationEventData,
-  persistNotificationEvent,
+  getDeepLinkPathForEvent,
   registerNotificationEvent,
-  shouldPersistBackgroundEvent,
 } from '../services/notifications/notificationEvents';
+import {
+  BACKGROUND_NOTIFICATION_TASK,
+  defineBackgroundNotificationTask,
+} from '../services/notifications/notificationBackgroundTask';
 
-const BACKGROUND_NOTIFICATION_TASK = 'background-notification-task';
-
-async function hydrateClientPushToken() {
-  if (EventService.getClientPushToken()) {
-    return;
-  }
-
-  try {
-    const pushToken = await getStoredPushToken();
-    if (pushToken) {
-      EventService.setClientPushToken(pushToken);
-    }
-  } catch (error) {
-    console.warn('fcm: hydrate client push token failed', error);
-  }
-}
-
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }: { data: any, error: any }) => {
-  if (error) {
-    console.error('fcm: background task failed', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return;
-  }
-
-  await hydrateClientPushToken();
-
-  const innerData = data?.data || {};
-  const eventData = extractNotificationEventData(innerData);
-  if (eventData) {
-    const eventAdded = registerNotificationEvent(eventData.eventName, eventData.payload, 'background-task');
-    if (eventAdded && shouldPersistBackgroundEvent(eventData.eventName)) {
-      await persistNotificationEvent(eventData.eventName, eventData.payload);
-    }
-  }
-});
+// Registered once at module load: headless task wiring must exist before
+// Notifications.registerTaskAsync runs.
+defineBackgroundNotificationTask();
 
 export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
-  const releasesDeepLink = Linking.createURL('/releases');
+  const openDeepLinkForEvent = async (eventData: { eventName: string } | null) => {
+    if (!eventData) {
+      return;
+    }
+
+    const path = getDeepLinkPathForEvent(eventData.eventName);
+    if (!path) {
+      return;
+    }
+
+    try {
+      await Linking.openURL(Linking.createURL(path));
+    } catch (error) {
+      console.error('fcm: open deep link failed', { path, error });
+      captureAppError(error, { scope: 'fcm', action: 'open-deep-link', path });
+    }
+  };
 
   const createNotificationChannel = async () => {
     if (Platform.OS === 'android') {
@@ -146,14 +130,10 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
     // Background click listener (visible notifications only)
     const backgroundListener = Notifications.addNotificationResponseReceivedListener(
       async (response) => {
-        const { title, body } = response.notification.request.content;
+        const { title, body, data } = response.notification.request.content;
 
         if (title || body) {
-          try {
-            await Linking.openURL(releasesDeepLink);
-          } catch (error) {
-            console.error('fcm: open release deep link failed', error);
-          }
+          await openDeepLinkForEvent(extractNotificationEventData(data));
         }
       }
     );
@@ -161,14 +141,10 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
     // Killed state handler (visible notifications only)
     const handleKilledStateNotification = async () => {
       const response = Notifications.getLastNotificationResponse();
-      if (response?.notification.request.content.title ||
-        response?.notification.request.content.body) {
-        setTimeout(async () => {
-          try {
-            await Linking.openURL(releasesDeepLink);
-          } catch (error) {
-            console.error('fcm: open killed-state release deep link failed', error);
-          }
+      const { title, body, data } = response?.notification.request.content ?? {};
+      if (title || body) {
+        setTimeout(() => {
+          void openDeepLinkForEvent(extractNotificationEventData(data));
         }, Device.osName === 'iOS' ? 300 : 500);
       }
     };

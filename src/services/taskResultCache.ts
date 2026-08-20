@@ -68,9 +68,15 @@ export const notifyPendingTaskResultPartialListeners = async (
     return;
   }
 
+  // One throwing listener must not reject the whole notification (which the
+  // waiter would otherwise treat as a fetch error).
   await Promise.all(
     Array.from(pendingWait.partialListeners).map(async listener => {
-      await listener(taskResult);
+      try {
+        await listener(taskResult);
+      } catch (error) {
+        console.warn('task-result: partial listener failed', error);
+      }
     })
   );
 };

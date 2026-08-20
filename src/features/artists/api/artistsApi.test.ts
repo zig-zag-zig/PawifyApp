@@ -9,6 +9,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 const mockApiClient = {
     request: vi.fn(),
+    requestText: vi.fn(),
     withSourcePushToken: vi.fn(),
     waitForTaskResult: vi.fn(),
     waitForTaskResultById: vi.fn(),
@@ -21,15 +22,15 @@ vi.mock('../../../hooks/useApiClient', () => ({
 import { useArtistsApi } from './artistsApi';
 
 describe('useArtistsApi', () => {
-    it('unfollowArtists calls apiClient.request with source push token', async () => {
+    it('unfollowArtists calls apiClient.requestText with source push token', async () => {
         vi.mocked(mockApiClient.withSourcePushToken).mockResolvedValueOnce({ artistIds: ['a1', 'a2'], sourcePushToken: 'push-1' });
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce('ok');
+        vi.mocked(mockApiClient.requestText).mockResolvedValueOnce('ok');
 
         const { result } = renderHook(() => useArtistsApi());
         const output = await result.current.unfollowArtists(['a1', 'a2']);
 
         expect(mockApiClient.withSourcePushToken).toHaveBeenCalledWith({ artistIds: ['a1', 'a2'] });
-        expect(mockApiClient.request).toHaveBeenCalledWith('unfollowArtists', {
+        expect(mockApiClient.requestText).toHaveBeenCalledWith('unfollowArtists', {
             body: { artistIds: ['a1', 'a2'], sourcePushToken: 'push-1' },
         });
         expect(output).toBe('ok');
@@ -48,14 +49,14 @@ describe('useArtistsApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('waitForTaskResult delegates to apiClient.waitForTaskResultById', async () => {
+    it('waitForTaskResultById delegates to apiClient.waitForTaskResultById', async () => {
         const taskResult = { taskId: 't1', type: 'test', status: 'completed', createdAt: '' };
         vi.mocked(mockApiClient.waitForTaskResultById).mockResolvedValueOnce(taskResult);
 
         const { result } = renderHook(() => useArtistsApi());
-        const output = await result.current.waitForTaskResult('t1');
+        const output = await result.current.waitForTaskResultById('t1');
 
-        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1', undefined);
+        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1');
         expect(output).toBe(taskResult);
     });
 });

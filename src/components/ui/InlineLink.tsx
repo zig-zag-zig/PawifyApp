@@ -1,8 +1,9 @@
 import { type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type TextStyle } from 'react-native';
 import { getStyles } from '../../styles/styles';
+import { theme } from '../../styles/theme';
 
-const inlineLinkColor = '#007AFF';
+const inlineLinkColor = theme.colors.inlineLink;
 
 type InlineLinkProps = {
   onPress: () => void;

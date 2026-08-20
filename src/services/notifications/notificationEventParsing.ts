@@ -33,6 +33,28 @@ export function getTaskCompletedEventName(payload: EventPayload | undefined): st
   return taskId ? `taskCompleted:${taskId}` : null;
 }
 
+/**
+ * Deep-link destination for a notification tap, routed by event name.
+ * Task events and unknown events do not navigate (they only refresh data
+ * in place via the EventService).
+ */
+export function getDeepLinkPathForEvent(eventName: string): string | null {
+  if (eventName.startsWith('taskCompleted')) {
+    return null;
+  }
+
+  switch (eventName) {
+    case 'releases':
+      return '/releases';
+    case 'following':
+      return '/artists';
+    case 'releaseNotificationSettings':
+      return '/menu';
+    default:
+      return null;
+  }
+}
+
 export function extractNotificationEventPayload(eventData: unknown): EventPayload | undefined {
   if (!eventData || typeof eventData !== 'object' || Array.isArray(eventData)) {
     return undefined;

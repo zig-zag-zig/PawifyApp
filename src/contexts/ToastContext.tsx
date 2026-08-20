@@ -27,8 +27,16 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const modalMountRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const toastIdRef = useRef(0);
+    const onDismissRef = useRef<(() => void) | null>(null);
 
-    const showToast = (message: string, type: ToastType, onDismiss?: (() => void), visible?: boolean, position?: ToastPosition, timeout = 2500) => {
+    const dismissCurrentToast = (invokeCallback: boolean) => {
+        if (invokeCallback && onDismissRef.current) {
+            onDismissRef.current();
+        }
+        onDismissRef.current = null;
+    };
+
+    const showToast = (message: string, type: ToastType, onDismiss?: (() => void), visible?: boolean, position?: ToastPosition, timeout?: number) => {
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;
@@ -37,6 +45,11 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
             clearTimeout(modalMountRef.current);
             modalMountRef.current = null;
         }
+
+        // Whatever toast is currently shown is ending: its onDismiss must
+        // run even when it is being replaced by a new toast (previously the
+        // callback was silently dropped on replacement).
+        dismissCurrentToast(true);
 
         if (visible === false) {
             setToast(null);
@@ -52,17 +65,23 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
             position,
         };
         toastIdRef.current = nextToast.id;
+        onDismissRef.current = onDismiss ?? null;
         setToast(null);
         modalMountRef.current = setTimeout(() => {
             setToast(nextToast);
             modalMountRef.current = null;
         }, 0);
 
-        if (timeout > 0 && type !== 'error') {
+        // Errors persist longer by default (they used to never auto-dismiss,
+        // which left stale error banners on screen); pass timeout: 0 to keep
+        // an error on screen until dismissed.
+        const effectiveTimeoutMs = timeout ?? (type === 'error' ? 8000 : 2500);
+        if (effectiveTimeoutMs > 0) {
             timeoutRef.current = setTimeout(() => {
-                setToast(null);
                 timeoutRef.current = null;
-            }, timeout);
+                dismissCurrentToast(true);
+                setToast(null);
+            }, effectiveTimeoutMs);
         }
     };
 
@@ -80,7 +99,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;
         }
-        toast?.onDismiss?.();
+        dismissCurrentToast(true);
         setToast(null);
     };
 

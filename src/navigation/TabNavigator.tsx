@@ -2,15 +2,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Menu from '../components/Menu';
+import Menu from '../features/menu/MenuPage';
 import ArtistsPage from '../features/artists/pages/ArtistsPage';
 import ReleasesPage from '../features/release/pages/ReleasesPage';
 import SearchPage from '../features/search/pages/SearchPage';
+import { theme } from '../styles/theme';
 
 const Tab = createBottomTabNavigator();
-const TAB_BAR_HEIGHT = 48;
-const TAB_BAR_ICON_SIZE = 28;
-const TAB_BAR_ICON_OFFSET = 8;
+const TAB_BAR_HEIGHT = theme.tabBar.height;
+const TAB_BAR_ICON_SIZE = theme.tabBar.iconSize;
+const TAB_BAR_ICON_OFFSET = theme.tabBar.iconOffset;
 
 export const TabNavigator = () => {
   const insets = useSafeAreaInsets();
@@ -20,15 +21,15 @@ export const TabNavigator = () => {
     <Tab.Navigator
       backBehavior="history"
       screenOptions={{
-        tabBarActiveTintColor: '#FFF',
-        tabBarInactiveTintColor: '#888',
+        tabBarActiveTintColor: theme.colors.tabBarActive,
+        tabBarInactiveTintColor: theme.colors.tabBarInactive,
         tabBarShowLabel: false,
         tabBarStyle: {
           height: TAB_BAR_HEIGHT + bottomInset,
           paddingBottom: bottomInset,
           paddingTop: 0,
           borderTopWidth: 1,
-          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          borderTopColor: theme.colors.tabBarBorder,
           elevation: 0,
           backgroundColor: 'transparent',
         },
@@ -45,7 +46,7 @@ export const TabNavigator = () => {
         freezeOnBlur: true,
         tabBarBackground: () => (
           <LinearGradient
-            colors={['#181818', '#2a2a2a']}
+            colors={[theme.colors.tabBarBackgroundStart, theme.colors.tabBarBackgroundEnd]}
             style={{
               position: 'absolute',
               width: '100%',

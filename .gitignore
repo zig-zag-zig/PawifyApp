@@ -44,3 +44,4 @@ android/*
 .codex
 *-debug.log
 .pi*
+.jspace/

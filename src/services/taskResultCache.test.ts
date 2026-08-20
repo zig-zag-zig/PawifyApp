@@ -8,6 +8,8 @@ import {
     setPendingTaskResultWait,
     getPendingTaskResultWait,
     deletePendingTaskResultWait,
+    notifyPendingTaskResultPartialListeners,
+    addPendingTaskResultPartialListener,
     resetForTesting,
 } from './taskResultCache';
 
@@ -118,4 +120,27 @@ describe('taskResultCache', () => {
             expect(getPendingTaskResultWait('missing')).toBeUndefined();
         });
     });
+});
+
+describe('notifyPendingTaskResultPartialListeners isolation', () => {
+  it('does not reject when one listener throws; others still run', async () => {
+    resetForTesting();
+    const goodListener = vi.fn();
+    const throwingListener = vi.fn(() => {
+      throw new Error('listener boom');
+    });
+
+    setPendingTaskResultWait('task-iso', Promise.resolve({} as never));
+    addPendingTaskResultPartialListener('task-iso', throwingListener);
+    addPendingTaskResultPartialListener('task-iso', goodListener);
+
+    const taskResult = { taskId: 'task-iso', type: 't', status: 'completed', createdAt: '' };
+    await expect(
+      notifyPendingTaskResultPartialListeners('task-iso', taskResult as never),
+    ).resolves.toBeUndefined();
+
+    expect(goodListener).toHaveBeenCalledTimes(1);
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    resetForTesting();
+  });
 });

@@ -1,6 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
-import { ENV } from '../config/env';
-import { googleSignInErrorMessages } from '../services/googleSignInErrorMessages';
+import { ENV } from '../../../config/env';
+import { googleSignInErrorMessages } from '../../../services/googleSignInErrorMessages';
 
 const { GoogleSignInModule } = NativeModules as any;
 

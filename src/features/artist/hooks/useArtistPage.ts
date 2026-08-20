@@ -35,7 +35,7 @@ export function useArtistPage(): ArtistPageController {
         getArtistDetails,
         getArtistReleases,
         getReleaseGroupReleases,
-        waitForTaskResult
+        waitForTaskResultById
     } = useArtistApi();
 
     const [state, dispatch] = useReducer(
@@ -101,7 +101,7 @@ export function useArtistPage(): ArtistPageController {
         resolveReleaseGroupCoverTask,
     } = useArtistPageTaskResolvers({
         artistIdRef,
-        waitForTaskResult,
+        waitForTaskResult: waitForTaskResultById,
         mergeProfileImagesWithDiagnostics,
         mergeReleaseGroupCoversWithDiagnostics,
     });

@@ -9,6 +9,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 const mockApiClient = {
     request: vi.fn(),
+    requestText: vi.fn(),
     withSourcePushToken: vi.fn(),
     waitForTaskResult: vi.fn(),
     waitForTaskResultById: vi.fn(),
@@ -47,14 +48,14 @@ describe('useReleaseApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('waitForTaskResult delegates to apiClient.waitForTaskResultById', async () => {
+    it('waitForTaskResultById delegates to apiClient.waitForTaskResultById', async () => {
         const taskResult = { taskId: 't1', type: 'test', status: 'completed', createdAt: '' };
         vi.mocked(mockApiClient.waitForTaskResultById).mockResolvedValueOnce(taskResult);
 
         const { result } = renderHook(() => useReleaseApi());
-        const output = await result.current.waitForTaskResult('t1');
+        const output = await result.current.waitForTaskResultById('t1');
 
-        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1', undefined);
+        expect(mockApiClient.waitForTaskResultById).toHaveBeenCalledWith('t1');
         expect(output).toBe(taskResult);
     });
 
@@ -71,15 +72,15 @@ describe('useReleaseApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('removeNewReleases calls apiClient.request with source push token', async () => {
+    it('removeNewReleases calls apiClient.requestText with source push token', async () => {
         vi.mocked(mockApiClient.withSourcePushToken).mockResolvedValueOnce({ releaseIds: ['r1'], sourcePushToken: 'push-1' });
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce('ok');
+        vi.mocked(mockApiClient.requestText).mockResolvedValueOnce('ok');
 
         const { result } = renderHook(() => useReleaseApi());
         const output = await result.current.removeNewReleases(['r1']);
 
         expect(mockApiClient.withSourcePushToken).toHaveBeenCalledWith({ releaseIds: ['r1'] });
-        expect(mockApiClient.request).toHaveBeenCalledWith('removeNewReleases', {
+        expect(mockApiClient.requestText).toHaveBeenCalledWith('removeNewReleases', {
             body: { releaseIds: ['r1'], sourcePushToken: 'push-1' },
         });
         expect(output).toBe('ok');

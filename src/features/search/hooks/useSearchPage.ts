@@ -80,7 +80,7 @@ const getPageCount = (result: SearchPageResult): number => (
 
 export function useSearchPage(): SearchPageController {
     const navigation = useNavigation<ArtistNavigationProp>();
-    const { searchArtists, waitForTaskResult } = useSearchApi();
+    const { searchArtists, waitForTaskResultById } = useSearchApi();
     const { artistProfileImages, setArtistProfileImages } = useCache();
     const { tasks, addTask, removeTask, executeTask } = useTaskManager();
     const [pendingArtistImageIds, setPendingArtistImageIds] = useState<string[]>([]);
@@ -264,7 +264,7 @@ export function useSearchPage(): SearchPageController {
                 await resolveNullableTaskMap({
                     taskId: profileImageTask.taskId,
                     expectedIds: profileImageTask.artistIds,
-                    waitForTaskResult,
+                    waitForTaskResult: waitForTaskResultById,
                     extractMap: extractArtistProfileImages,
                     onResolvedValues: (artistImages, resolvedArtistIds) => {
                         setArtistProfileImages(prev => mergeNullableStringMaps(prev, artistImages));
@@ -315,7 +315,7 @@ export function useSearchPage(): SearchPageController {
         state.pendingTaskId,
         state.shouldPreserveState,
         tasks,
-        waitForTaskResult,
+        waitForTaskResultById,
     ]);
 
     useFocusEffect(

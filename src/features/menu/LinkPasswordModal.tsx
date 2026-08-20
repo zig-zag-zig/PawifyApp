@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
-import { Button, TextField } from '../ui';
+import { Button, TextField } from '../../components/ui';
 import { getModalStyles } from './menuStyles';
 
 export function LinkPasswordModal({
