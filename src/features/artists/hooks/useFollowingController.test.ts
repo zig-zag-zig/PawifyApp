@@ -172,7 +172,7 @@ describe('useFollowingController (characterization)', () => {
         expect(result.current.isLoadingFollowing).toBe(false);
     });
 
-    it('optimistically removes an artist and keeps that override on the next fetch', async () => {
+    it('keeps an optimistic unfollow consistent across a refresh', async () => {
         const { result } = await renderFollowing();
         await completeCurrentTask({
             artists: [artistA, artistB],
@@ -190,8 +190,9 @@ describe('useFollowingController (characterization)', () => {
         });
         await flush();
 
+        // The refresh started after the unfollow, so its response reflects it.
         await completeCurrentTask({
-            artists: [artistA, artistB],
+            artists: [artistB],
             profileImageTaskId: null,
             profileImages: {},
         });
@@ -199,7 +200,7 @@ describe('useFollowingController (characterization)', () => {
         expect(result.current.followingArtists).toEqual([artistB]);
     });
 
-    it('clears overrides after the first completed fetch, so a queued fetch can restore a stale unfollow', async () => {
+    it('keeps an unfollow override across queued fetches (no stale resurrection)', async () => {
         const { result } = await renderFollowing();
         await completeCurrentTask({
             artists: [artistA, artistB],
@@ -223,6 +224,8 @@ describe('useFollowingController (characterization)', () => {
         expect(mocks.addTask).toHaveBeenCalledTimes(2);
 
         await completeCurrentTask({
+            // Stale response: this fetch started BEFORE the unfollow, so it
+            // cannot reflect it. The newer override must survive it.
             artists: [artistA, artistB],
             profileImageTaskId: null,
             profileImages: {},
@@ -232,16 +235,18 @@ describe('useFollowingController (characterization)', () => {
         expect(mocks.addTask).toHaveBeenCalledTimes(3);
 
         await completeCurrentTask({
-            artists: [artistA, artistB],
+            // Post-mutation response: started after the unfollow, reflects it.
+            artists: [artistB],
             profileImageTaskId: null,
             profileImages: {},
         });
 
-        // Current bug: the queued response is applied with an empty override map.
-        expect(result.current.followingArtists).toEqual([artistA, artistB]);
+        // Fixed behavior: the stale queued response could not resurrect the
+        // unfollowed artist, and the post-mutation response confirms it.
+        expect(result.current.followingArtists).toEqual([artistB]);
     });
 
-    it('retriggers a user-change fetch when the user object identity changes but uid does not', async () => {
+    it('does not retrigger a user-change fetch when the user object identity changes but uid does not', async () => {
         const { rerender } = await renderFollowing();
         await completeCurrentTask({
             artists: [artistA],
@@ -254,8 +259,8 @@ describe('useFollowingController (characterization)', () => {
         rerender();
         await flush();
 
-        // Current bug: fetchArtists depends on `user`, not `userId`.
-        expect(mocks.addTask).toHaveBeenCalledTimes(2);
+        // Fixed behavior: fetchArtists depends on `userId`, not the user object.
+        expect(mocks.addTask).toHaveBeenCalledTimes(1);
     });
 
     it('clears following state when the user logs out', async () => {

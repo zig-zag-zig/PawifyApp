@@ -9,6 +9,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 const mockApiClient = {
     request: vi.fn(),
+    requestText: vi.fn(),
     withSourcePushToken: vi.fn(),
     waitForTaskResult: vi.fn(),
     waitForTaskResultById: vi.fn(),
@@ -47,28 +48,28 @@ describe('useArtistApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('followArtist calls apiClient.request with source push token', async () => {
+    it('followArtist calls apiClient.requestText with source push token', async () => {
         vi.mocked(mockApiClient.withSourcePushToken).mockResolvedValueOnce({ artistId: 'a1', sourcePushToken: 'push-1' });
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce('ok');
+        vi.mocked(mockApiClient.requestText).mockResolvedValueOnce('ok');
 
         const { result } = renderHook(() => useArtistApi());
         const output = await result.current.followArtist('a1');
 
         expect(mockApiClient.withSourcePushToken).toHaveBeenCalledWith({ artistId: 'a1' });
-        expect(mockApiClient.request).toHaveBeenCalledWith('followArtist', {
+        expect(mockApiClient.requestText).toHaveBeenCalledWith('followArtist', {
             body: { artistId: 'a1', sourcePushToken: 'push-1' },
         });
         expect(output).toBe('ok');
     });
 
-    it('unfollowArtist calls apiClient.request with source push token', async () => {
+    it('unfollowArtist calls apiClient.requestText with source push token', async () => {
         vi.mocked(mockApiClient.withSourcePushToken).mockResolvedValueOnce({ artistId: 'a1', sourcePushToken: 'push-1' });
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce('ok');
+        vi.mocked(mockApiClient.requestText).mockResolvedValueOnce('ok');
 
         const { result } = renderHook(() => useArtistApi());
         const output = await result.current.unfollowArtist('a1');
 
-        expect(mockApiClient.request).toHaveBeenCalledWith('unfollowArtist', {
+        expect(mockApiClient.requestText).toHaveBeenCalledWith('unfollowArtist', {
             body: { artistId: 'a1', sourcePushToken: 'push-1' },
         });
         expect(output).toBe('ok');

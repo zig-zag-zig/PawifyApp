@@ -9,6 +9,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 const mockApiClient = {
     request: vi.fn(),
+    requestText: vi.fn(),
     withSourcePushToken: vi.fn(),
     waitForTaskResult: vi.fn(),
     waitForTaskResultById: vi.fn(),
@@ -21,15 +22,15 @@ vi.mock('../../../hooks/useApiClient', () => ({
 import { useArtistsApi } from './artistsApi';
 
 describe('useArtistsApi', () => {
-    it('unfollowArtists calls apiClient.request with source push token', async () => {
+    it('unfollowArtists calls apiClient.requestText with source push token', async () => {
         vi.mocked(mockApiClient.withSourcePushToken).mockResolvedValueOnce({ artistIds: ['a1', 'a2'], sourcePushToken: 'push-1' });
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce('ok');
+        vi.mocked(mockApiClient.requestText).mockResolvedValueOnce('ok');
 
         const { result } = renderHook(() => useArtistsApi());
         const output = await result.current.unfollowArtists(['a1', 'a2']);
 
         expect(mockApiClient.withSourcePushToken).toHaveBeenCalledWith({ artistIds: ['a1', 'a2'] });
-        expect(mockApiClient.request).toHaveBeenCalledWith('unfollowArtists', {
+        expect(mockApiClient.requestText).toHaveBeenCalledWith('unfollowArtists', {
             body: { artistIds: ['a1', 'a2'], sourcePushToken: 'push-1' },
         });
         expect(output).toBe('ok');

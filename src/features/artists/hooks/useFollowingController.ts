@@ -8,6 +8,7 @@ import useTaskManager from '../../../hooks/useTaskManager';
 import { ArtistMinimal } from '../../../shared/music';
 import { EventService } from '../../../services/eventService';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
+import { applyFollowOverrides, type FollowingOverride } from '../domain/followOverrides';
 import { mergeUniqueIds, removeIds } from '../../../utils/arrays';
 import { shouldRunForegroundRefresh } from '../../../utils/foregroundRefreshPolicy';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
@@ -25,10 +26,6 @@ export interface FollowingContextValue {
 }
 
 type FollowingFetchReason = 'user-change' | 'event' | 'foreground-resume' | 'manual-refresh';
-type FollowingOverride = {
-  artist: ArtistMinimal;
-  isFollowing: boolean;
-};
 
 export function useFollowingController(): FollowingContextValue {
   const [followingArtists, setFollowingArtists] = useState<ArtistMinimal[]>([]);
@@ -46,6 +43,8 @@ export function useFollowingController(): FollowingContextValue {
   const taskIdRef = useRef<string | null>(null);
   const queuedFetchReasonRef = useRef<FollowingFetchReason | null>(null);
   const followOverridesRef = useRef<Map<string, FollowingOverride>>(new Map());
+  const overrideVersionRef = useRef(0);
+  const fetchVersionsRef = useRef<Map<string, number>>(new Map());
   const userId = user?.uid ?? null;
 
   useEffect(() => {
@@ -61,34 +60,9 @@ export function useFollowingController(): FollowingContextValue {
     setPendingArtistImageIds(prev => removeIds(prev, artistIds));
   }, []);
 
-  const applyFollowOverrides = useCallback((artists: ArtistMinimal[]): ArtistMinimal[] => {
-    let nextArtists = artists;
-
-    followOverridesRef.current.forEach(override => {
-      if (!override.isFollowing) {
-        nextArtists = nextArtists.filter(artist => artist.id !== override.artist.id);
-        return;
-      }
-
-      const existingIndex = nextArtists.findIndex(artist => artist.id === override.artist.id);
-      if (existingIndex === -1) {
-        nextArtists = [...nextArtists, override.artist];
-        return;
-      }
-
-      nextArtists = nextArtists.map(artist =>
-        artist.id === override.artist.id ? override.artist : artist
-      );
-    });
-
-    followOverridesRef.current.clear();
-
-    return nextArtists;
-  }, []);
-
   const fetchArtists = useCallback(async (reason: FollowingFetchReason) => {
     try {
-      if (!user) {
+      if (!userId) {
         followOverridesRef.current.clear();
         queuedFetchReasonRef.current = null;
         setFollowingArtists([]);
@@ -112,12 +86,15 @@ export function useFollowingController(): FollowingContextValue {
         origin: reason,
         replayPolicy: 'both',
       });
+      // Version at fetch start: overrides created after this fetch began must
+      // survive it, because the response cannot reflect those mutations.
+      fetchVersionsRef.current.set(task.id, overrideVersionRef.current);
       updateTaskId(task.id);
       void executeTask(task);
     } catch (error) {
       console.error('follow-context: queue following fetch task failed', error);
     }
-  }, [addTask, executeTask, artistsApi, removeTask, updateTaskId, user]);
+  }, [addTask, executeTask, artistsApi, removeTask, updateTaskId, userId]);
 
   const resolveFollowingArtistImages = useCallback(async (
     profileImageTaskId: string,
@@ -182,6 +159,8 @@ export function useFollowingController(): FollowingContextValue {
 
   useEffect(() => {
     followOverridesRef.current.clear();
+    fetchVersionsRef.current.clear();
+    overrideVersionRef.current = 0;
     queuedFetchReasonRef.current = null;
     setFollowingArtists([]);
     setHasLoadedFollowingOnce(false);
@@ -218,9 +197,11 @@ export function useFollowingController(): FollowingContextValue {
   }, [fetchArtists]);
 
   const setFollowedArtist = useCallback((artist: ArtistMinimal, isFollowing: boolean) => {
+    overrideVersionRef.current += 1;
     followOverridesRef.current.set(artist.id, {
       artist,
       isFollowing,
+      version: overrideVersionRef.current,
     });
 
     setFollowingArtists(prev => {
@@ -264,7 +245,14 @@ export function useFollowingController(): FollowingContextValue {
             profileImageTaskId?: string | null;
             profileImages?: Record<string, string | null>;
           } | undefined;
-          const artists = applyFollowOverrides(result?.artists ?? []);
+          const appliedVersion = fetchVersionsRef.current.get(task.id) ?? overrideVersionRef.current;
+          fetchVersionsRef.current.delete(task.id);
+          const { artists, remainingOverrides } = applyFollowOverrides(
+            result?.artists ?? [],
+            followOverridesRef.current,
+            appliedVersion,
+          );
+          followOverridesRef.current = remainingOverrides;
           setFollowingArtists(artists);
           setHasLoadedFollowingOnce(true);
 
@@ -301,7 +289,7 @@ export function useFollowingController(): FollowingContextValue {
     }
 
     void checkTasks();
-  }, [applyFollowOverrides, fetchArtists, removeTask, resolveFollowingArtistImages, taskId, tasks, updateTaskId]);
+  }, [fetchArtists, removeTask, resolveFollowingArtistImages, taskId, tasks, updateTaskId]);
 
   return {
     followingArtists,

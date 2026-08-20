@@ -28,6 +28,7 @@ export type ApiRequestOptions = {
 
 export type ApiClient = {
   request: <T>(endpoint: string, options?: ApiRequestOptions) => Promise<T>;
+  requestText: (endpoint: string, options?: ApiRequestOptions) => Promise<string>;
   withSourcePushToken: <T extends Record<string, unknown>>(body: T) => Promise<T & { sourcePushToken?: string }>;
   waitForTaskResult: <T>(
     taskId: string,
@@ -45,6 +46,12 @@ export type ApiClientConfig = {
   getAccessToken: () => Promise<string>;
   getDeviceId?: () => Promise<string>;
   getSourcePushToken?: () => Promise<string | null>;
+  /**
+   * Called when fetching the access token fails with a hard (non-network)
+   * auth error. The session owner (AuthContext) decides how to respond
+   * (e.g. sign out). Transient network failures never reach this callback.
+   */
+  onAuthFailure?: () => void;
 };
 
 const diagnosticApiEndpoints = new Set([
@@ -133,15 +140,21 @@ export function createApiClient({
   getAccessToken,
   getDeviceId = defaultGetDeviceId,
   getSourcePushToken = defaultGetSourcePushToken,
+  onAuthFailure,
 }: ApiClientConfig): ApiClient {
-  const request = async <T,>(
+  /**
+   * Performs the request and returns the raw Response for non-error
+   * outcomes. All error paths (network failure, non-2xx, auth token
+   * failure) throw here.
+   */
+  const performRequest = async (
     endpoint: string,
     {
       body = null,
       method = 'POST',
       requiresAuth = true,
     }: ApiRequestOptions = {},
-  ): Promise<T> => {
+  ): Promise<{ response: Response; elapsedMs: number | null }> => {
     const shouldLogDiagnostics = shouldLogApiDiagnostics(endpoint);
     const requestStartedAt = Date.now();
     const headers: Record<string, string> = {
@@ -149,7 +162,16 @@ export function createApiClient({
     };
 
     if (requiresAuth) {
-      const accessToken = await getAccessToken();
+      let accessToken: string;
+      try {
+        accessToken = await getAccessToken();
+      } catch (error) {
+        const isNetworkFailure = (error as { code?: string })?.code === 'auth/network-request-failed';
+        if (!isNetworkFailure) {
+          onAuthFailure?.();
+        }
+        throw error;
+      }
       if (!accessToken) {
         throw new Error('User not authenticated');
       }
@@ -201,26 +223,65 @@ export function createApiClient({
       throw error;
     }
 
-    const responseTextFallback = response.clone();
+    return { response, elapsedMs: elapsedSince(requestStartedAt) };
+  };
+
+  const request = async <T,>(
+    endpoint: string,
+    options: ApiRequestOptions = {},
+  ): Promise<T> => {
+    const { response, elapsedMs } = await performRequest(endpoint, options);
+    const shouldLogDiagnostics = shouldLogApiDiagnostics(endpoint);
+
     let parsedResponse: T;
     try {
       parsedResponse = (await response.json()) as T;
     } catch {
-      parsedResponse = (await responseTextFallback.text()) as T;
+      const error = createApiCallError(response.status, 'Invalid JSON response from server');
+      if (shouldLogDiagnostics) {
+        diagnosticWarn('api', 'invalid-json', {
+          url: endpoint,
+          method: options.method ?? 'POST',
+          status: response.status,
+          error: describeError(error),
+        });
+      }
+      throw error;
     }
 
     if (shouldLogDiagnostics) {
       diagnosticLog('api', 'request-done', {
         url: endpoint,
-        method,
+        method: options.method ?? 'POST',
         status: response.status,
-        elapsedMs: elapsedSince(requestStartedAt),
-        body: describeApiBody(body),
+        elapsedMs,
+        body: describeApiBody(options.body),
         response: describeApiResponse(endpoint, parsedResponse),
       });
     }
 
     return parsedResponse;
+  };
+
+  const requestText = async (
+    endpoint: string,
+    options: ApiRequestOptions = {},
+  ): Promise<string> => {
+    const { response, elapsedMs } = await performRequest(endpoint, options);
+    const text = await response.text();
+
+    if (shouldLogApiDiagnostics(endpoint)) {
+      diagnosticLog('api', 'request-done', {
+        url: endpoint,
+        method: options.method ?? 'POST',
+        status: response.status,
+        elapsedMs,
+        body: describeApiBody(options.body),
+        response: describeValueShape(text),
+      });
+    }
+
+    return text;
   };
 
   const withSourcePushToken = async <T extends Record<string, unknown>>(body: T): Promise<T & { sourcePushToken?: string }> => {
@@ -254,6 +315,7 @@ export function createApiClient({
 
   return {
     request,
+    requestText,
     withSourcePushToken,
     waitForTaskResult,
     waitForTaskResultById,

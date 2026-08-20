@@ -28,6 +28,21 @@ import { shouldRunForegroundRefresh } from '../../../utils/foregroundRefreshPoli
 
 type SkipRemotePushTokenCleanupOption = Pick<CleanupPostAuthDeviceOptions, 'skipRemotePushTokenCleanup'>;
 
+/**
+ * Thrown when a Firebase access token cannot be obtained. Carries the
+ * Firebase error code (e.g. `auth/network-request-failed`, `auth/user-token-expired`)
+ * so callers can decide between transient retry and session expiry.
+ */
+export class AuthTokenError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'AuthTokenError';
+    this.code = code;
+  }
+}
+
 interface AuthContextType {
   user: User | null;
   authCompleted: boolean;
@@ -49,6 +64,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const loginWithReauthenticateWithCredentialRef = useRef(false);
   const signOutRef = useRef<(() => Promise<void>) | null>(null);
+  const signingOutRef = useRef(false);
 
   const setLoginWithReauthenticateWithCredential = (value: boolean) => {
     loginWithReauthenticateWithCredentialRef.current = value;
@@ -57,28 +73,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const getAccessToken = useCallback(async (forceRefresh = false): Promise<string> => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      throw new Error('User not signed in');
+      throw new AuthTokenError('User not signed in');
     }
 
     try {
       return await currentUser.getIdToken(forceRefresh);
     } catch (error) {
-      console.error('auth: get access token failed', error);
-      if (signOutRef.current) {
-        await signOutRef.current();
-      }
-      throw new Error('Authentication failed. Please sign in again.');
+      const code = (error as { code?: string })?.code;
+      console.error('auth: get access token failed', code ?? error);
+      throw new AuthTokenError('Authentication failed. Please sign in again.', code);
     }
   }, []);
-  const apiClient = useApiClient(getAccessToken);
+  const handleAuthFailure = useCallback(() => {
+    // Hard token failure (expired/revoked): end the session. signOut is
+    // re-entrancy guarded, so cleanup calls that fail here cannot loop.
+    void signOutRef.current?.();
+  }, []);
+  const apiClient = useApiClient(getAccessToken, handleAuthFailure);
   const savePushToken = useCallback(async (pushToken: string) => {
-    await apiClient.request<string>('savePushToken', {
+    await apiClient.requestText('savePushToken', {
       body: { pushToken, deviceId: await apiClient.getDeviceId() },
     });
     return pushToken;
   }, [apiClient]);
   const deletePushToken = useCallback(async () =>
-    await apiClient.request<string>('deletePushToken', {
+    await apiClient.requestText('deletePushToken', {
       body: { deviceId: await apiClient.getDeviceId() },
     }), [apiClient]);
   const { registerForPushNotificationsAsync } = useRegisterForPushNotifications();
@@ -107,13 +126,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (!currentUser) {
         setUser(null);
       }
-      else if (!loginWithReauthenticateWithCredentialRef.current) {
-        try {
-          await getAccessToken();
-          setUser(prev => (prev?.uid === currentUser.uid ? prev : currentUser));
-          await registerPostAuthDevice(registerForPushNotificationsAsync, savePushToken);
-        } catch (error) {
-          console.error('auth: post-auth setup failed', error);
+      else {
+        const skipPostAuthSetup = loginWithReauthenticateWithCredentialRef.current;
+        // Always consume the gate: a failed link/reauth flow must not leave it
+        // stuck, or every later token change would skip post-auth setup.
+        loginWithReauthenticateWithCredentialRef.current = false;
+        if (!skipPostAuthSetup) {
+          try {
+            await getAccessToken();
+            setUser(prev => (prev?.uid === currentUser.uid ? prev : currentUser));
+            await registerPostAuthDevice(registerForPushNotificationsAsync, savePushToken);
+          } catch (error) {
+            console.error('auth: post-auth setup failed', error);
+          }
         }
       }
       setAuthCompleted(true);
@@ -149,16 +174,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = useCallback(async (options?: SkipRemotePushTokenCleanupOption) => {
-    await cleanupPostAuthDevice(deletePushToken, {
-      skipRemotePushTokenCleanup: options?.skipRemotePushTokenCleanup ?? false,
-    });
-    setUser(null);
-    try {
-      await signOutGoogleProvider();
-    } catch {
-      // Native Google sign-out is best effort; Firebase sign-out is authoritative.
+    if (signingOutRef.current) {
+      return;
     }
-    await firebaseSignOut(auth);
+    signingOutRef.current = true;
+    try {
+      await cleanupPostAuthDevice(deletePushToken, {
+        skipRemotePushTokenCleanup: options?.skipRemotePushTokenCleanup ?? false,
+      });
+      setUser(null);
+      try {
+        await signOutGoogleProvider();
+      } catch {
+        // Native Google sign-out is best effort; Firebase sign-out is authoritative.
+      }
+      await firebaseSignOut(auth);
+    } finally {
+      signingOutRef.current = false;
+    }
   }, [deletePushToken]);
 
   useEffect(() => {

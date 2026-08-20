@@ -74,7 +74,7 @@ describe('apiClient', () => {
       },
     });
 
-    await expect(client.request('sendOtp', {
+    await expect(client.requestText('sendOtp', {
       body: { email: 'user@example.test' },
       requiresAuth: false,
     })).resolves.toBe('sent');
@@ -134,6 +134,47 @@ describe('apiClient', () => {
       status: 'completed',
       result: { data: 'ok' },
     });
+  });
+
+  it('rejects non-JSON 2xx responses in request (JSON-only contract)', async () => {
+    const fetchFn = vi.fn(async () => createResponse(200, 'not-json'));
+    const client = createApiClient({
+      fetchFn: fetchFn as typeof fetch,
+      getAccessToken: async () => 'token-1',
+    });
+
+    await expect(client.request('someEndpoint')).rejects.toMatchObject({
+      name: 'ApiCallError',
+      statusCode: 200,
+    });
+  });
+
+  it('invokes onAuthFailure on non-network token errors', async () => {
+    const onAuthFailure = vi.fn();
+    const client = createApiClient({
+      fetchFn: vi.fn() as unknown as typeof fetch,
+      getAccessToken: async () => {
+        throw Object.assign(new Error('expired'), { code: 'auth/user-token-expired' });
+      },
+      onAuthFailure,
+    });
+
+    await expect(client.request('someEndpoint')).rejects.toThrow('expired');
+    expect(onAuthFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invoke onAuthFailure on network token errors', async () => {
+    const onAuthFailure = vi.fn();
+    const client = createApiClient({
+      fetchFn: vi.fn() as unknown as typeof fetch,
+      getAccessToken: async () => {
+        throw Object.assign(new Error('offline'), { code: 'auth/network-request-failed' });
+      },
+      onAuthFailure,
+    });
+
+    await expect(client.request('someEndpoint')).rejects.toThrow('offline');
+    expect(onAuthFailure).not.toHaveBeenCalled();
   });
 
   it('adds a source push token when one is available', async () => {

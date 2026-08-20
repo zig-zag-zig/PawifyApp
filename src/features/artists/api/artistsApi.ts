@@ -9,7 +9,7 @@ export function useArtistsApi() {
 
     return useMemo(() => ({
         unfollowArtists: async (artistIds: string[]) =>
-            await apiClient.request<string>('unfollowArtists', {
+            await apiClient.requestText('unfollowArtists', {
                 body: await apiClient.withSourcePushToken({ artistIds }),
             }),
         getFollowing: async () =>

@@ -14,11 +14,11 @@ export function useArtistApi() {
     return useMemo(() => {
         return {
             followArtist: async (artistId: string) =>
-                await apiClient.request<string>('followArtist', {
+                await apiClient.requestText('followArtist', {
                     body: await apiClient.withSourcePushToken({ artistId }),
                 }),
             unfollowArtist: async (artistId: string) =>
-                await apiClient.request<string>('unfollowArtist', {
+                await apiClient.requestText('unfollowArtist', {
                     body: await apiClient.withSourcePushToken({ artistId }),
                 }),
             getArtistDetails: async (artistId: string) =>

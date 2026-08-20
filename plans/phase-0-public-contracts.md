@@ -59,3 +59,14 @@ These tests document today’s code, including bugs Phase 1 will fix.
 - [x] Following characterization tests
 - [x] NewReleaseFeed characterization tests
 - [x] `npm run verify` baseline recorded: **typecheck clean, 70 files / 624 tests** (2026-08-20, includes 12 new characterization tests)
+
+## Phase 1 status (2026-08-20, committed)
+
+Bugs from the characterization section are FIXED; the tests now assert the fixed behavior:
+- Following overrides are versioned and survive stale queued responses; `fetchArtists` depends on `userId`, not the `user` object. Pure policy in `features/artists/domain/followOverrides.ts`.
+- NewReleaseFeed removals keep an overlay until a fetch that started after the remove API succeeded confirms them (`removedReleasesRef` + `removeVersionRef`); `fetchNewReleases` depends on `userId`.
+- API client: `request` is JSON-strict (non-JSON 2xx → ApiCallError); text endpoints use `requestText`; `onAuthFailure` callback for hard token errors (network failures excluded).
+- Auth: `getAccessToken` no longer signs out on failure (throws `AuthTokenError`); reauth gate is consumed-and-reset on every token change; `signOut` is re-entrancy guarded.
+- Deep links: tabs + Artist/Release/Security/ResetPassword mapped; ReleaseGroup intentionally excluded.
+
+Verify at Phase 1 close: **typecheck clean, 72 files / 637 tests**.

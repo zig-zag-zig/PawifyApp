@@ -238,7 +238,7 @@ describe('useNewReleaseFeedController (characterization)', () => {
         expect(mocks.showToast).toHaveBeenCalledWith('Removing new release failed.', 'error');
     });
 
-    it('lets an in-flight refetch restore a release that was optimistically removed', async () => {
+    it('keeps an optimistically-removed release out of an in-flight refetch result', async () => {
         const hook = await renderFeed();
         await loadInitialReleases(hook);
 
@@ -259,11 +259,22 @@ describe('useNewReleaseFeedController (characterization)', () => {
             releaseCovers: {},
         });
 
-        // Current bug: there is no remove overlay on the next getNewReleases result.
-        expect(hook.result.current.newReleases.map((release) => release.id)).toEqual([
-            releaseA.id,
-            releaseB.id,
-        ]);
+        // Fixed behavior: the removed-release overlay survives the refetch
+        // (the refetch started before the remove API resolved).
+        expect(hook.result.current.newReleases.map((release) => release.id)).toEqual([releaseB.id]);
+
+        // A fetch started AFTER the remove succeeded reflects it: the overlay
+        // is confirmed and dropped.
+        await act(async () => {
+            EventService.addEvent('releases');
+        });
+        await flush();
+        await completeCurrentTask({
+            releases: [releaseB],
+            releaseCoverTaskId: null,
+            releaseCovers: {},
+        });
+        expect(hook.result.current.newReleases.map((release) => release.id)).toEqual([releaseB.id]);
     });
 
     it('does not reset loaded releases when the user object identity changes but uid does not', async () => {

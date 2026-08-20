@@ -31,6 +31,13 @@ export interface NewReleaseFeedContextValue {
 type RemovedReleaseSnapshot = {
   release: NewReleaseListItem;
   index: number;
+  /**
+   * removeVersion counter value that CONFIRMS this removal: an overlay entry
+   * is dropped once a fetch that started after the remove API succeeded
+   * (appliedVersion >= entry.version) completes, because that response must
+   * reflect the removal.
+   */
+  version: number;
 };
 
 type NewReleaseFeedFetchReason = 'releases-initial' | 'releases-event' | 'foreground-resume';
@@ -70,6 +77,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const { user } = useAuth();
+  const userId = user?.uid ?? null;
   const releaseApi = useReleaseApi();
   const { tasks, addTask, removeTask, executeTask } = useTaskManager();
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -77,6 +85,9 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
   const releaseCoverTaskIdRef = useRef<string | null>(null);
   const initialLoadRequestedRef = useRef(false);
   const queuedFetchReasonRef = useRef<NewReleaseFeedFetchReason | null>(null);
+  const removedReleasesRef = useRef<Map<string, RemovedReleaseSnapshot>>(new Map());
+  const removeVersionRef = useRef(0);
+  const fetchVersionsRef = useRef<Map<string, number>>(new Map());
   const pendingEventUpdateRef = useRef(false);
   const [eventVersion, setEventVersion] = useState(0);
   const { showToast } = useToast();
@@ -94,6 +105,9 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     initialLoadRequestedRef.current = false;
     queuedFetchReasonRef.current = null;
     releaseCoverTaskIdRef.current = null;
+    removedReleasesRef.current.clear();
+    fetchVersionsRef.current.clear();
+    removeVersionRef.current = 0;
 
     if (taskIdRef.current) {
       removeTask(taskIdRef.current);
@@ -102,7 +116,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
   }, [removeTask, updateTaskId, user?.uid]);
 
   const fetchNewReleases = useCallback((reason: NewReleaseFeedFetchReason) => {
-    if (!user) {
+    if (!userId) {
       queuedFetchReasonRef.current = null;
       return;
     }
@@ -117,9 +131,10 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
       origin: reason,
       replayPolicy: 'both',
     });
+    fetchVersionsRef.current.set(task.id, removeVersionRef.current);
     updateTaskId(task.id);
     void executeTask(task);
-  }, [addTask, executeTask, releaseApi, updateTaskId, user]);
+  }, [addTask, executeTask, releaseApi, updateTaskId, userId]);
 
   const getMissingCoverIds = useCallback((releases: NewReleaseListItem[]) =>
     releases
@@ -199,14 +214,26 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
           initialLoadRequestedRef.current = false;
         }
       } else {
+        const appliedVersion = fetchVersionsRef.current.get(task.id) ?? removeVersionRef.current;
+        fetchVersionsRef.current.delete(task.id);
+        // Drop overlays confirmed by this response: the fetch started after the
+        // remove API succeeded, so its result reflects the removal.
+        removedReleasesRef.current.forEach((entry, releaseId) => {
+          if (entry.version <= appliedVersion) {
+            removedReleasesRef.current.delete(releaseId);
+          }
+        });
+
         const result = task.result as NewReleasesResponse | undefined;
         const immediateCovers = normalizeNullableStringMap(result?.releaseCovers);
-        const releases = (result?.releases ?? []).map((release): NewReleaseListItem => ({
-          ...release,
-          cover_url: immediateCovers[release.id] !== undefined
-            ? immediateCovers[release.id]
-            : undefined,
-        }));
+        const releases = (result?.releases ?? [])
+          .filter(release => !removedReleasesRef.current.has(release.id))
+          .map((release): NewReleaseListItem => ({
+            ...release,
+            cover_url: immediateCovers[release.id] !== undefined
+              ? immediateCovers[release.id]
+              : undefined,
+          }));
         setNewReleases(releases);
         setHasLoadedOnce(true);
         const missingCoverIds = getMissingCoverIds(releases);
@@ -247,8 +274,16 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
 
     const idsToRemove = new Set(ids);
     const removedReleases = newReleases.reduce<RemovedReleaseSnapshot[]>((output, release, index) => {
-      if (idsToRemove.has(release.id)) {
-        output.push({ release, index });
+      if (idsToRemove.has(release.id) && !removedReleasesRef.current.has(release.id)) {
+        const snapshot: RemovedReleaseSnapshot = {
+          release,
+          index,
+          // Predict the post-success counter: a fetch that completes before
+          // this remove resolves must NOT drop the overlay.
+          version: removeVersionRef.current + 1,
+        };
+        output.push(snapshot);
+        removedReleasesRef.current.set(release.id, snapshot);
       }
       return output;
     }, []);
@@ -258,8 +293,18 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     setPendingReleaseCoverIds(prev => prev.filter(id => !idsToRemove.has(id)));
     try {
       await releaseApi.removeNewReleases(ids);
+      // The server has processed the removal: bump the confirmation version so
+      // the next fetch (started after this point) can drop the overlay.
+      removeVersionRef.current += 1;
+      ids.forEach(id => {
+        const entry = removedReleasesRef.current.get(id);
+        if (entry) {
+          removedReleasesRef.current.set(id, { ...entry, version: removeVersionRef.current });
+        }
+      });
     } catch (error) {
       console.error('new-releases: remove releases failed', error);
+      ids.forEach(id => removedReleasesRef.current.delete(id));
       setNewReleases(prev => restoreRemovedReleases(prev, removedReleases));
       setPendingReleaseCoverIds(prev => mergeUniqueIds(prev, removedPendingCoverIds));
       showToast(getRemoveReleasesFailureMessage(ids.length), 'error');
