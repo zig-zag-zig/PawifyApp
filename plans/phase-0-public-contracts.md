@@ -70,3 +70,12 @@ Bugs from the characterization section are FIXED; the tests now assert the fixed
 - Deep links: tabs + Artist/Release/Security/ResetPassword mapped; ReleaseGroup intentionally excluded.
 
 Verify at Phase 1 close: **typecheck clean, 72 files / 637 tests**.
+
+## Phases 2–5 status (2026-08-20, committed)
+
+- **Phase 2 (auth internals + dumb navigator):** AuthContext is a thin provider shell; logic lives in `authSession` / `authToken` / `authCommands` / `pushTokenApi`. Startup update check extracted to `useStartupUpdateCheck`; AppProviders comments match the real graph.
+- **Phase 3 (feature boundaries):** Menu → `features/menu/` (MenuPage), `useGoogleAuth` → `features/auth/hooks/`, dead `followingPort` deleted, feature APIs expose `waitForTaskResultById` directly. **Deferred:** artist-hook collapse (8 files, ~1900 lines, zero test coverage — merge deferred until characterization tests exist).
+- **Phase 4 (shared UI + theme):** `SmartSelectableList` absorbed `SelectableAnimatedList` + `SelectableListManager`; `styles/theme.ts` tokens used by App.tsx + TabNavigator; `types/navigation.tsx` → `.ts`. **Deferred:** ScreenContainer bottom safe-area for stack pages (tab screens would double-pad; needs device check).
+- **Phase 5 (tooling):** `@react-native-community/cli` pinned to 20.1.3 (was `latest`); `.jspace/` gitignored. `tests/dateUtil.test.ts` tests submodule code → left untouched; `app.config.js` composes `app.json` (not duplication) → kept.
+
+Verify at Phase 5 close: **typecheck clean, 72 files / 637 tests**. Oracle reviews were quota-blocked (subagent token plan exhausted until 08-25); each phase was self-reviewed instead.
