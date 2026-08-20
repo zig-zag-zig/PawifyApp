@@ -113,6 +113,37 @@ Notes:
 - Every phase self-reviewed (oracle quota-blocked until 08-25; retroactive
   oracle pass still queued in the ledger).
 
+## R2.8 — Expo SDK 57 upgrade (added post-hoc)
+
+Motivated by the two standing expo-doctor failures (Hermes V1 memory
+regression, patched only in RN 0.86.2+) and the R2.7 note that the SDK bump
+would retire the remaining image-size advisories.
+
+Changes:
+- expo ~56.0.20 -> ~57.0.15; react-native 0.85.3 -> 0.86.2 (Hermes fix);
+  react-native-reanimated 4.3.1 -> 4.5.1; react-native-worklets 0.8.3 ->
+  0.10.1; all 13 expo-* packages + babel-preset-expo aligned to SDK 57;
+  react-dom pinned 19.2.3 (matching react, resolving a peer conflict);
+  react-native-gesture-handler ~2.32.0; vitest resolved 4.1.11.
+- Removed stale `expo.sdkVersion: 56.0.0` from app.json — expo-doctor was
+  validating against SDK-56 expectations because of it (it actively caused
+  the "wrong versions" report after upgrading).
+- Repo's canonical scripts used throughout (`expo install --fix`,
+  expo-doctor gate, `npm run build:release:install`).
+
+Result: expo-doctor 21/21 (first fully green run), verify green
+(75 files / 661 tests), release APK built (BUILD SUCCESSFUL 10m10s) and
+installed on device. Custom config plugins (google-signin, build-variants,
+gradle-jvm, e2e-cleartext + ApkInstallerModule) all compiled clean on the
+new SDK. Recommended: a quick on-device smoke of the critical paths
+(Google sign-in, push notification tap routing, image covers) since native
+modules were rebuilt against RN 0.86.
+
+Note: `image-size` advisories remain even on SDK 57 (metro resolves 1.2.1;
+advisory range is `*`, no patched version exists upstream). The R2.7
+accepted-risk rationale stands; re2 had drifted again during the upgrade
+and was re-fixed.
+
 ## R2.7 — npm audit remediation (added post-hoc)
 
 18 vulnerabilities (3 moderate, 15 high), all confined to dev/build tooling
