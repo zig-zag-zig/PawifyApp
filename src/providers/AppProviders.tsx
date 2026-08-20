@@ -11,13 +11,15 @@ import { ReleaseNotificationSettingsProvider } from '../features/userSettings/st
 // Provider dependency order (outer → inner):
 //
 //   GlobalSpinner       — no dependencies (top-level visual overlay)
-//   Auth                 — depends on: nothing (Firebase SDK self-initializes)
-//   Toast                — depends on: nothing (standalone UI)
-//   Update               — depends on: nothing (standalone)
-//   ReleaseNotification  — depends on: nothing (standalone)
-//   Cache                — depends on: nothing (in-memory store for images, etc.)
-//   Following            — depends on: Auth, Cache; owns per-instance useTaskManager()
-//   NewReleaseFeed       — depends on: Auth, Toast; owns per-instance useTaskManager()
+//   Auth                 — session owner; depends on: apiClient (access token,
+//                          onAuthFailure → signOut), push registration, device id,
+//                          push-token storage, EventService (via cleanup)
+//   Toast                — no dependencies (standalone UI)
+//   Update               — no dependencies (standalone)
+//   ReleaseNotification  — no dependencies (standalone)
+//   Cache                — no dependencies (in-memory store for images, etc.)
+//   Following            — depends on: Auth, Cache, EventService; owns per-instance useTaskManager()
+//   NewReleaseFeed       — depends on: Auth, Toast, EventService; owns per-instance useTaskManager()
 // Note: useTaskManager is a hook (not a provider); each consumer has an isolated queue.
 //
 export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => (
