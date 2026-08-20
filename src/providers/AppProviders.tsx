@@ -5,6 +5,7 @@ import { GlobalSpinnerProvider } from '../contexts/GlobalSpinnerContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { FollowingProvider } from '../features/artists/state/FollowingContext';
 import { NewReleaseFeedProvider } from '../features/release/state/NewReleaseFeedContext';
+import { ImageTaskProvider } from '../components/cachedImage/ImageTaskContext';
 import { UpdateProvider } from '../features/updates/state/UpdateContext';
 import { ReleaseNotificationSettingsProvider } from '../features/userSettings/state/ReleaseNotificationSettingsContext';
 
@@ -18,6 +19,7 @@ import { ReleaseNotificationSettingsProvider } from '../features/userSettings/st
 //   Update               — no dependencies (standalone)
 //   ReleaseNotification  — no dependencies (standalone)
 //   Cache                — no dependencies (in-memory store for images, etc.)
+//   ImageTask            — no dependencies (one shared task queue for image downloads)
 //   Following            — depends on: Auth, Cache, EventService; owns per-instance useTaskManager()
 //   NewReleaseFeed       — depends on: Auth, Toast, EventService; owns per-instance useTaskManager()
 // Note: useTaskManager is a hook (not a provider); each consumer has an isolated queue.
@@ -29,11 +31,13 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children
                 <UpdateProvider>
                     <ReleaseNotificationSettingsProvider>
                         <CacheProvider>
-                            <FollowingProvider>
-                                <NewReleaseFeedProvider>
-                                    {children}
-                                </NewReleaseFeedProvider>
-                            </FollowingProvider>
+                            <ImageTaskProvider>
+                                <FollowingProvider>
+                                    <NewReleaseFeedProvider>
+                                        {children}
+                                    </NewReleaseFeedProvider>
+                                </FollowingProvider>
+                            </ImageTaskProvider>
                         </CacheProvider>
                     </ReleaseNotificationSettingsProvider>
                 </UpdateProvider>

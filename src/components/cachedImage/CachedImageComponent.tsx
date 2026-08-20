@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Image, ImageStyle, StyleSheet, View } from 'react-native';
 import { useCache } from '../../contexts/CacheContext';
 import { PulsingPlaceholder } from './CachedImagePlaceholders';
-import useTaskManager from '../../hooks/useTaskManager';
+import { useImageTaskManager } from './ImageTaskContext';
 import { ENV } from '../../config/env';
 import {
   deleteCachedImageFile,
@@ -65,7 +65,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   const diagnosticImageIdRef = useRef(`image-${Math.random().toString(16).slice(2, 10)}`);
   const currentRemoteImageUrlRef = useRef(remoteImageUrl);
   const isMountedRef = useRef(true);
-  const { tasks, addTask, removeTask, executeTask } = useTaskManager();
+  const { tasks, addTask, removeTask, executeTask } = useImageTaskManager();
 
   currentRemoteImageUrlRef.current = remoteImageUrl;
 
@@ -97,11 +97,11 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
       : null,
   });
 
-  const downloadAndCacheImage = async (options: DownloadAndCacheImageOptions = {}) => {
+  const downloadAndCacheImage = async (options: DownloadAndCacheImageOptions = {}): Promise<string | null> => {
     const { renderWhenReady = true } = options;
 
     if (!remoteImageUrl || !prefixedCacheKey) {
-      return;
+      return null;
     }
 
     downloadStartedAtRef.current = Date.now();
@@ -121,6 +121,9 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
       if (renderWhenReady && canCommitImageState()) {
         setLocalUri(resolvedUri);
       }
+      // Resolve with the uri so the queued task settles: watchers on the
+      // shared image store adopt this result instead of re-downloading.
+      return resolvedUri;
     } finally {
       downloadStartedAtRef.current = null;
       if (renderWhenReady && canCommitImageState()) {
@@ -200,7 +203,13 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
                 taskId: task.id,
               error: describeError(task.error),
             });
-          }
+            } else if (typeof task.result === 'string') {
+              // The shared store may have settled this task from another
+              // instance's run; adopt the result if we still have none.
+              const settledUri = task.result;
+              setLocalUri(prev => prev ?? settledUri);
+              setIsLoading(false);
+            }
 
           removeTask(task.id);
           setTaskId(null);
