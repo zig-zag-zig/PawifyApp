@@ -7,9 +7,12 @@
  * pinned via expo SDK 57's @expo/metro -> metro) has two advisories
  * (GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq — ICNS/JXL/HEIF parser
  * infinite-loop DoS) with NO patched version anywhere: advisory range is
- * <=2.0.2 (the latest published release), `patched: None`, no open PRs.
- * Replacing it is not possible without forking metro; downgrading expo is
- * not a fix. Impact is build-time only, on repo-local image assets.
+ * <=2.0.2 (the latest published release), `patched: None`, empty references,
+ * and the upstream repo is ARCHIVED (June 2026) — no fix will ever ship.
+ * Every metro through 0.87.0 (latest) still depends on image-size@^1.0.2,
+ * so no metro upgrade path exists either; a drop-in replacement with the
+ * same `(buffer) -> {width,height}` API does not exist. Impact is
+ * build-time only, on repo-local image assets (metro/src/Assets.js).
  *
  * Policy:
  * - Any advisory NOT in KNOWN_ACCEPTED_ADVISORIES fails the gate.
