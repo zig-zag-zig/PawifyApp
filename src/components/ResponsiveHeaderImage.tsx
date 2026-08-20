@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, ViewStyle, StyleProp } from 'react-native';
-import { CachedImageComponent } from './ui';
+import { CachedImageComponent } from './cachedImage/CachedImageComponent';
 
 interface ResponsiveHeaderImageProps {
     imageUrl?: string | null;

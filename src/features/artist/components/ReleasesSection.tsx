@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View, type ListRenderItem } from 'react-native';
-import { CachedImageComponent, LoadingText, SelectableText, InlineLink } from '../../../components/ui';
+import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
+import { LoadingText } from '../../../components/cachedImage/CachedImagePlaceholders';
+import { SelectableText, InlineLink } from '../../../components/ui';
 import type { ArtistReleaseGroup } from '../../../shared/music';
 import { nameWithDisambiguation } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';

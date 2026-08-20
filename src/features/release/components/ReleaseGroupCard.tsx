@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
-import { CachedImageComponent, ScreenContainer, SelectableText } from '../../../components/ui';
+import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
+import { ScreenContainer, SelectableText } from '../../../components/ui';
 import { ReleaseGroupReleaseListItem } from '../../../shared/music';
 import { getStyles } from '../../../styles/styles';
 

@@ -7,7 +7,7 @@ import { useArtistsPage } from '../hooks/useArtistsPage';
 
 const ArtistsPage = () => {
     const artistsPage = useArtistsPage();
-    const { flatListRef, selectionManagerRef } = useScrollAnchorList<ArtistMinimal>(artistsPage.state.artists);
+    const { flatListRef, selectionManagerRef } = useScrollAnchorList<ArtistMinimal>();
 
     useFocusEffect(
         React.useCallback(() => {

@@ -7,9 +7,7 @@ import { useReleasesPage } from '../hooks/useReleasesPage';
 
 const ReleasesPage = () => {
     const releasesPage = useReleasesPage();
-    const { flatListRef, selectionManagerRef } = useScrollAnchorList<NewReleaseListItem>(
-        releasesPage.state.displayedReleases
-    );
+    const { flatListRef, selectionManagerRef } = useScrollAnchorList<NewReleaseListItem>();
 
     useFocusEffect(
         React.useCallback(() => {

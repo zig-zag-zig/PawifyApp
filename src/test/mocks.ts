@@ -14,6 +14,7 @@ export function mockDiagnostics() {
         elapsedSince: vi.fn(() => 1),
         shortenString: vi.fn((s: string) => s),
         shouldLogArtistTaskDiagnostics: vi.fn(() => false),
+        shouldLogApiDiagnostics: vi.fn(() => false),
         normalizeDiagnosticValue: vi.fn((v: unknown) => v),
     };
 }

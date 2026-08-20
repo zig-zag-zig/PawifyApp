@@ -1,57 +1,23 @@
 import * as Device from 'expo-device';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
-import * as TaskManager from 'expo-task-manager';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import { EventService } from '../services/eventService';
 import { getExternalNavigationResumeDelayMs } from '../services/externalNavigation';
 import { takePendingBackgroundEvents } from '../services/backgroundEventStorage';
-import { getStoredPushToken } from '../services/pushTokenStorage';
 import {
   extractNotificationEventData,
   getDeepLinkPathForEvent,
-  persistNotificationEvent,
   registerNotificationEvent,
-  shouldPersistBackgroundEvent,
 } from '../services/notifications/notificationEvents';
+import {
+  BACKGROUND_NOTIFICATION_TASK,
+  defineBackgroundNotificationTask,
+} from '../services/notifications/notificationBackgroundTask';
 
-const BACKGROUND_NOTIFICATION_TASK = 'background-notification-task';
-
-async function hydrateClientPushToken() {
-  if (EventService.getClientPushToken()) {
-    return;
-  }
-
-  try {
-    const pushToken = await getStoredPushToken();
-    if (pushToken) {
-      EventService.setClientPushToken(pushToken);
-    }
-  } catch (error) {
-    console.warn('fcm: hydrate client push token failed', error);
-  }
-}
-
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }: { data: any, error: any }) => {
-  if (error) {
-    console.error('fcm: background task failed', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return;
-  }
-
-  await hydrateClientPushToken();
-
-  const innerData = data?.data || {};
-  const eventData = extractNotificationEventData(innerData);
-  if (eventData) {
-    const eventAdded = registerNotificationEvent(eventData.eventName, eventData.payload, 'background-task');
-    if (eventAdded && shouldPersistBackgroundEvent(eventData.eventName)) {
-      await persistNotificationEvent(eventData.eventName, eventData.payload);
-    }
-  }
-});
+// Registered once at module load: headless task wiring must exist before
+// Notifications.registerTaskAsync runs.
+defineBackgroundNotificationTask();
 
 export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
   const openDeepLinkForEvent = async (eventData: { eventName: string } | null) => {

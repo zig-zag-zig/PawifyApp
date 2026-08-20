@@ -16,6 +16,7 @@ import {
   diagnosticLog,
   diagnosticWarn,
   elapsedSince,
+  shouldLogApiDiagnostics,
 } from '../../utils/diagnostics';
 
 export type ApiRequestMethod = 'GET' | 'POST';
@@ -30,11 +31,6 @@ export type ApiClient = {
   request: <T>(endpoint: string, options?: ApiRequestOptions) => Promise<T>;
   requestText: (endpoint: string, options?: ApiRequestOptions) => Promise<string>;
   withSourcePushToken: <T extends Record<string, unknown>>(body: T) => Promise<T & { sourcePushToken?: string }>;
-  waitForTaskResult: <T>(
-    taskId: string,
-    getTaskResult: <TResult>(taskId: string) => Promise<TaskResultResponse<TResult>>,
-    options?: WaitForTaskResultOptions,
-  ) => Promise<TaskResultResponse<T>>;
   waitForTaskResultById: <T>(taskId: string, options?: WaitForTaskResultOptions) => Promise<TaskResultResponse<T>>;
   getDeviceId: () => Promise<string>;
 };
@@ -53,17 +49,6 @@ export type ApiClientConfig = {
    */
   onAuthFailure?: () => void;
 };
-
-const diagnosticApiEndpoints = new Set([
-  'getArtistDetails',
-  'getArtistReleases',
-  'getReleaseGroupReleases',
-  'getTaskResult',
-]);
-
-function shouldLogApiDiagnostics(endpoint: string) {
-  return diagnosticApiEndpoints.has(endpoint);
-}
 
 export function buildApiUrl(baseUrl: string, apiVersion: string, endpoint: string) {
   const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
@@ -294,14 +279,6 @@ export function createApiClient({
     }
   };
 
-  const waitForTaskResult = async <T,>(
-    taskId: string,
-    getTaskResult: <TResult>(taskId: string) => Promise<TaskResultResponse<TResult>>,
-    options?: WaitForTaskResultOptions,
-  ): Promise<TaskResultResponse<T>> => {
-    return waitForTaskResultFromSignals<T>(taskId, getTaskResult, options);
-  };
-
   const waitForTaskResultById = async <T,>(
     taskId: string,
     options?: WaitForTaskResultOptions,
@@ -317,7 +294,6 @@ export function createApiClient({
     request,
     requestText,
     withSourcePushToken,
-    waitForTaskResult,
     waitForTaskResultById,
     getDeviceId,
   };

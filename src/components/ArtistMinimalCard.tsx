@@ -3,7 +3,8 @@ import { LayoutChangeEvent, TouchableOpacity, useWindowDimensions, View } from '
 import { ArtistMinimal } from '../shared/music';
 import { nameWithDisambiguation } from '../shared/music';
 import { getStyles } from '../styles/styles';
-import { CachedImageComponent, SelectableText } from './ui';
+import { CachedImageComponent } from './cachedImage/CachedImageComponent';
+import { SelectableText } from './ui';
 
 interface ArtistMinimalCardProps {
   artist: ArtistMinimal;
