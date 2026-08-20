@@ -4,6 +4,7 @@ import { useCache } from '../../contexts/CacheContext';
 import { PulsingPlaceholder } from './CachedImagePlaceholders';
 import { useImageTaskManager } from './ImageTaskContext';
 import { ENV } from '../../config/env';
+import { theme } from '../../styles/theme';
 import {
   deleteCachedImageFile,
   getCachedImageFileUri,
@@ -75,7 +76,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   const renderDefaultImage = () => (
     <View
       pointerEvents="none"
-      style={[style, imageStyles.cachedImageWrapper, { backgroundColor: '#1f2328' }]}
+      style={[style, imageStyles.cachedImageWrapper, { backgroundColor: theme.colors.placeholderBackdrop }]}
     >
       <Image
         source={defaultImage}
@@ -350,7 +351,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   return (
     <View
       pointerEvents="none"
-      style={[style, imageStyles.cachedImageWrapper, { backgroundColor: '#333' }]}
+      style={[style, imageStyles.cachedImageWrapper, { backgroundColor: theme.colors.imageBackdrop }]}
     >
       {localUri && (
         <Image

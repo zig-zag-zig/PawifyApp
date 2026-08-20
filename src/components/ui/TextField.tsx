@@ -10,6 +10,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { getStyles } from '../../styles/styles';
+import { theme } from '../../styles/theme';
 
 interface TextFieldProps extends TextInputProps {
   value: string;
@@ -78,7 +79,7 @@ export const TextField = ({
           onChangeText={handleTextChange}
           maxLength={numberOnly ? maxDigits : maxLength}
           placeholder={placeholder}
-          placeholderTextColor="#BBB"
+          placeholderTextColor={theme.colors.textSoft}
           secureTextEntry={showPasswordToggle ? !showPassword : secureText}
           onSubmitEditing={onSubmitEditing}
           returnKeyType={returnKeyType}
@@ -101,7 +102,7 @@ export const TextField = ({
           <MaterialIcons
             name="close"
             size={22}
-            color="#D1D5DB"
+            color={theme.colors.iconMuted}
           />
         </TouchableOpacity>
       )}
@@ -113,7 +114,7 @@ export const TextField = ({
           <MaterialIcons
             name={showPassword ? 'visibility' : 'visibility-off'}
             size={24}
-            color="#FFF"
+            color={theme.colors.text}
           />
         </TouchableOpacity>
       )}

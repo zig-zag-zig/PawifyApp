@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing, Pressable, Text, View, type LayoutChangeEvent } from 'react-native';
 import type { ExternalLink } from '../shared/music';
 import { openExternalUrl } from '../services/externalNavigation';
+import { theme } from '../styles/theme';
 import { ExternalLinkIcon } from './externalLinks/ExternalLinkIcon';
 import {
     EXTERNAL_LINK_BUTTON_WIDTH,
@@ -235,12 +236,7 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
         return null;
     }
 
-    const borderColor = 'rgba(148, 163, 184, 0.26)';
-    const backgroundColor = 'rgba(15, 23, 42, 0.66)';
-    const mutedBackgroundColor = 'rgba(15, 23, 42, 0.42)';
-    const labelColor = '#E2E8F0';
-    const fallbackColor = '#CBD5E1';
-    const overflowButtonTextColor = '#BFDBFE';
+    const { border: borderColor, background: backgroundColor, mutedBackground: mutedBackgroundColor, label: labelColor, fallbackIcon: fallbackColor, overflowToggle: overflowButtonTextColor } = theme.colors.externalLinks;
 
     const renderLinkButton = (link: RankedExternalLink, compact = false) => {
         const linkKey = getLinkKey(link);

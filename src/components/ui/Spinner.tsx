@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { theme } from '../../styles/theme';
 
 type SpinnerProps = {
   isLoading: boolean;
@@ -38,7 +39,7 @@ export const Spinner = ({
 
   const spinnerBackdropColor = (() => {
     if (backdropVariant === 'strong') {
-      return '#121212';
+      return theme.colors.appBackground;
     }
 
     if (backdropVariant === 'subtle') {
@@ -56,7 +57,7 @@ export const Spinner = ({
         { backgroundColor: spinnerBackdropColor },
       ]}
     >
-      <ActivityIndicator size={size} color="#FFF" />
+      <ActivityIndicator size={size} color={theme.colors.text} />
     </View>
   );
 };

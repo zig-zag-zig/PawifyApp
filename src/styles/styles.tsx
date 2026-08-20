@@ -1,11 +1,12 @@
 import { StyleSheet } from 'react-native';
+import { theme } from './theme';
 
 export const CONTAINER_HORIZONTAL_PADDING = 30;
 
 const colors = {
-  background: '#121212',
-  text: '#FFF',
-  inputBackground: '#333',
+  background: theme.colors.appBackground,
+  text: theme.colors.text,
+  inputBackground: theme.colors.imageBackdrop,
   button: '#6200ee',
   modalBackground: '#333',
   sectionHeader: '#252525',
@@ -58,12 +59,12 @@ const styles = StyleSheet.create({
     },
     releaseDate: {
       fontSize: 14,
-      color: '#888',
+      color: theme.colors.textMuted,
       marginBottom: 4,
     },
     artists: {
       fontSize: 14,
-      color: '#BBB',
+      color: theme.colors.textSoft,
       marginBottom: 4,
     },
     releaseItem: {
