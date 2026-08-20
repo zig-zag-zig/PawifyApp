@@ -5,6 +5,7 @@ import { PulsingPlaceholder } from './CachedImagePlaceholders';
 import { useImageTaskManager } from './ImageTaskContext';
 import { ENV } from '../../config/env';
 import { theme } from '../../styles/theme';
+import { captureAppError } from '../../services/monitoring/reportError';
 import {
   deleteCachedImageFile,
   getCachedImageFileUri,
@@ -204,6 +205,12 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
                 taskId: task.id,
               error: describeError(task.error),
             });
+              captureAppError(task.error, {
+                scope: 'image-cache',
+                imageId: diagnosticImageIdRef.current,
+                type,
+                cacheKey: prefixedCacheKey,
+              });
             } else if (typeof task.result === 'string') {
               // The shared store may have settled this task from another
               // instance's run; adopt the result if we still have none.

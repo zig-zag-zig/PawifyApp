@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import * as Updates from 'expo-updates';
 import type React from 'react';
 import { ENV } from '../../config/env';
+import { setErrorReporter } from './reportError';
 
 let initialized = false;
 
@@ -64,6 +65,9 @@ export function initErrorMonitoring() {
   Sentry.init(options);
 
   initialized = true;
+  setErrorReporter((error, context) => {
+    Sentry.captureException(error, { extra: context });
+  });
   tagExpoUpdate();
 }
 

@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import { getExternalNavigationResumeDelayMs } from '../services/externalNavigation';
+import { captureAppError } from '../services/monitoring/reportError';
 import { takePendingBackgroundEvents } from '../services/backgroundEventStorage';
 import {
   extractNotificationEventData,
@@ -34,6 +35,7 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
       await Linking.openURL(Linking.createURL(path));
     } catch (error) {
       console.error('fcm: open deep link failed', { path, error });
+      captureAppError(error, { scope: 'fcm', action: 'open-deep-link', path });
     }
   };
 

@@ -10,6 +10,7 @@ import {
     elapsedSince,
     shouldLogArtistTaskDiagnostics,
 } from '../../utils/diagnostics';
+import { captureAppError } from '../monitoring/reportError';
 
 type TaskRunReason = 'direct-execute' | 'appstate-replay' | 'network-replay';
 type TaskReplayReason = Exclude<TaskRunReason, 'direct-execute'>;
@@ -399,6 +400,13 @@ export function createTaskManagerStore(): TaskManagerStore {
                     origin: task.origin,
                     runReason,
                     error,
+                });
+                captureAppError(error, {
+                    scope: 'task-manager',
+                    taskId: task.id,
+                    operationName: task.operationName,
+                    origin: task.origin,
+                    runReason,
                 });
                 if (shouldLogDiagnostics) {
                     diagnosticWarn('task-manager', 'execute-failed', {
