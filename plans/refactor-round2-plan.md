@@ -112,3 +112,22 @@ Notes:
   code).
 - Every phase self-reviewed (oracle quota-blocked until 08-25; retroactive
   oracle pass still queued in the ledger).
+
+## R2.7 — npm audit remediation (added post-hoc)
+
+18 vulnerabilities (3 moderate, 15 high), all confined to dev/build tooling
+(metro, firebase-tools, vitest, node-gyp); zero in app runtime deps — the
+shipped APK is unaffected (package.json unchanged; lockfile only).
+
+Fixed via `npm audit fix` (lockfile-only): brace-expansion (8 nested copies),
+fast-uri, ip-address, js-yaml, re2, undici (2 copies), tar 7.5.20 -> 7.5.22
+(existing override already allowed the patch).
+
+Remaining 8 advisory hits = 2 GHSA advisories for `image-size`
+(GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq) duplicated across the
+metro/@expo-metro/expo dependency tree. **No patched version exists** — the
+advisory range is `*` (latest 2.0.2 is itself vulnerable), and npm's only
+suggested remediation is downgrading expo 56 -> 53, which is rejected.
+Accepted risk: metro consumes image-size at build time on repo-local assets
+only. Revisit with the SDK 57 upgrade (already required by the Hermes V1
+expo-doctor check).
