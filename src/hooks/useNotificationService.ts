@@ -10,6 +10,7 @@ import { takePendingBackgroundEvents } from '../services/backgroundEventStorage'
 import { getStoredPushToken } from '../services/pushTokenStorage';
 import {
   extractNotificationEventData,
+  getDeepLinkPathForEvent,
   persistNotificationEvent,
   registerNotificationEvent,
   shouldPersistBackgroundEvent,
@@ -53,7 +54,22 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }: { d
 });
 
 export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
-  const releasesDeepLink = Linking.createURL('/releases');
+  const openDeepLinkForEvent = async (eventData: { eventName: string } | null) => {
+    if (!eventData) {
+      return;
+    }
+
+    const path = getDeepLinkPathForEvent(eventData.eventName);
+    if (!path) {
+      return;
+    }
+
+    try {
+      await Linking.openURL(Linking.createURL(path));
+    } catch (error) {
+      console.error('fcm: open deep link failed', { path, error });
+    }
+  };
 
   const createNotificationChannel = async () => {
     if (Platform.OS === 'android') {
@@ -146,14 +162,10 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
     // Background click listener (visible notifications only)
     const backgroundListener = Notifications.addNotificationResponseReceivedListener(
       async (response) => {
-        const { title, body } = response.notification.request.content;
+        const { title, body, data } = response.notification.request.content;
 
         if (title || body) {
-          try {
-            await Linking.openURL(releasesDeepLink);
-          } catch (error) {
-            console.error('fcm: open release deep link failed', error);
-          }
+          await openDeepLinkForEvent(extractNotificationEventData(data));
         }
       }
     );
@@ -161,14 +173,10 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
     // Killed state handler (visible notifications only)
     const handleKilledStateNotification = async () => {
       const response = Notifications.getLastNotificationResponse();
-      if (response?.notification.request.content.title ||
-        response?.notification.request.content.body) {
-        setTimeout(async () => {
-          try {
-            await Linking.openURL(releasesDeepLink);
-          } catch (error) {
-            console.error('fcm: open killed-state release deep link failed', error);
-          }
+      const { title, body, data } = response?.notification.request.content ?? {};
+      if (title || body) {
+        setTimeout(() => {
+          void openDeepLinkForEvent(extractNotificationEventData(data));
         }, Device.osName === 'iOS' ? 300 : 500);
       }
     };

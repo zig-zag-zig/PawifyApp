@@ -3,6 +3,7 @@ import {
   extractNotificationEventData,
   extractNotificationEventPayload,
   extractTaskId,
+  getDeepLinkPathForEvent,
   getTaskCompletedEventName,
   shouldPersistBackgroundEvent,
 } from './notificationEventParsing';
@@ -78,4 +79,21 @@ describe('notification task event helpers', () => {
     expect(shouldPersistBackgroundEvent('taskCompleted:task-6')).toBe(true);
     expect(shouldPersistBackgroundEvent('other')).toBe(false);
   });
+});
+
+describe('getDeepLinkPathForEvent', () => {
+    it('routes data-refresh events to their tab', () => {
+        expect(getDeepLinkPathForEvent('releases')).toBe('/releases');
+        expect(getDeepLinkPathForEvent('following')).toBe('/artists');
+        expect(getDeepLinkPathForEvent('releaseNotificationSettings')).toBe('/menu');
+    });
+
+    it('does not navigate for task events', () => {
+        expect(getDeepLinkPathForEvent('taskCompleted')).toBeNull();
+        expect(getDeepLinkPathForEvent('taskCompleted:abc-123')).toBeNull();
+    });
+
+    it('does not navigate for unknown events', () => {
+        expect(getDeepLinkPathForEvent('somethingNew')).toBeNull();
+    });
 });

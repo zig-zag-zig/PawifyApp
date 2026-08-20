@@ -31,6 +31,12 @@ export type QueuedTask<T = unknown> = {
     result?: T;
     error?: unknown;
     deferredByNetwork?: boolean;
+    /**
+     * Execution was requested while the app was inactive; the task replays
+     * once on the next foreground transition regardless of replayPolicy
+     * (the caller asked for execution - we only delayed it).
+     */
+    deferredUntilActive?: boolean;
     replayPolicy: TaskReplayPolicy;
 };
 
@@ -175,7 +181,7 @@ export function createTaskManagerStore(): TaskManagerStore {
                         !task.deferredByNetwork &&
                         task.result === undefined &&
                         task.error === undefined &&
-                        shouldReplayTask(task, 'appstate-replay');
+                        (task.deferredUntilActive || shouldReplayTask(task, 'appstate-replay'));
 
                     if (!shouldReplay) {
                         continue;
@@ -196,6 +202,18 @@ export function createTaskManagerStore(): TaskManagerStore {
                     diagnosticLog('task-manager', 'appstate-replay-batch', {
                         taskIds: describeIds(diagnosticTaskIds),
                     });
+                }
+
+                // One-shot: the deferred-until-active flag must not replay
+                // the same task again on a later foreground transition.
+                const replayedFlagCleared = new Set(replayableTaskIds);
+                if (tasks.some(task => task.deferredUntilActive && replayedFlagCleared.has(task.id))) {
+                    tasks = tasks.map(task =>
+                        task.deferredUntilActive && replayedFlagCleared.has(task.id)
+                            ? { ...task, deferredUntilActive: false }
+                            : task,
+                    );
+                    notifyListeners();
                 }
             }
         };
@@ -315,6 +333,12 @@ export function createTaskManagerStore(): TaskManagerStore {
                     appState,
                 });
             }
+            // The caller asked for execution; defer until the app is active
+            // again (replayed once on next foreground, regardless of policy).
+            tasks = tasks.map(t =>
+                t.id === task.id ? { ...t, deferredUntilActive: true } : t,
+            );
+            notifyListeners();
             return null;
         }
 
@@ -364,7 +388,11 @@ export function createTaskManagerStore(): TaskManagerStore {
                     t.id === task.id ? { ...t, deferredByNetwork: true } : t,
                 );
                 notifyListeners();
-            } else if (appState === 'active') {
+            } else {
+                // Settle with a terminal error whenever the network is not
+                // the cause - including failures that land while the app has
+                // gone inactive mid-run (previously swallowed silently,
+                // leaving the task unsettled forever for replayPolicy 'none').
                 console.error('task-manager: execute task failed', {
                     taskId: task.id,
                     operationName: task.operationName,
