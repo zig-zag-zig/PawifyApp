@@ -8,10 +8,11 @@ import { AppNavigator } from './src/navigation/AppNavigator';
 import { linking } from './src/navigation/linking';
 import { AppProviders } from './src/providers/AppProviders';
 import { initErrorMonitoring, wrapWithErrorMonitoring } from './src/services/monitoring/sentry';
+import { theme } from './src/styles/theme';
 
 initErrorMonitoring();
 
-const appBackgroundColor = '#121212';
+const appBackgroundColor = theme.colors.appBackground;
 
 const AppContent = () => {
   return (
