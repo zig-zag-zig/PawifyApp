@@ -45,7 +45,7 @@ export function useAuthSession(): AuthSessionValue {
   const [user, setUser] = useState<User | null>(null);
   const loginWithReauthenticateWithCredentialRef = useRef(false);
   const signOutRef = useRef<(() => Promise<void>) | null>(null);
-  const signingOutRef = useRef(false);
+  const signingOutRef = useRef<Promise<void> | null>(null);
 
   const setLoginWithReauthenticateWithCredential = (value: boolean) => {
     loginWithReauthenticateWithCredentialRef.current = value;
@@ -89,12 +89,14 @@ export function useAuthSession(): AuthSessionValue {
     const unsubscribeAuth = onIdTokenChanged(auth, async (currentUser) => {
       if (!currentUser) {
         setUser(null);
+        // The session ended: any in-flight reauth flow is over.
+        loginWithReauthenticateWithCredentialRef.current = false;
       }
       else {
+        // Contract: reauth flows clear the gate in their finally. The gate
+        // stays muted for the WHOLE flow (which may produce several token
+        // changes), so post-auth setup runs once, after the flow ends.
         const skipPostAuthSetup = loginWithReauthenticateWithCredentialRef.current;
-        // Always consume the gate: a failed link/reauth flow must not leave it
-        // stuck, or every later token change would skip post-auth setup.
-        loginWithReauthenticateWithCredentialRef.current = false;
         if (!skipPostAuthSetup) {
           try {
             await getAccessToken();
@@ -116,24 +118,31 @@ export function useAuthSession(): AuthSessionValue {
   const commands = useMemo(() => createAuthCommands(setUser), [setUser]);
 
   const signOut = useCallback(async (options?: SkipRemotePushTokenCleanupOption) => {
+    // Concurrent callers await the in-flight sign-out instead of returning
+    // early: nobody proceeds mid-sign-out.
     if (signingOutRef.current) {
-      return;
+      return signingOutRef.current;
     }
-    signingOutRef.current = true;
-    try {
-      await cleanupPostAuthDevice(deletePushToken, {
-        skipRemotePushTokenCleanup: options?.skipRemotePushTokenCleanup ?? false,
-      });
-      setUser(null);
+
+    const run = (async () => {
       try {
-        await signOutGoogleProvider();
-      } catch {
-        // Native Google sign-out is best effort; Firebase sign-out is authoritative.
+        await cleanupPostAuthDevice(deletePushToken, {
+          skipRemotePushTokenCleanup: options?.skipRemotePushTokenCleanup ?? false,
+        });
+        setUser(null);
+        try {
+          await signOutGoogleProvider();
+        } catch {
+          // Native Google sign-out is best effort; Firebase sign-out is authoritative.
+        }
+        await firebaseSignOut(auth);
+      } finally {
+        signingOutRef.current = null;
       }
-      await firebaseSignOut(auth);
-    } finally {
-      signingOutRef.current = false;
-    }
+    })();
+
+    signingOutRef.current = run;
+    return run;
   }, [deletePushToken]);
 
   useEffect(() => {

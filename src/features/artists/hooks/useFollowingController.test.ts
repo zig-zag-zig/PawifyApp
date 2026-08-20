@@ -20,6 +20,10 @@ const mocks = vi.hoisted(() => {
         setTasks: null,
     };
 
+    // When autoExecute is on, executeTask runs the task callback and completes
+    // the task with its result — exercising the real run() -> result wiring.
+    const config = { autoExecute: false };
+
     return {
         auth: { user: { uid: 'user-1' } as { uid: string } | null },
         getFollowing: vi.fn(),
@@ -27,6 +31,7 @@ const mocks = vi.hoisted(() => {
         setArtistProfileImages: vi.fn(),
         artistProfileImages: {} as Record<string, string | null | undefined>,
         state,
+        config,
         addTask: vi.fn((run: () => Promise<unknown>, name: string) => {
             nextTaskId += 1;
             return {
@@ -44,6 +49,12 @@ const mocks = vi.hoisted(() => {
                 }
                 return [...prev, { ...task, result: undefined, error: undefined }];
             });
+            if (config.autoExecute) {
+                void Promise.resolve(task.run()).then(
+                    result => mocks.completeTask(task.id, result),
+                    error => mocks.completeTask(task.id, undefined, error),
+                );
+            }
         }),
         removeTask: vi.fn((taskId: string) => {
             state.setTasks?.((prev) => prev.filter((task) => task.id !== taskId));
@@ -148,6 +159,7 @@ describe('useFollowingController (characterization)', () => {
         vi.clearAllMocks();
         mocks.resetTaskIds();
         mocks.state.setTasks = null;
+        mocks.config.autoExecute = false;
         mocks.auth.user = { uid: 'user-1' };
         mocks.artistProfileImages = {};
         mocks.artistsApi.getFollowing.mockReset();
@@ -279,5 +291,46 @@ describe('useFollowingController (characterization)', () => {
         expect(result.current.hasLoadedFollowingOnce).toBe(false);
         expect(result.current.pendingArtistImageIds).toEqual([]);
         expect(result.current.isLoadingFollowing).toBe(false);
+    });
+
+    it('wires executeTask results through the task run callback (realistic queue)', async () => {
+        mocks.config.autoExecute = true;
+        mocks.artistsApi.getFollowing.mockResolvedValue({
+            artists: [artistA],
+            profileImageTaskId: null,
+            profileImages: {},
+        });
+
+        const { result } = await renderFollowing();
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        expect(mocks.artistsApi.getFollowing).toHaveBeenCalledTimes(1);
+        expect(result.current.followingArtists).toEqual([artistA]);
+        expect(result.current.hasLoadedFollowingOnce).toBe(true);
+        expect(result.current.isLoadingFollowing).toBe(false);
+    });
+
+    it('drops an in-flight fetch when the user logs out mid-flight', async () => {
+        const { result, rerender } = await renderFollowing();
+
+        mocks.auth.user = null;
+        rerender();
+        await flush();
+
+        // The reset effect already removed the task; a late completion must
+        // not repopulate the list.
+        await act(async () => {
+            mocks.completeTask('following-task-1', {
+                artists: [artistA, artistB],
+                profileImageTaskId: null,
+                profileImages: {},
+            });
+            await Promise.resolve();
+        });
+
+        expect(result.current.followingArtists).toEqual([]);
+        expect(result.current.hasLoadedFollowingOnce).toBe(false);
     });
 });

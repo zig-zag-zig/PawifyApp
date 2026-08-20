@@ -20,6 +20,10 @@ const mocks = vi.hoisted(() => {
         setTasks: null,
     };
 
+    // When autoExecute is on, executeTask runs the task callback and completes
+    // the task with its result — exercising the real run() -> result wiring.
+    const config = { autoExecute: false };
+
     return {
         auth: { user: { uid: 'user-1' } as { uid: string } | null },
         getNewReleases: vi.fn(),
@@ -27,6 +31,7 @@ const mocks = vi.hoisted(() => {
         removeNewReleases: vi.fn(),
         showToast: vi.fn(),
         state,
+        config,
         addTask: vi.fn((run: () => Promise<unknown>, name: string) => {
             nextTaskId += 1;
             return {
@@ -44,6 +49,12 @@ const mocks = vi.hoisted(() => {
                 }
                 return [...prev, { ...task, result: undefined, error: undefined }];
             });
+            if (config.autoExecute) {
+                void Promise.resolve(task.run()).then(
+                    result => mocks.completeTask(task.id, result),
+                    error => mocks.completeTask(task.id, undefined, error),
+                );
+            }
         }),
         removeTask: vi.fn((taskId: string) => {
             state.setTasks?.((prev) => prev.filter((task) => task.id !== taskId));
@@ -161,6 +172,7 @@ describe('useNewReleaseFeedController (characterization)', () => {
         vi.clearAllMocks();
         mocks.resetTaskIds();
         mocks.state.setTasks = null;
+        mocks.config.autoExecute = false;
         mocks.auth.user = { uid: 'user-1' };
         mocks.releaseApi.getNewReleases.mockReset();
         mocks.releaseApi.waitForTaskResult.mockReset();
@@ -306,5 +318,53 @@ describe('useNewReleaseFeedController (characterization)', () => {
         expect(hook.result.current.hasLoadedOnce).toBe(false);
         expect(hook.result.current.pendingReleaseCoverIds).toEqual([]);
         expect(hook.result.current.isLoading).toBe(false);
+    });
+
+    it('wires executeTask results through the task run callback (realistic queue)', async () => {
+        mocks.config.autoExecute = true;
+        mocks.releaseApi.getNewReleases.mockResolvedValue({
+            releases: [releaseA],
+            releaseCoverTaskId: null,
+            releaseCovers: {},
+        });
+
+        const hook = await renderFeed();
+        act(() => {
+            hook.result.current.ensureNewReleasesLoaded();
+        });
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        expect(mocks.releaseApi.getNewReleases).toHaveBeenCalledTimes(1);
+        expect(hook.result.current.newReleases.map(release => release.id)).toEqual([releaseA.id]);
+        expect(hook.result.current.hasLoadedOnce).toBe(true);
+        expect(hook.result.current.isLoading).toBe(false);
+    });
+
+    it('drops an in-flight fetch when the user logs out mid-flight', async () => {
+        const hook = await renderFeed();
+        act(() => {
+            hook.result.current.ensureNewReleasesLoaded();
+        });
+        await flush();
+
+        mocks.auth.user = null;
+        hook.rerender();
+        await flush();
+
+        // The reset effect already removed the task; a late completion must
+        // not repopulate the feed.
+        await act(async () => {
+            mocks.completeTask('releases-task-1', {
+                releases: [releaseA, releaseB],
+                releaseCoverTaskId: null,
+                releaseCovers: {},
+            });
+            await Promise.resolve();
+        });
+
+        expect(hook.result.current.newReleases).toEqual([]);
+        expect(hook.result.current.hasLoadedOnce).toBe(false);
     });
 });

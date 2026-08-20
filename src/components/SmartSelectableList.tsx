@@ -29,9 +29,8 @@ type SmartSelectableListProps<T extends { id: string }> = {
 
 /**
  * Selection-mode list: selection state + action bar + animated removal in one
- * component. Previously split across SelectableListManager (selection state,
- * imperative clearSelection) and SelectableAnimatedList (FlatList + animated
- * delete); both were used only here.
+ * component (merged from SelectableListManager + SelectableAnimatedList,
+ * which had no other consumers).
  */
 export function SmartSelectableList<T extends { id: string }>(
     {

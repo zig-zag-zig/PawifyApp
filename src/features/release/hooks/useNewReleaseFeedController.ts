@@ -273,6 +273,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     }
 
     const idsToRemove = new Set(ids);
+    const newlySnapshottedIds: string[] = [];
     const removedReleases = newReleases.reduce<RemovedReleaseSnapshot[]>((output, release, index) => {
       if (idsToRemove.has(release.id) && !removedReleasesRef.current.has(release.id)) {
         const snapshot: RemovedReleaseSnapshot = {
@@ -283,6 +284,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
           version: removeVersionRef.current + 1,
         };
         output.push(snapshot);
+        newlySnapshottedIds.push(release.id);
         removedReleasesRef.current.set(release.id, snapshot);
       }
       return output;
@@ -304,7 +306,9 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
       });
     } catch (error) {
       console.error('new-releases: remove releases failed', error);
-      ids.forEach(id => removedReleasesRef.current.delete(id));
+      // Only drop overlays THIS call created: entries owned by other
+      // in-flight remove calls are cleaned up by those calls.
+      newlySnapshottedIds.forEach(id => removedReleasesRef.current.delete(id));
       setNewReleases(prev => restoreRemovedReleases(prev, removedReleases));
       setPendingReleaseCoverIds(prev => mergeUniqueIds(prev, removedPendingCoverIds));
       showToast(getRemoveReleasesFailureMessage(ids.length), 'error');
