@@ -302,6 +302,19 @@ function getAdbArgs(commandArgs) {
   return withAdbDevice(commandArgs);
 }
 
+// Deco WiFi wedge workaround: real-device adb commands go through safe-adb,
+// which auto-recovers the WiFi link and retries when a transfer wedges.
+// Emulators and device-less queries stay on plain adb.
+function adbCommandForArgs(adbArgs) {
+  const flagIndex = adbArgs.indexOf('-s');
+  const deviceId = flagIndex !== -1 ? adbArgs[flagIndex + 1] : null;
+  if (!deviceId || String(deviceId).startsWith('emulator-')) {
+    return 'adb';
+  }
+  const safeAdb = path.join(process.env.HOME ?? '', '.local', 'bin', 'safe-adb');
+  return fs.existsSync(safeAdb) ? 'safe-adb' : 'adb';
+}
+
 function readDynamicExpoConfig() {
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
   if (!fs.existsSync(appConfigPath)) {
@@ -331,12 +344,13 @@ function readAndroidPackageName() {
 
 function runAdbBestEffort(commandArgs) {
   const adbArgs = getAdbArgs(commandArgs);
-  console.log(`[android-build] .$ ${formatCommand('adb', adbArgs)}`);
+  const adbCommand = adbCommandForArgs(adbArgs);
+  console.log(`[android-build] .$ ${formatCommand(adbCommand, adbArgs)}`);
   if (dryRun) {
     return;
   }
 
-  spawnSync('adb', adbArgs, {
+  spawnSync(adbCommand, adbArgs, {
     cwd: projectRoot,
     env,
     stdio: 'inherit',
@@ -408,7 +422,8 @@ function installOnMainProfile(apkPath) {
     }
   }
 
-  run('adb', getAdbArgs(['install', '--user', '0', '-r', '-d', apkPath]));
+  const installArgs = getAdbArgs(['install', '--user', '0', '-r', '-d', apkPath]);
+  run(adbCommandForArgs(installArgs), installArgs);
 }
 
 const prebuildArgs = ['expo', 'prebuild', '--platform', 'android'];

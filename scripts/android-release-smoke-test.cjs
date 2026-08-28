@@ -41,12 +41,25 @@ function ensureSingleDevice() {
     .split('\n')
     .slice(1)
     .map(line => line.trim())
-    .filter(line => line.endsWith('\tdevice'));
+    .filter(line => line.endsWith('\tdevice'))
+    .map(line => line.split('\t')[0]);
 
   if (devices.length !== 1) {
     console.error(`[smoke] Expected exactly one connected Android device, found ${devices.length}.`);
     process.exit(1);
   }
+
+  return devices[0];
+}
+
+// Deco WiFi wedge workaround: real-device installs go through safe-adb, which
+// auto-recovers the WiFi link and retries when the transfer wedges.
+function adbCommandForDevice(deviceId) {
+  if (!deviceId || deviceId.startsWith('emulator-')) {
+    return 'adb';
+  }
+  const safeAdb = path.join(process.env.HOME ?? '', '.local', 'bin', 'safe-adb');
+  return fs.existsSync(safeAdb) ? 'safe-adb' : 'adb';
 }
 
 if (!fs.existsSync(apkPath)) {
@@ -55,8 +68,8 @@ if (!fs.existsSync(apkPath)) {
   process.exit(1);
 }
 
-ensureSingleDevice();
-run('adb', ['install', '--user', '0', '-r', '-d', apkPath]);
+const smokeDevice = ensureSingleDevice();
+run(adbCommandForDevice(smokeDevice), ['-s', smokeDevice, 'install', '--user', '0', '-r', '-d', apkPath]);
 run('adb', ['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1']);
 
 console.log(`
