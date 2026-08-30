@@ -33,15 +33,11 @@ const projectRoot = path.resolve(__dirname, '..');
 
 // id -> one-line rationale. Remove the entry when the advisory is fixed
 // (the script enforces this once it stops appearing in the report).
+// image-size advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq were
+// accepted while no upstream fix existed; the expo SDK-57 patch alignment
+// (2026-08-30) brought fixed image-size versions, so the exemptions were
+// removed per the self-expiring allowlist policy.
 const KNOWN_ACCEPTED_ADVISORIES = new Map([
-  [
-    'GHSA-w3rx-r6r6-pgpr',
-    'image-size ICNS parser infinite-loop DoS; build-time only; no upstream fix (patched: None)',
-  ],
-  [
-    'GHSA-5p2g-fcmc-qvqq',
-    'image-size JXL/HEIF parser infinite-loop DoS; build-time only; no upstream fix (patched: None)',
-  ],
 ]);
 
 function collectAdvisoryIds(packageName, vulnerabilities, seen = new Set()) {
