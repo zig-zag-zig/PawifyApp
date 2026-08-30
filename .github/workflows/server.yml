@@ -15,10 +15,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'apps/server/**'
-      - 'packages/shared/**'
-      - '.github/workflows/server.yml'
   workflow_dispatch:
 
 concurrency:
