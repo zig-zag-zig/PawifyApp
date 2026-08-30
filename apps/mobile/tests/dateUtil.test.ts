@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dateToTimestamp, formatDate, isFutureDate, sortReleasesByDate } from '../src/modules/utils/dateUtil';
+import { dateToTimestamp, formatDate, isFutureDate, sortReleasesByDate } from '@pawify/shared';
 
 const dateTimeMin = -8640000000000000;
 

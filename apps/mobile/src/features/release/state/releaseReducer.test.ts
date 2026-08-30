@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialReleaseState, releaseReducer } from './releaseReducer';
-import type { Release, Track } from '../../../shared/music';
+import type { Release, Track } from '@pawify/shared';
 
 const track = (id: string): Track => ({
   id,

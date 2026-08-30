@@ -1,6 +1,6 @@
 import { StackNavigationProp } from "@react-navigation/stack";
 import type { NavigatorScreenParams } from "@react-navigation/native";
-import { ReleaseGroupReleaseListItem } from "../shared/music";
+import { ReleaseGroupReleaseListItem } from "@pawify/shared";
 
 export type HomeTabParamList = {
     Search: undefined;

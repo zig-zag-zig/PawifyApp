@@ -1,4 +1,4 @@
-import type { ExternalLink, ExternalLinkService } from '../../shared/music';
+import type { ExternalLink, ExternalLinkService } from '@pawify/shared';
 import {
     STREAMING_SERVICES,
     PERSONAL_SERVICES,

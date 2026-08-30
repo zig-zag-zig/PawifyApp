@@ -6,7 +6,7 @@ import type {
   Release,
   ReleaseGroupReleaseListItem,
   ReleaseNotificationSettings
-} from '../shared/music';
+} from '@pawify/shared';
 
 export interface FollowingResponse {
   artists: ArtistMinimal[];

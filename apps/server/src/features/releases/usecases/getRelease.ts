@@ -1,4 +1,4 @@
-import type { Release } from '../../../modules/models/models.js';
+import type { Release } from '@pawify/shared';
 import type { ReleaseReadUseCaseDependencies } from '../ports.js';
 
 type GetReleaseResult = {

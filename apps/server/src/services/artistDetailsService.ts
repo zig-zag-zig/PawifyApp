@@ -1,7 +1,7 @@
 import { getArtistMetadataCacheTtlHours } from '../features/artists/artistMetadataRefresh.js';
 import { mapToArtist } from '../infrastructure/musicbrainz/musicbrainzMapper.js';
 import { mapArtistToFollowedArtistSummary } from '../features/artists/followedArtistSummary.js';
-import { Artist } from '../modules/models/models.js';
+import { Artist } from '@pawify/shared';
 import {
     getExternalLinkUrlsByService,
     mapRelationsToExternalLinks,

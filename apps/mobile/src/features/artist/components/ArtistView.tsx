@@ -3,7 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { ScreenContainer } from '../../../components/ui';
 import { useGlobalSpinner } from '../../../contexts/GlobalSpinnerContext';
 import { useContentReady } from '../../../hooks/useContentReady';
-import type { ArtistReleaseGroup } from '../../../shared/music';
+import type { ArtistReleaseGroup } from '@pawify/shared';
 import type { ArtistPageUiState } from '../model/types';
 import ArtistHeader from './ArtistHeader';
 import ReleasesSection from './ReleasesSection';

@@ -2,7 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import React from 'react';
 import { useGlobalSpinner } from '../../../contexts/GlobalSpinnerContext';
 import { useContentReady } from '../../../hooks/useContentReady';
-import type { ReleaseGroupReleaseListItem } from '../../../shared/music';
+import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
 import type { ReleaseGroupNavigationProp } from '../../../types/navigation';
 import ReleaseGroupCard from './ReleaseGroupCard';
 

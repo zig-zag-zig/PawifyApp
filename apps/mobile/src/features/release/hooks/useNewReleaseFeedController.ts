@@ -5,7 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useReleaseApi } from '../api/releaseApi';
 import { useOnAppForeground } from '../../../hooks/useOnAppForeground';
 import useTaskManager from '../../../hooks/useTaskManager';
-import type { NewRelease, NewReleaseCoverTaskResult, RemoteValueState } from '../../../shared/music';
+import type { NewRelease, NewReleaseCoverTaskResult, RemoteValueState } from '@pawify/shared';
 import type { NewReleasesResponse } from '../../../types/apiTypes';
 import { EventService } from '../../../services/eventService';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';

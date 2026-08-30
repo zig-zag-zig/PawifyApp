@@ -1,7 +1,7 @@
 import { optionalString, requireBodyObject, requireBoolean } from '../../common/http/validation.js';
 import { BadRequestError } from '../../common/http/errors.js';
 import { authenticatedHandler } from '../../infrastructure/http/authenticatedHandler.js';
-import type { ReleaseNotificationSettings } from '../../modules/models/models.js';
+import type { ReleaseNotificationSettings } from '@pawify/shared';
 import {
     coerceReleaseNotificationLookbackMonths,
     formatReleaseNotificationLookbackMonthOptions,

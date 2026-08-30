@@ -3,8 +3,8 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View, type ListRenderItem
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { LoadingText } from '../../../components/cachedImage/CachedImagePlaceholders';
 import { SelectableText, InlineLink } from '../../../components/ui';
-import type { ArtistReleaseGroup } from '../../../shared/music';
-import { nameWithDisambiguation } from '../../../shared/music';
+import type { ArtistReleaseGroup } from '@pawify/shared';
+import { nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 import { DEFAULT_RELEASE_ITEMS_TO_SHOW } from '../domain/releaseSections';
 import type { ReleaseGroupSection } from '../model/types';

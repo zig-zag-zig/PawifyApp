@@ -1,4 +1,4 @@
-import type { ArtistReleaseGroup, Release } from '../../modules/models/models.js';
+import type { ArtistReleaseGroup, Release } from '@pawify/shared';
 import { deleteCachedData, getCachedData, replaceCachedData } from '../../services/cacheService.js';
 import type { CachedArtistReleases, CachedReleaseGroupReleases } from '../types/cacheTypes.js';
 import { createCachedReleaseGroupReleases } from './artistReleaseCacheHelpers.js';

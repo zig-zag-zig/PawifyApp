@@ -1,6 +1,6 @@
 import React from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import type { ArtistMinimal } from '../../../shared/music';
+import type { ArtistMinimal } from '@pawify/shared';
 import { useScrollAnchorList } from '../../../hooks/useScrollAnchorList';
 import ArtistsView from '../components/ArtistsView';
 import { useArtistsPage } from '../hooks/useArtistsPage';

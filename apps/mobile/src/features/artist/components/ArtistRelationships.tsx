@@ -3,8 +3,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { SelectableText } from '../../../components/ui';
-import type { Artist } from '../../../shared/music';
-import { formatDate } from '../../../shared/music';
+import type { Artist } from '@pawify/shared';
+import { formatDate } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 import {
     buildArtistRelationshipGroups,

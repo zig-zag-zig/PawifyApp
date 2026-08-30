@@ -1,4 +1,4 @@
-import type { Release, ReleaseGroupReleaseListItem } from '../../modules/models/models.js';
+import type { Release, ReleaseGroupReleaseListItem } from '@pawify/shared';
 import { replaceCachedData, getCachedData } from '../cacheService.js';
 import type {
     CachedArtistReleases,

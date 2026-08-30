@@ -1,4 +1,4 @@
-import type { ArtistSearchResult } from '../../../modules/models/models.js';
+import type { ArtistSearchResult } from '@pawify/shared';
 import { transientArtistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 import type { ArtistReadUseCaseDependencies } from '../ports.js';
 

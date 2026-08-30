@@ -4,8 +4,8 @@ import {
     NewRelease,
     Release,
     ReleaseNotificationSettings,
-} from '../../modules/models/models.js';
-import { sortReleasesByDate } from '../../modules/utils/dateUtil.js';
+} from '@pawify/shared';
+import { sortReleasesByDate } from '@pawify/shared';
 import { getReleaseCover } from '../../services/coverArtService.js';
 import { saveArtistAndKnownReleasesToDb } from '../../services/firebase/artistStore.js';
 import type { StoredNewRelease } from '../../services/firebase/types.js';

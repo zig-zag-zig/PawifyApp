@@ -1,4 +1,4 @@
-import type { ExternalLinkCategory, ExternalLinkService } from '../../shared/music';
+import type { ExternalLinkCategory, ExternalLinkService } from '@pawify/shared';
 import type { BrandIconSlug } from './brandIconPaths';
 
 export type ExternalLinkIconConfig =

@@ -1,4 +1,4 @@
-import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
+import type { Artist, ArtistReleaseGroup } from '@pawify/shared';
 import { buildInitialLoadedItemsByType, DEFAULT_RELEASE_ITEMS_TO_SHOW } from '../domain/releaseSections';
 import type { ArtistPageState, PendingTaskKey } from '../model/types';
 import { mergeUniqueIds, removeIds } from '../../../utils/arrays';

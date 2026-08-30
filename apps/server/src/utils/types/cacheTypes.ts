@@ -3,7 +3,7 @@ import type {
     ArtistReleaseGroup,
     Release,
     RemoteValueState,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 
 export type CoverState = {
     url: RemoteValueState;

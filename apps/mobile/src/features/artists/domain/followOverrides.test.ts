@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyFollowOverrides, type FollowingOverride } from './followOverrides';
-import type { ArtistMinimal } from '../../../shared/music';
+import type { ArtistMinimal } from '@pawify/shared';
 
 const artistA: ArtistMinimal = { id: 'a', name: 'A' };
 const artistB: ArtistMinimal = { id: 'b', name: 'B' };

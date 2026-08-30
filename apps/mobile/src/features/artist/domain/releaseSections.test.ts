@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildReleaseSections, buildInitialLoadedItemsByType, DEFAULT_RELEASE_ITEMS_TO_SHOW } from './releaseSections';
-import type { ArtistReleaseGroup } from '../../../shared/music';
+import type { ArtistReleaseGroup } from '@pawify/shared';
 
 function makeReleaseGroup(id: string, primaryType: string | null): ArtistReleaseGroup {
     return {

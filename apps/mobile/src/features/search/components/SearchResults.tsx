@@ -3,7 +3,7 @@ import { FlatList, ListRenderItem, StyleSheet, View } from 'react-native';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
 import { InlineLink, Spinner } from '../../../components/ui';
 import { useContentReady } from '../../../hooks/useContentReady';
-import { Artist } from '../../../shared/music';
+import { Artist } from '@pawify/shared';
 
 interface SearchResultsProps {
     artists: Artist[];

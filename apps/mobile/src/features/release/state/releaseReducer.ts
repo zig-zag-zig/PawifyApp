@@ -1,4 +1,4 @@
-import type { Release, Track } from '../../../shared/music';
+import type { Release, Track } from '@pawify/shared';
 import type { ReleasePageState } from '../model/types';
 import { removeIds } from '../../../utils/arrays';
 

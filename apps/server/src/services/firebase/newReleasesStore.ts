@@ -1,4 +1,4 @@
-import type { NewRelease } from '../../modules/models/models.js';
+import type { NewRelease } from '@pawify/shared';
 import {
     NewReleasesMap,
     NewReleasesSnapshot,

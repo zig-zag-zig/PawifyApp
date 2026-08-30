@@ -1,4 +1,4 @@
-import type { RemoteValueState } from '../../modules/models/models.js';
+import type { RemoteValueState } from '@pawify/shared';
 import { cacheConfig } from '../../config/runtimeConfig.js';
 import type { CoverState, LyricsState } from '../types/cacheTypes.js';
 

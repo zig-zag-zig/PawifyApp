@@ -1,4 +1,4 @@
-import type { ArtistMinimal } from '../../../shared/music';
+import type { ArtistMinimal } from '@pawify/shared';
 
 export function sortArtistsByDisplayName(artists: ArtistMinimal[]): ArtistMinimal[] {
     return [...artists].sort((a, b) => {

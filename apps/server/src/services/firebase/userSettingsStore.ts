@@ -1,7 +1,7 @@
 import {
     DEFAULT_RELEASE_NOTIFICATION_SETTINGS,
     ReleaseNotificationSettings,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 import { coerceReleaseNotificationLookbackMonths } from '../../utils/types/releaseNotificationSettings.js';
 import { getUserRef } from './refs.js';
 import { getDocumentRefAndSnapshot } from './userStore.js';

@@ -10,7 +10,7 @@ import { AppState } from 'react-native';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useApiClient } from '../../../hooks/useApiClient';
 import { EventService } from '../../../services/eventService';
-import { ReleaseNotificationSettings, DEFAULT_RELEASE_NOTIFICATION_SETTINGS } from '../../../shared/music';
+import { ReleaseNotificationSettings, DEFAULT_RELEASE_NOTIFICATION_SETTINGS } from '@pawify/shared';
 import type { ReleaseNotificationSettingsResponse } from '../../../types/apiTypes';
 
 type ReleaseNotificationSettingsContextValue = {

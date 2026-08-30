@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutChangeEvent, TouchableOpacity, useWindowDimensions, View } from 'react-native';
-import { ArtistMinimal } from '../shared/music';
-import { nameWithDisambiguation } from '../shared/music';
+import { ArtistMinimal } from '@pawify/shared';
+import { nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../styles/styles';
 import { CachedImageComponent } from './cachedImage/CachedImageComponent';
 import { SelectableText } from './ui';

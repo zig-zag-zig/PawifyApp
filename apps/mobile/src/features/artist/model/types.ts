@@ -1,4 +1,4 @@
-import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
+import type { Artist, ArtistReleaseGroup } from '@pawify/shared';
 
 interface ArtistPendingTasks {
     artistTaskId: string | null;

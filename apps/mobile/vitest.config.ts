@@ -1,8 +1,16 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 export default defineConfig({
   define: {
     __DEV__: 'false',
+  },
+  resolve: {
+    alias: {
+      // vitest ignores Metro's "react-native" main-field convention, so map the
+      // workspace package straight to its TS source — no shared build required.
+      '@pawify/shared': path.resolve(__dirname, '../../packages/shared'),
+    },
   },
   test: {
     environment: 'jsdom',
@@ -19,7 +27,6 @@ export default defineConfig({
       },
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
-        'src/modules/**',
         'src/test/**',
         'src/**/*.test.{ts,tsx}',
       ],

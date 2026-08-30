@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ScreenContainer } from '../../../components/ui';
-import type { Artist } from '../../../shared/music';
+import type { Artist } from '@pawify/shared';
 import SearchInput from './SearchInput';
 import SearchResults from './SearchResults';
 

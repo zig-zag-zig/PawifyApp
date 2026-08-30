@@ -2,7 +2,7 @@ import type {
     ExternalLink,
     ExternalLinkCategory,
     ExternalLinkService,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 
 type ExternalLinkRule = {
     service: ExternalLinkService;

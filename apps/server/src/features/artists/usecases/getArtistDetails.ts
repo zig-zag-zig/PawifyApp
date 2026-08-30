@@ -1,4 +1,4 @@
-import type { Artist } from '../../../modules/models/models.js';
+import type { Artist } from '@pawify/shared';
 import { mapArtistToProfileImageLookup } from '../domain/profileImageLookups.js';
 import { artistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 import type { ArtistReadUseCaseDependencies } from '../ports.js';

@@ -1,5 +1,5 @@
 import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
-import type { Release, ReleaseGroupReleaseListItem, Track } from '../../../shared/music';
+import type { Release, ReleaseGroupReleaseListItem, Track } from '@pawify/shared';
 
 export interface ReleasesPageState {
     page: number;

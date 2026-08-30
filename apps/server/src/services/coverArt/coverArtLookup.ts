@@ -4,7 +4,7 @@ import {
     shouldRefetchRemoteState,
     TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS,
 } from '../../utils/helpers/remoteStateHelpers.js';
-import type { RemoteValueState } from '../../modules/models/models.js';
+import type { RemoteValueState } from '@pawify/shared';
 import type { CachedReleaseGroupReleaseCovers, CoverState } from '../../utils/types/cacheTypes.js';
 import { dedupeStrings } from '../../common/utils/array.js';
 import { isRemoteValueState } from '../../common/utils/objectGuards.js';

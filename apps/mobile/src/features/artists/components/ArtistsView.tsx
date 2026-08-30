@@ -1,7 +1,7 @@
 import React from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
-import type { ArtistMinimal } from '../../../shared/music';
+import type { ArtistMinimal } from '@pawify/shared';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
 import { ScreenContainer } from '../../../components/ui';
 

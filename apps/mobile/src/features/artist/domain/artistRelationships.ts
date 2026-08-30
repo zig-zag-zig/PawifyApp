@@ -1,4 +1,4 @@
-import type { Artist, Member } from '../../../shared/music';
+import type { Artist, Member } from '@pawify/shared';
 import type {
     ArtistRelationshipBuckets,
     ArtistRelationshipGroup,

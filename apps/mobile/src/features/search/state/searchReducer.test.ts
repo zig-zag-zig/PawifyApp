@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Artist } from '../../../shared/music';
+import type { Artist } from '@pawify/shared';
 import { createInitialSearchState, searchReducer } from './searchReducer';
 
 function artist(id: string, name = id): Artist {

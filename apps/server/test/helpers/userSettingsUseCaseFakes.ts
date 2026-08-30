@@ -1,5 +1,5 @@
 import type { UserSettingsUseCaseDependencies } from '../../src/features/userSettings/ports.js';
-import type { Release, ReleaseNotificationSettings } from '../../src/modules/models/models.js';
+import type { Release, ReleaseNotificationSettings } from '@pawify/shared';
 import { createReleaseNotificationSettings } from './releaseFixtures.js';
 
 type UserSettingsFakeOptions = {

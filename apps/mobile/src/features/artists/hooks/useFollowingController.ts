@@ -5,7 +5,7 @@ import { useCache } from '../../../contexts/CacheContext';
 import { useArtistsApi } from '../api/artistsApi';
 import { useOnAppForeground } from '../../../hooks/useOnAppForeground';
 import useTaskManager from '../../../hooks/useTaskManager';
-import { ArtistMinimal } from '../../../shared/music';
+import { ArtistMinimal } from '@pawify/shared';
 import { EventService } from '../../../services/eventService';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { applyFollowOverrides, type FollowingOverride } from '../domain/followOverrides';

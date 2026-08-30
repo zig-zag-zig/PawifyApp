@@ -3,7 +3,7 @@ import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
 import { PulsingPlaceholder } from '../../../components/cachedImage/CachedImagePlaceholders';
-import { Track } from '../../../shared/music';
+import { Track } from '@pawify/shared';
 import { CONTAINER_HORIZONTAL_PADDING } from '../../../styles/styles';
 import { ArtistNavigationProp } from '../../../types/navigation';
 import { useNavigation } from '@react-navigation/native';

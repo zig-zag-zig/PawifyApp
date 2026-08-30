@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { artistReducer, createInitialArtistPageState } from './artistReducer';
-import type { Artist, ArtistReleaseGroup } from '../../../shared/music';
+import type { Artist, ArtistReleaseGroup } from '@pawify/shared';
 
 function makeArtist(overrides: Partial<Artist> = {}): Artist {
   return {

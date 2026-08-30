@@ -2,7 +2,7 @@ import type {
     NewRelease,
     Release,
     ReleaseNotificationSettings,
-} from '../../src/modules/models/models.js';
+} from '@pawify/shared';
 import type { FollowedArtistSummary } from '../../src/utils/types/followedArtistTypes.js';
 import type { ArtistProfileImageLookup } from '../../src/utils/types/taskTypes.js';
 

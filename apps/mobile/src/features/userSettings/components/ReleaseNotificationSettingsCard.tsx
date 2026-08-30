@@ -12,7 +12,7 @@ import {
   useReleaseNotificationSettings,
 } from '../state/ReleaseNotificationSettingsContext';
 import { getReleaseNotificationSettingsStyles } from './releaseNotificationSettingsStyles';
-import { ReleaseNotificationSettings } from '../../../shared/music';
+import { ReleaseNotificationSettings } from '@pawify/shared';
 
 const lookbackOptions: Array<{ label: string; value: number | null }> = [
   { label: '1 mo', value: 1 },

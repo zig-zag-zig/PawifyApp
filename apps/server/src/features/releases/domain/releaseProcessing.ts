@@ -2,7 +2,7 @@ import {
     Release,
     DEFAULT_RELEASE_NOTIFICATION_SETTINGS,
     ReleaseNotificationSettings,
-} from '../../../modules/models/models.js';
+} from '@pawify/shared';
 import { releaseMatchesNotificationSettings } from '../../../utils/helpers/releaseNotificationFilter.js';
 import { groupByReleaseGroup } from '../../../utils/helpers/releaseGroupingHelpers.js';
 

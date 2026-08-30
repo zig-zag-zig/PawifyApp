@@ -3,7 +3,7 @@ import { TouchableOpacity, View, LayoutChangeEvent } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { SelectableText } from '../../../components/ui';
 import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
-import { nameWithDisambiguation } from '../../../shared/music';
+import { nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 
 interface ReleaseItemProps {

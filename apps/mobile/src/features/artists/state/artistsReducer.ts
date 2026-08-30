@@ -1,4 +1,4 @@
-import type { ArtistMinimal } from '../../../shared/music';
+import type { ArtistMinimal } from '@pawify/shared';
 import type { ArtistsPageState } from '../model/types';
 
 type ArtistsAction =

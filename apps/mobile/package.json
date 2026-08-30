@@ -62,7 +62,8 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
     "react-native-uuid": "^2.0.3",
-    "react-native-worklets": "0.10.1"
+    "react-native-worklets": "0.10.1",
+    "@pawify/shared": "file:../../packages/shared"
   },
   "devDependencies": {
     "@react-native-community/cli": "20.1.3",

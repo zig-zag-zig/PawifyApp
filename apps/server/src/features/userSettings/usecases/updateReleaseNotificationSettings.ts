@@ -1,4 +1,4 @@
-import { ReleaseNotificationSettings } from '../../../modules/models/models.js';
+import { ReleaseNotificationSettings } from '@pawify/shared';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
 import { getNotificationCandidateReleases } from '../../../features/releases/domain/releaseProcessing.js';
 import type { UserSettingsUseCaseDependencies } from '../ports.js';

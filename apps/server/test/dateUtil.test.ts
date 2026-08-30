@@ -6,8 +6,8 @@ import {
     formatDate,
     isFutureDate,
     sortReleasesByDate,
-} from '../src/modules/utils/dateUtil.js';
-import type { Release } from '../src/modules/models/models.js';
+} from '@pawify/shared';
+import type { Release } from '@pawify/shared';
 import { createRelease } from './helpers/releaseFixtures.js';
 
 const dateTimeMin = -8640000000000000;

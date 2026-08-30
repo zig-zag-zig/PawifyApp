@@ -1,4 +1,4 @@
-import type { Release, Track } from '../../../shared/music';
+import type { Release, Track } from '@pawify/shared';
 
 export function cloneRelease(release: Release): Release {
     return JSON.parse(JSON.stringify(release)) as Release;

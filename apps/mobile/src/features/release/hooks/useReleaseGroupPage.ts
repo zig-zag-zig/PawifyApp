@@ -1,7 +1,7 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
-import type { ReleaseGroupReleaseListItem } from '../../../shared/music';
+import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { ReleaseNavigationProp, RootStackParamList } from '../../../types/navigation';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';

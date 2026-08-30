@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Release } from '../src/modules/models/models.js';
+import type { Release } from '@pawify/shared';
 import { releaseDateMatchesNotificationSettings } from '../src/utils/helpers/releaseNotificationFilter.js';
 import {
     dedupeReleaseGroupReleases,

@@ -1,4 +1,4 @@
-import type { Artist, ExternalLink } from '../../../modules/models/models.js';
+import type { Artist, ExternalLink } from '@pawify/shared';
 import type { ArtistProfileImageLookup } from '../../../utils/types/taskTypes.js';
 import { getExternalLinkUrlsByService } from '../../../utils/helpers/externalLinks.js';
 import { normalizeDiscogsUrls } from '../../../services/tasks/backgroundTaskMappers.js';

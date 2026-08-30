@@ -2,8 +2,8 @@ import {
     DEFAULT_RELEASE_NOTIFICATION_SETTINGS,
     type Release,
     type ReleaseNotificationSettings,
-} from '../../modules/models/models.js';
-import { dateToTimestamp } from '../../modules/utils/dateUtil.js';
+} from '@pawify/shared';
+import { dateToTimestamp } from '@pawify/shared';
 
 const invalidReleaseDateTime = -8640000000000000;
 

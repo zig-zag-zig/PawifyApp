@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Release } from '../../../shared/music';
+import type { Release } from '@pawify/shared';
 
 import {
     collectArtistImagesForRelease,

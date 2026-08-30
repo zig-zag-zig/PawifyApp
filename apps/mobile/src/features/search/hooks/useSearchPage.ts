@@ -2,7 +2,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import useTaskManager from '../../../hooks/useTaskManager';
-import type { Artist } from '../../../shared/music';
+import type { Artist } from '@pawify/shared';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages } from '../../../utils/taskResultMaps';

@@ -1,6 +1,6 @@
 import { isArtistMetadataStale } from '../artistMetadataRefresh.js';
 import { createLogger } from '../../../common/logging/logger.js';
-import type { ArtistMinimal } from '../../../modules/models/models.js';
+import type { ArtistMinimal } from '@pawify/shared';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
 import { artistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 import type { ArtistProfileImageLookup } from '../../../utils/types/taskTypes.js';

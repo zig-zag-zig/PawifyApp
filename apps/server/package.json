@@ -14,7 +14,16 @@
         "dev": "ts-node src/index.ts",
         "verify": "npm run typecheck && npm test",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "build:shared": "npm install --no-audit --no-fund --prefix ../../packages/shared && npm run build --prefix ../../packages/shared",
+        "prebuild": "npm run build:shared",
+        "prebuild:unchecked": "npm run build:shared",
+        "predev": "npm run build:shared",
+        "prestart": "npm run build:shared",
+        "pretypecheck": "npm run build:shared",
+        "pretest": "npm run build:shared",
+        "pretest:coverage": "npm run build:shared",
+        "pretest:integration": "npm run build:shared"
     },
     "engines": {
         "node": "22"
@@ -24,7 +33,8 @@
         "@sentry/node": "^10.72.0",
         "dotenv": "^17.4.2",
         "express": "^4.21.2",
-        "firebase-admin": "^14.2.0"
+        "firebase-admin": "^14.2.0",
+        "@pawify/shared": "file:../../packages/shared"
     },
     "devDependencies": {
         "@types/express": "^5.0.0",

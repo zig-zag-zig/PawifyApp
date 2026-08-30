@@ -1,7 +1,7 @@
 import { RouteProp, useRoute } from '@react-navigation/native';
 import { useEffect, useReducer, useRef } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
-import type { Release } from '../../../shared/music';
+import type { Release } from '@pawify/shared';
 import { openExternalUrl } from '../../../services/externalNavigation';
 import { isApiCallError } from '../../../services/apiErrors';
 import { extractArtistProfileImages, extractReleaseTrackLyrics } from '../../../utils/taskResultMaps';

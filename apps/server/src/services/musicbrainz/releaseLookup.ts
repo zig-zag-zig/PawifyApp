@@ -2,7 +2,7 @@ import {
     getPrimaryArtistId,
     mapToRelease,
 } from '../../infrastructure/musicbrainz/musicbrainzMapper.js';
-import type { Release } from '../../modules/models/models.js';
+import type { Release } from '@pawify/shared';
 import { getReleaseCover } from '../coverArtService.js';
 import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 

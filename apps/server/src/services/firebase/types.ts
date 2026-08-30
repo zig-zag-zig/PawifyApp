@@ -1,4 +1,4 @@
-import type { NewRelease } from '../../modules/models/models.js';
+import type { NewRelease } from '@pawify/shared';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { ReleaseGroupReleasesPageEntry } from '../../utils/types/taskTypes.js';
 

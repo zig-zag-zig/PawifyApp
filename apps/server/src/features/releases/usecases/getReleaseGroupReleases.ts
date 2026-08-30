@@ -1,4 +1,4 @@
-import type { ReleaseGroupReleaseListItem } from '../../../modules/models/models.js';
+import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
 import type { ReleaseReadUseCaseDependencies } from '../ports.js';
 import type { ReleaseGroupReleasesPageEntry } from '../../../utils/types/taskTypes.js';
 

@@ -1,4 +1,4 @@
-import type { NewRelease, NewReleasesResult } from '../../../modules/models/models.js';
+import type { NewRelease, NewReleasesResult } from '@pawify/shared';
 import { sortNewReleasesNewestFirst } from '../domain/newReleaseSorting.js';
 import type { NewReleasesById, ReleaseUseCaseDependencies } from '../ports.js';
 

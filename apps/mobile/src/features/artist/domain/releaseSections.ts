@@ -1,4 +1,4 @@
-import type { ArtistReleaseGroup } from '../../../shared/music';
+import type { ArtistReleaseGroup } from '@pawify/shared';
 import type { ReleaseGroupSection } from '../model/types';
 
 const RELEASE_TYPES_ORDER = [

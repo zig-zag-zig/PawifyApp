@@ -4,7 +4,7 @@ import type {
     NewRelease,
     Release,
     ReleaseGroupReleaseListItem,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 import type { CachedArtistReleases } from '../../utils/types/cacheTypes.js';
 import type {
     ContractNamespace,

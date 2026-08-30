@@ -4,7 +4,7 @@ import { ScreenContainer } from '../../../components/ui';
 import { InfoBanner } from '../../../components/InfoBanner';
 import { useGlobalSpinner } from '../../../contexts/GlobalSpinnerContext';
 import { useContentReady } from '../../../hooks/useContentReady';
-import type { Track } from '../../../shared/music';
+import type { Track } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 import type { ReleasePageUiState } from '../model/types';
 import { flattenReleaseTracks } from '../domain/releaseEnrichment';

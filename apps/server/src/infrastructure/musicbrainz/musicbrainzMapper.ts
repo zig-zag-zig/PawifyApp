@@ -8,8 +8,8 @@ import {
     ReleaseGroup,
     ReleaseResult,
     Track,
-} from '../../modules/models/models.js';
-import { formatDate } from '../../modules/utils/dateUtil.js';
+} from '@pawify/shared';
+import { formatDate } from '@pawify/shared';
 import { mapRelationsToExternalLinks } from '../../utils/helpers/externalLinks.js';
 
 const mapToArtistMinimal = (data: any): ArtistMinimal => ({

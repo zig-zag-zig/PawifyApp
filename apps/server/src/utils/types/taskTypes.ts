@@ -4,7 +4,7 @@ import type {
     ReleaseGroupCoverTaskResult,
     ReleaseGroupReleaseCoverTaskResult,
     TrackLyricsTaskResult,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 
 export type {
     ArtistProfileImageTaskResult,
@@ -12,7 +12,7 @@ export type {
     ReleaseGroupCoverTaskResult,
     ReleaseGroupReleaseCoverTaskResult,
     TrackLyricsTaskResult,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 
 export type BackgroundTaskType =
     | 'release_group_covers'

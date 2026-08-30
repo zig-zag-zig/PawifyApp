@@ -5,8 +5,8 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import type { ArtistCredit, Release } from '../../../shared/music';
-import { nameWithDisambiguation } from '../../../shared/music';
+import type { ArtistCredit, Release } from '@pawify/shared';
+import { nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 import { ArtistNavigationProp } from '../../../types/navigation';
 

@@ -1,5 +1,5 @@
 import { createLogger } from '../../common/logging/logger.js';
-import { nameWithDisambiguation } from '../../modules/utils/helpers.js';
+import { nameWithDisambiguation } from '@pawify/shared';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
 import { getAllUsers } from '../firebase/userStore.js';
 import {

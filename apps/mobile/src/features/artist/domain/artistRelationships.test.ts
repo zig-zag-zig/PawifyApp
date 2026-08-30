@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Artist, Member } from '../../../shared/music';
+import type { Artist, Member } from '@pawify/shared';
 import {
   buildArtistRelationshipGroups,
   getArtistRelationshipBuckets,

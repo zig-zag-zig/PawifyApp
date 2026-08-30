@@ -1,4 +1,4 @@
-import type { Release, ReleaseNotificationSettings } from '../../modules/models/models.js';
+import type { Release, ReleaseNotificationSettings } from '@pawify/shared';
 
 export type ReleaseNotificationSettingsRepository = {
     getSettings(userId: string): Promise<ReleaseNotificationSettings>;

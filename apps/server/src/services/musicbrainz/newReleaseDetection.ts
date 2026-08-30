@@ -2,7 +2,7 @@ import type {
     NewRelease,
     Release,
     ReleaseNotificationSettings,
-} from '../../modules/models/models.js';
+} from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
 import {
     getKnownReleasesFromDb,
