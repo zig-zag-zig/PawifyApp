@@ -1,0 +1,23 @@
+services:
+    pawify:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            target: build
+        command: npm run dev
+        volumes:
+            - ./src:/app/src
+            - ./package.json:/app/package.json
+            - ./tsconfig.json:/app/tsconfig.json
+            - ./tsconfig.test.json:/app/tsconfig.test.json
+            - ${PAWIFY_SECRETS_DIR:-./secrets/local}:/var/pawify/secrets:ro
+        environment:
+            NODE_ENV: development
+            PORT: 10000
+        depends_on:
+            pawify-dapr:
+                condition: service_started
+            redis:
+                condition: service_healthy
+        networks:
+            - pawify-net

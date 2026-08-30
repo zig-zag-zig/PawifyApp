@@ -1,0 +1,28 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+    name: smtp-gmail
+spec:
+    type: bindings.smtp
+    version: v1
+    metadata:
+        - name: host
+          value: smtp.gmail.com
+        - name: port
+          value: '587'
+        - name: user
+          secretKeyRef:
+              name: gmail-email
+              key: gmail-email
+        - name: password
+          secretKeyRef:
+              name: gmail-password
+              key: gmail-password
+        - name: skipTLSVerify
+          value: 'false'
+        - name: emailFrom
+          secretKeyRef:
+              name: gmail-email
+              key: gmail-email
+auth:
+    secretStore: pawify-secrets

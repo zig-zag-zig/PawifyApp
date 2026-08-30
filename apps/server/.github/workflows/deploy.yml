@@ -1,0 +1,240 @@
+name: CI and Deploy Pawify
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pawify-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-test:
+    name: npm ci / build / test / docker image
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ steps.image.outputs.image_ref }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare Docker image tags
+        id: image
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "Pawify production deploys must run from main, not $GITHUB_REF_NAME." >&2
+            exit 2
+          fi
+
+          image_repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          image_ref="${image_repo}:sha-${GITHUB_SHA}"
+
+          echo "image_repo=$image_repo" >> "$GITHUB_OUTPUT"
+          echo "image_ref=$image_ref" >> "$GITHUB_OUTPUT"
+          echo "environment_ref=${image_repo}:prod" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        if: steps.image.outputs.image_ref != ''
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build Docker image
+        if: steps.image.outputs.image_ref == ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: pawify-ci
+          cache-from: type=gha,scope=pawify-api
+          cache-to: type=gha,scope=pawify-api,mode=max
+
+      - name: Build and push Docker image
+        if: steps.image.outputs.image_ref != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image_ref }}
+            ${{ steps.image.outputs.environment_ref }}
+          cache-from: type=gha,scope=pawify-api
+          cache-to: type=gha,scope=pawify-api,mode=max
+
+  deploy:
+    name: Deploy ${{ github.ref_name }}
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: production
+
+    steps:
+      - name: Deploy on VPS
+        env:
+          VPS_HOST: ${{ secrets.PAWIFY_VPS_HOST }}
+          VPS_USER: ${{ secrets.PAWIFY_VPS_USER }}
+          VPS_PORT: ${{ secrets.PAWIFY_VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.PAWIFY_VPS_SSH_KEY }}
+          PAWIFY_REPO_URL: ${{ vars.PAWIFY_REPO_URL || format('https://github.com/{0}.git', github.repository) }}
+          PAWIFY_DEPLOY_BRANCH: ${{ github.ref_name }}
+          PAWIFY_PROD_SECRET_SOURCE_DIR: ${{ vars.PAWIFY_PROD_SECRET_SOURCE_DIR }}
+          PAWIFY_ENV_FILE_B64: ${{ secrets.PAWIFY_ENV_FILE_B64 }}
+          PAWIFY_DAPR_SECRETS_JSON_B64: ${{ secrets.PAWIFY_DAPR_SECRETS_JSON_B64 }}
+          PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
+          PAWIFY_DEPLOY_IMAGE: ${{ needs.build-test.outputs.image-ref }}
+          PAWIFY_IMAGE_REGISTRY: ghcr.io
+          PAWIFY_IMAGE_REGISTRY_USER: ${{ github.actor }}
+          PAWIFY_IMAGE_REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+
+          : "${VPS_HOST:?Missing GitHub secret PAWIFY_VPS_HOST}"
+          : "${VPS_USER:?Missing GitHub secret PAWIFY_VPS_USER}"
+          : "${VPS_SSH_KEY:?Missing GitHub secret PAWIFY_VPS_SSH_KEY}"
+          : "${PAWIFY_REPO_URL:?Missing PAWIFY_REPO_URL}"
+          : "${PAWIFY_DEPLOY_BRANCH:?Missing PAWIFY_DEPLOY_BRANCH}"
+          : "${PAWIFY_DEPLOY_IMAGE:?Missing built Docker image ref}"
+          : "${PAWIFY_ENV_FILE_B64:?Missing GitHub environment secret PAWIFY_ENV_FILE_B64}"
+          : "${PAWIFY_DAPR_SECRETS_JSON_B64:?Missing GitHub environment secret PAWIFY_DAPR_SECRETS_JSON_B64}"
+          : "${PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64:?Missing GitHub environment secret PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64}"
+
+          if [[ "$PAWIFY_DEPLOY_BRANCH" != "main" ]]; then
+            echo "Pawify production deploys must run from main, not $PAWIFY_DEPLOY_BRANCH." >&2
+            exit 2
+          fi
+
+          VPS_PORT="${VPS_PORT:-22}"
+          PAWIFY_PROD_SECRET_SOURCE_DIR="${PAWIFY_PROD_SECRET_SOURCE_DIR:-/root/pawify-prod-secrets}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/pawify_deploy_key
+          chmod 600 ~/.ssh/pawify_deploy_key
+          ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+
+          remote_repo_url="$(printf '%q' "$PAWIFY_REPO_URL")"
+          remote_branch="$(printf '%q' "$PAWIFY_DEPLOY_BRANCH")"
+          remote_prod_secret_source_dir="$(printf '%q' "$PAWIFY_PROD_SECRET_SOURCE_DIR")"
+          remote_env_file_b64="$(printf '%q' "$PAWIFY_ENV_FILE_B64")"
+          remote_dapr_secrets_json_b64="$(printf '%q' "$PAWIFY_DAPR_SECRETS_JSON_B64")"
+          remote_firebase_service_account_json_b64="$(printf '%q' "$PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64")"
+          remote_deploy_image="$(printf '%q' "$PAWIFY_DEPLOY_IMAGE")"
+          remote_image_registry="$(printf '%q' "$PAWIFY_IMAGE_REGISTRY")"
+          remote_image_registry_user="$(printf '%q' "$PAWIFY_IMAGE_REGISTRY_USER")"
+          remote_image_registry_token="$(printf '%q' "$PAWIFY_IMAGE_REGISTRY_TOKEN")"
+
+          ssh -p "$VPS_PORT" -i ~/.ssh/pawify_deploy_key "$VPS_USER@$VPS_HOST" \
+            "PAWIFY_REPO_URL=$remote_repo_url PAWIFY_DEPLOY_BRANCH=$remote_branch PAWIFY_PROD_SECRET_SOURCE_DIR=$remote_prod_secret_source_dir PAWIFY_ENV_FILE_B64=$remote_env_file_b64 PAWIFY_DAPR_SECRETS_JSON_B64=$remote_dapr_secrets_json_b64 PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64=$remote_firebase_service_account_json_b64 PAWIFY_DEPLOY_IMAGE=$remote_deploy_image PAWIFY_IMAGE_REGISTRY=$remote_image_registry PAWIFY_IMAGE_REGISTRY_USER=$remote_image_registry_user PAWIFY_IMAGE_REGISTRY_TOKEN=$remote_image_registry_token bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          require_apt_get() {
+            if ! command -v apt-get >/dev/null 2>&1; then
+              echo "apt-get is unavailable. Install missing deploy prerequisites on the VPS before deploying." >&2
+              exit 1
+            fi
+          }
+
+          if ! command -v sudo >/dev/null 2>&1; then
+            if [[ "$(id -u)" == "0" ]]; then
+              require_apt_get
+              apt-get update
+              apt-get install -y sudo
+            else
+              echo "sudo is missing on the VPS. Install sudo or deploy as root." >&2
+              exit 1
+            fi
+          fi
+
+          if ! sudo -n true; then
+            echo "The deploy SSH user must have passwordless sudo, or PAWIFY_VPS_USER must be root." >&2
+            exit 1
+          fi
+
+          if ! command -v git >/dev/null 2>&1; then
+            require_apt_get
+            sudo apt-get update
+            sudo apt-get install -y git ca-certificates
+          fi
+
+          if [[ "$PAWIFY_DEPLOY_BRANCH" != "main" ]]; then
+            echo "Unsupported deploy branch: $PAWIFY_DEPLOY_BRANCH" >&2
+            exit 2
+          fi
+
+          write_b64_file() {
+            local encoded="$1"
+            local path="$2"
+            local label="$3"
+            local tmp
+
+            if [[ -z "$encoded" ]]; then
+              echo "Missing GitHub environment secret: $label" >&2
+              exit 1
+            fi
+
+            tmp="$(mktemp)"
+            if ! printf '%s' "$encoded" | base64 -d > "$tmp"; then
+              rm -f "$tmp"
+              echo "Could not base64-decode GitHub environment secret: $label" >&2
+              exit 1
+            fi
+
+            sudo install -d -m 0700 "$(dirname "$path")"
+            sudo install -m 0600 "$tmp" "$path"
+            rm -f "$tmp"
+          }
+
+          write_b64_file "$PAWIFY_ENV_FILE_B64" "$PAWIFY_PROD_SECRET_SOURCE_DIR/.env" PAWIFY_ENV_FILE_B64
+          write_b64_file "$PAWIFY_DAPR_SECRETS_JSON_B64" "$PAWIFY_PROD_SECRET_SOURCE_DIR/dapr-secrets.json" PAWIFY_DAPR_SECRETS_JSON_B64
+          write_b64_file "$PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64" "$PAWIFY_PROD_SECRET_SOURCE_DIR/firebase-service-account.json" PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64
+
+          tmp_dir="$(mktemp -d)"
+          cleanup() {
+            rm -rf "$tmp_dir"
+          }
+          trap cleanup EXIT
+
+          git clone --depth 1 --recurse-submodules --shallow-submodules --branch "$PAWIFY_DEPLOY_BRANCH" "$PAWIFY_REPO_URL" "$tmp_dir"
+
+          sudo bash "$tmp_dir/scripts/deploy_pawify_docker_dapr.sh" \
+            --repo-url "$PAWIFY_REPO_URL" \
+            --repo-branch "$PAWIFY_DEPLOY_BRANCH" \
+            --prebuilt-image "$PAWIFY_DEPLOY_IMAGE" \
+            --secrets-source-dir "$PAWIFY_PROD_SECRET_SOURCE_DIR"
+          REMOTE

@@ -1,0 +1,48 @@
+{
+    "name": "pawify-api",
+    "scripts": {
+        "build": "npm run test:all && npm run build:unchecked",
+        "build:unchecked": "tsc",
+        "build:watch": "tsc --watch",
+        "typecheck": "tsc --noEmit",
+        "test": "tsc -p tsconfig.test.json && node --test \"lib-test/**/*.test.js\"",
+        "test:coverage": "tsc -p tsconfig.test.json && node --experimental-test-coverage --test \"lib-test/**/*.test.js\"",
+        "test:integration": "tsc -p tsconfig.test.json && firebase emulators:exec --only auth,database,firestore --project pawify-test \"node --test lib-test/test/emulator/**/*.test.js\"",
+        "test:emulator": "npm run test:integration",
+        "test:all": "npm test && npm run test:integration",
+        "start": "node --enable-source-maps lib/index.js",
+        "dev": "ts-node src/index.ts",
+        "verify": "npm run typecheck && npm test",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "engines": {
+        "node": "22"
+    },
+    "main": "lib/index.js",
+    "dependencies": {
+        "@sentry/node": "^10.72.0",
+        "dotenv": "^17.4.2",
+        "express": "^4.21.2",
+        "firebase-admin": "^14.2.0"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.13.8",
+        "firebase-tools": "^15.28.2",
+        "prettier": "^3.9.6",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.8.2"
+    },
+    "overrides": {
+        "gaxios": {
+            "uuid": "^11.1.1"
+        },
+        "teeny-request": {
+            "uuid": "^11.1.1"
+        },
+        "@opentelemetry/core": "^2.8.0"
+    },
+    "_comment": "Overrides: (1) gaxios/teeny-request still declare uuid ^9 (vulnerable per GHSA-w5hq-g745-h8pq, fixed in >=11.1.1); scoped to them instead of global because universal-analytics needs uuid ^14 and a global override breaks the tree (npm ls ELSPROBLEMS). uuid is only used for request ids via uuid.v4(), API-stable across majors. (2) @opentelemetry/core ^2.8.0 fixes GHSA-8988-4f7v-96qf for @google-cloud/pubsub (via firebase-tools); validated: npm ls exits 0 and npm run verify passes.",
+    "private": true
+}
