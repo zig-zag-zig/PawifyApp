@@ -286,6 +286,12 @@ jobs:
             --secrets-source-dir "$PAWIFY_PROD_SECRET_SOURCE_DIR"
           REMOTE
 
+      - name: Checkout (for release tag)
+        if: success()
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
       - name: Tag released version
         if: success()
         run: |
