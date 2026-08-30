@@ -1,6 +1,6 @@
 # Pawify API
 
-Pawify API is the backend for the Pawify mobile app. It connects Firebase-authenticated users with artist following, release lookup, cached background tasks, email OTP flows, and Expo push notifications for new music.
+This is the backend package (`apps/server`) of the Pawify monorepo. Pawify API is the backend for the Pawify mobile app (`apps/mobile`); shared TypeScript types and helpers live in `@pawify/shared` (`packages/shared`) and are imported by both apps. It connects Firebase-authenticated users with artist following, release lookup, cached background tasks, email OTP flows, and Expo push notifications for new music.
 
 For non-technical readers: this service does the heavy lifting behind the app. It asks music providers for metadata, caches expensive results, remembers followed artists, and tells phones when new releases are found.
 
@@ -27,10 +27,10 @@ For non-technical readers: this service does the heavy lifting behind the app. I
 - Expo push API through Dapr HTTPEndpoint
 - Sentry support
 
-## Related Repositories
+## Related Packages
 
-- [PawifyApp](https://github.com/zig-zag-zig/PawifyApp) - Expo/React Native mobile app
-- `@pawify/shared` (monorepo `packages/shared`) - shared music-domain types and helpers
+- `apps/mobile` - Expo/React Native mobile app (this monorepo)
+- `packages/shared` - `@pawify/shared`, shared music-domain types and helpers imported by both apps
 
 ## Local Development
 
@@ -54,6 +54,8 @@ set -a
 set +a
 npm run dev
 ```
+
+`npm run dev` runs `tsx watch` for automatic restarts on file changes. Lifecycle `pre*` hooks (`predev`, `pretypecheck`, `pretest`, `prebuild`, ...) automatically rebuild `@pawify/shared` (`../../packages/shared`) first, so the shared package never goes stale.
 
 The local server uses `PORT`, defaulting to `10000`.
 
@@ -104,7 +106,7 @@ docker compose --env-file .env.local up -d --build --wait
 curl http://127.0.0.1:10000/v1/health
 ```
 
-For local development with hot reload, use the dev override instead. This mounts `src/` and runs `npm run dev` (ts-node) so code changes restart the server automatically:
+For local development with hot reload, use the dev override instead. This mounts `src/` and runs `npm run dev` (`tsx watch`) so code changes restart the server automatically:
 
 ```bash
 docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait
@@ -177,9 +179,9 @@ Never commit Firebase service accounts, API keys, Gmail app passwords, Redis cre
 
 Pawify uses trunk-based development:
 
-- `main` is the protected trunk and production branch.
-- Pull requests into `main` run CI.
-- Merging or pushing to `main` builds a GHCR image and deploys production.
+- `main` is the protected trunk and production branch (ruleset: changes only via squash-merged PRs, linear history).
+- Pull requests into `main` run CI (typecheck, unit tests, Firebase emulator tests, Docker image build).
+- Merging a **version bump** in `package.json` to `main` ships a GHCR image (`ghcr.io/zig-zag-zig/pawifyapp:prod`) and deploys production; the deploy is then tagged `server-v<version>`. Merges without a version bump are CI-only no-ops.
 
 Working branches should stay short-lived:
 
@@ -267,7 +269,13 @@ This compiles TypeScript via `tsconfig.test.json` (output to `lib-test/`) and ru
 | `npm run test:integration` | Compile and run the Firebase emulator integration suite via `firebase emulators:exec` (requires Java, see below) |
 | `npm run test:emulator` | Alias for `npm run test:integration` |
 | `npm run build` | Compile TypeScript to `lib/` (runs the full test suite first, including the Firebase emulator suite — requires Java, see below) |
-| `npm run dev` | Run dev server with `ts-node` |
+| `npm run build:unchecked` | Compile TypeScript to `lib/` without running tests |
+| `npm run build:shared` | Install + build `@pawify/shared` (`packages/shared`); run automatically by the `pre*` hooks |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run verify` | `typecheck` + `test` |
+| `npm run dev` | Dev server with hot reload (`tsx watch`) |
+| `npm run docker:up` | Local Docker stack (prod-style image + dev override, hot reload) |
+| `npm run docker:down` | Stop the local Docker stack |
 
 ### Firebase emulator tests
 
@@ -382,8 +390,8 @@ builds and serve the v1 contract.
 ## Deployment
 
 - Pull requests into `main` run build, tests, and Docker image validation.
-- Pushes to `main` build and push a GHCR image, then deploy the production stack at `http://127.0.0.1:3001`.
-- Manual GitHub Actions runs from `main` can redeploy production.
+- A push to `main` that bumps `version` past the latest `server-v*` tag builds and pushes the GHCR image, waits for the `production` environment approval, then deploys the production stack at `http://127.0.0.1:3001` and tags `server-v<version>`.
+- Manual GitHub Actions runs from `main` can redeploy production (same version gate applies).
 - Use the Docker Compose stack in this repo for the single-VPS deployment.
 - Dapr components live in `dapr/components`; secret files are mounted from `secrets/<environment>`.
 - Redis is local to each Compose network, password-protected, and configured with AOF plus RDB snapshots.

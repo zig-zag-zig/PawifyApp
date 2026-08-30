@@ -34,6 +34,10 @@ Most artist, release, cover art, and lyrics data flows through the Pawify API (m
 
 The app also uses the [GitHub REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28) when Android update checks are enabled. GitHub publishes a primary limit of 60 unauthenticated requests per hour by source IP, or 5,000 authenticated requests per hour. Do not ship a private GitHub token in public app builds just to raise this quota.
 
+## Monorepo Notes
+
+This app lives at `apps/mobile` in the Pawify monorepo. Shared TypeScript models and helpers come from `@pawify/shared` (`packages/shared`) and are imported by name — Metro, Vitest, and `tsc` all resolve it directly from source, so no shared build step is ever needed.
+
 ## Getting Started
 
 Install dependencies:
@@ -344,6 +348,17 @@ Local Android signing credentials are intentionally not committed:
 - `.credentials/android/pawify-release.p12` is the production upload keystore.
 
 Back up `credentials.json` and the entire `.credentials/android/` directory in an encrypted vault or password manager. To build from another PC with the same Android signing key, restore those files at the same relative paths before running local release builds.
+
+## Releases
+
+Releases are built and published locally; the signing keystore never leaves the dev machine.
+
+```bash
+npm run build:release        # bumps version, builds signed APK
+gh release create v<version> android/app/build/outputs/apk/release/Pawify.apk --generate-notes
+```
+
+The `mobile.yml` CI workflow type-checks and tests every PR, and flags a warning on `main` when `app.json` has a version bump without a matching `v*` GitHub Release yet.
 
 ## Project Structure
 

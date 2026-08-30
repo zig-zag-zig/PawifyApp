@@ -122,7 +122,6 @@ base64 -w 0 secrets/prod/firebase-service-account.json
 Configure these GitHub repository variables if needed:
 
 - `PAWIFY_REPO_URL`: optional. Defaults to `https://github.com/<owner>/<repo>.git`.
-- `PAWIFY_PROD_SECRET_SOURCE_DIR`: optional. Defaults to `/root/pawify-prod-secrets`.
 
 For a private repository, prefer setting `PAWIFY_REPO_URL` to an SSH URL such as `git@github.com:zig-zag-zig/PawifyApp.git` and install the matching deploy key on the VPS, because the VPS performs the clone/pull.
 
@@ -132,15 +131,15 @@ The SSH user must be able to run the deploy script with `sudo`. The cleanest set
 
 In GitHub, create an environment named `production`. Add required reviewers to `production` if you want production deploys to wait for manual approval after CI passes.
 
-The workflow writes the decoded secret files to the VPS on each deploy:
+The workflow decodes the three base64 secrets on the runner (failing fast with named errors if a secret is corrupt) and copies the decoded files to the VPS at `/home/<deploy-user>/pawify-prod-secrets/`:
 
 ```text
-/root/pawify-prod-secrets/.env
-/root/pawify-prod-secrets/dapr-secrets.json
-/root/pawify-prod-secrets/firebase-service-account.json
+/home/deploy/pawify-prod-secrets/.env
+/home/deploy/pawify-prod-secrets/dapr-secrets.json
+/home/deploy/pawify-prod-secrets/firebase-service-account.json
 ```
 
-The deploy script then copies those into the active checkout as `.env.prod` and `secrets/prod/*`, keeping backups before replacing files. Docker is installed automatically by the deploy script if the VPS is missing Docker or the Compose plugin.
+The deploy script then copies those into the active checkout as `apps/server/.env.prod` and `apps/server/secrets/prod/*`, keeping backups before replacing files. Docker is installed automatically by the deploy script if the VPS is missing Docker or the Compose plugin.
 
 ## Manual VPS Deploy
 
@@ -151,18 +150,19 @@ you already have a GHCR image tag to deploy:
 sudo ./scripts/deploy_pawify_docker_dapr.sh \
   --repo-url https://github.com/zig-zag-zig/PawifyApp.git \
   --repo-branch main \
-  --prebuilt-image ghcr.io/zig-zag-zig/pawify:sha-<commit-sha> \
-  --secrets-source-dir /root/pawify-prod-secrets
+  --prebuilt-image ghcr.io/zig-zag-zig/pawifyapp:sha-<commit-sha> \
+  --secrets-source-dir /home/deploy/pawify-prod-secrets
 ```
 
 The deploy script does not build the app on the VPS. It installs Docker if
 needed, pulls the prebuilt image, refreshes the runtime secret files from
-`/root/pawify-prod-secrets`, and starts the production Compose stack.
+`/home/deploy/pawify-prod-secrets`, and starts the production Compose stack
+from `apps/server/docker-compose.yml`.
 
 Manual commands inside the active checkout:
 
 ```bash
-cd /srv/pawify-prod
+cd /srv/pawify-prod/apps/server
 docker compose --env-file .env.prod ps
 docker compose --env-file .env.prod logs -f --tail=100 pawify pawify-dapr redis
 ```
@@ -170,7 +170,7 @@ docker compose --env-file .env.prod logs -f --tail=100 pawify pawify-dapr redis
 ## Health Checks
 
 ```bash
-cd /srv/pawify-prod
+cd /srv/pawify-prod/apps/server
 docker compose --env-file .env.prod ps
 curl http://127.0.0.1:3001/v1/health
 docker compose --env-file .env.prod exec redis redis-cli -a "$(grep '^REDIS_PASSWORD=' .env.prod | cut -d= -f2-)" ping
@@ -182,12 +182,12 @@ docker compose --env-file .env.prod exec pawify-dapr wget -qO- http://localhost:
 Run a manual Redis backup:
 
 ```bash
-cd /srv/pawify-prod
-PAWIFY_ENV_FILE=.env.prod ./scripts/backup-redis-docker.sh
+cd /srv/pawify-prod/apps/server
+PAWIFY_ENV_FILE=.env.prod sudo ./scripts/backup-redis-docker.sh
 ```
 
 Suggested cron:
 
 ```cron
-15 3 * * * cd /srv/pawify-prod && PAWIFY_ENV_FILE=.env.prod ./scripts/backup-redis-docker.sh >> /srv/pawify-prod/backups/redis-backup.log 2>&1
+15 3 * * * cd /srv/pawify-prod/apps/server && PAWIFY_ENV_FILE=.env.prod ./scripts/backup-redis-docker.sh >> /srv/pawify-prod/backups/redis-backup.log 2>&1
 ```

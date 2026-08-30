@@ -10,11 +10,15 @@ Single repository for the Pawify product:
 
 ## Layout & conventions
 
-- Each package keeps its own `package.json`, `.gitignore`, and lockfile. There is
-  intentionally **no root package.json / npm workspaces**: `@pawify/shared` is
-  wired in via npm `file:` dependencies and symlinked into each app's
-  `node_modules`.
-- Imports of shared code always use the package name — `import { Artist } from '@pawify/shared'`.
+- Each package keeps its own `package.json`, `.gitignore`, and lockfile. There are
+  **no npm workspaces**: `@pawify/shared` is wired in via npm `file:` dependencies
+  and symlinked into each app's `node_modules`.
+- The root `package.json` is a thin delegation layer only — run everything from
+  the repo root (`npm run server -- <script>`, `npm run mobile -- <script>`,
+  `npm run verify`, `npm run test`, `npm run dev`, `npm run docker:up`,
+  `npm run build:release`, `npm run install:all`). Scripts themselves stay
+  defined in each package; the root never redefines them.
+- Imports of shared code always use the package name — `import { Artist } from '@pawify/shared'` (never relative escapes out of an app).
 - Shared code is source-only TypeScript:
   - **Mobile** resolves `@pawify/shared` to its TS source through the package's
     `react-native` main field (Metro compiles it; no build step), while vitest
@@ -26,13 +30,19 @@ Single repository for the Pawify product:
 ## Working in the repo
 
 ```bash
-# server
-cd apps/server
-npm install        # also installs+builds packages/shared
-npm run verify     # typecheck + unit tests
-npm run test:integration   # Firebase emulator tests
-npm run dev        # hot-reload dev server (tsx watch)
+# root conveniences (delegate into packages)
+npm run install:all   # install deps for shared, server, mobile
+npm run verify        # typecheck + tests for server AND mobile
+npm run test          # tests only, both packages
+npm run dev           # server dev (tsx watch, hot reload)
+npm run docker:up     # local server stack (prod image + dev override)
+npm run docker:down
+npm run build:release # signed mobile APK build
 
+# per-package scripts (any of them)
+npm run server -- test:integration    # e.g. Firebase emulator tests
+npm run mobile -- android
+```
 # server in docker (same as before the monorepo, run from apps/server)
 docker compose --env-file .env.local up -d --build --wait
 docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait
