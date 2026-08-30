@@ -10,8 +10,8 @@ x-pawify-logging: &pawify-logging
 services:
     pawify:
         build:
-            context: .
-            dockerfile: Dockerfile
+            context: ../..
+            dockerfile: apps/server/Dockerfile
         image: ${PAWIFY_IMAGE:-pawify:local}
         restart: unless-stopped
         logging: *pawify-logging

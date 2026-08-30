@@ -25,12 +25,12 @@ The app includes email and Google sign-in, artist search, followed artist manage
 
 ## Related Repositories
 
-- [Pawify](https://github.com/zig-zag-zig/Pawify) - backend API used by this app
-- [PawifyModule](https://github.com/zig-zag-zig/PawifyModule) - shared music models and helpers used by the app and API
+- Pawify API (monorepo `apps/server`) - backend API used by this app
+- `@pawify/shared` (monorepo `packages/shared`) - shared music models and helpers used by the app and API
 
 ## Upstream Rate Limits
 
-Most artist, release, cover art, and lyrics data flows through the [Pawify API](https://github.com/zig-zag-zig/Pawify), which documents the upstream music-provider limits that can affect lookup speed.
+Most artist, release, cover art, and lyrics data flows through the Pawify API (monorepo `apps/server`), which documents the upstream music-provider limits that can affect lookup speed.
 
 The app also uses the [GitHub REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28) when Android update checks are enabled. GitHub publishes a primary limit of 60 unauthenticated requests per hour by source IP, or 5,000 authenticated requests per hour. Do not ship a private GitHub token in public app builds just to raise this quota.
 

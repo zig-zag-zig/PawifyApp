@@ -1,0 +1,89 @@
+name: Pawify Mobile CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pawify-mobile-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: typecheck / tests / release-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Release gate (APK release only on version bump)
+        id: gate
+        if: github.event_name == 'push'
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "Pawify releases run from main only." >&2
+            exit 2
+          fi
+
+          version="$(node -p "require('./app.json').expo.version")"
+          last_tag="$(git tag --list 'v*' --sort=-v:refname | head -1 || true)"
+
+          if [[ -z "$last_tag" ]]; then
+            echo "No v* tag found — first release candidate: v${version}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$(git tag --list "v${version}")" ]]; then
+            echo "Version ${version} already released (${last_tag}); skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version bump detected: ${last_tag#v} -> ${version}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # APKs are built and released locally (keystore never leaves the dev machine):
+      #   cd apps/mobile && npm run build:release
+      #   gh release create v<version> Pawify.apk --generate-notes
+      # This workflow's gate job only reports when a version bump expects a release,
+      # so a forgotten local release is visible as a flagged run instead of silence.
+      - name: Flag pending APK release
+        if: steps.gate.outputs.should_release == 'true'
+        run: |
+          echo "::warning::Version ${{ steps.gate.outputs.version }} is bumped but no release exists yet."
+          echo "::warning::Build + upload locally: npm run build:release, then gh release create v${{ steps.gate.outputs.version }} <apk> --generate-notes"

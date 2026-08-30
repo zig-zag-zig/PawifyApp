@@ -1,15 +1,18 @@
 services:
     pawify:
         build:
-            context: .
-            dockerfile: Dockerfile
+            context: ../..
+            dockerfile: apps/server/Dockerfile
             target: build
+        working_dir: /repo/apps/server
         command: npm run dev
         volumes:
-            - ./src:/app/src
-            - ./package.json:/app/package.json
-            - ./tsconfig.json:/app/tsconfig.json
-            - ./tsconfig.test.json:/app/tsconfig.test.json
+            - ./src:/repo/apps/server/src
+            - ./package.json:/repo/apps/server/package.json
+            - ./tsconfig.json:/repo/apps/server/tsconfig.json
+            - ./tsconfig.test.json:/repo/apps/server/tsconfig.test.json
+            - ../../packages/shared/src:/repo/packages/shared/src
+            - ../../packages/shared/index.ts:/repo/packages/shared/index.ts
             - ${PAWIFY_SECRETS_DIR:-./secrets/local}:/var/pawify/secrets:ro
         environment:
             NODE_ENV: development

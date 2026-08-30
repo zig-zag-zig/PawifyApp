@@ -124,7 +124,7 @@ Configure these GitHub repository variables if needed:
 - `PAWIFY_REPO_URL`: optional. Defaults to `https://github.com/<owner>/<repo>.git`.
 - `PAWIFY_PROD_SECRET_SOURCE_DIR`: optional. Defaults to `/root/pawify-prod-secrets`.
 
-For a private repository, prefer setting `PAWIFY_REPO_URL` to an SSH URL such as `git@github.com:zig-zag-zig/Pawify.git` and install the matching deploy key on the VPS, because the VPS performs the clone/pull.
+For a private repository, prefer setting `PAWIFY_REPO_URL` to an SSH URL such as `git@github.com:zig-zag-zig/PawifyApp.git` and install the matching deploy key on the VPS, because the VPS performs the clone/pull.
 
 The workflow uses `GITHUB_TOKEN` to push and pull GHCR images, so no separate container registry token is needed for the normal GitHub Actions deploy path. Repository workflow permissions must allow packages write access.
 
@@ -149,7 +149,7 @@ you already have a GHCR image tag to deploy:
 
 ```bash
 sudo ./scripts/deploy_pawify_docker_dapr.sh \
-  --repo-url https://github.com/zig-zag-zig/Pawify.git \
+  --repo-url https://github.com/zig-zag-zig/PawifyApp.git \
   --repo-branch main \
   --prebuilt-image ghcr.io/zig-zag-zig/pawify:sha-<commit-sha> \
   --secrets-source-dir /root/pawify-prod-secrets

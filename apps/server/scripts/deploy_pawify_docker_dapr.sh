@@ -12,6 +12,7 @@ set -Eeuo pipefail
 # single production Compose stack.
 
 APP_DIR="/srv/pawify-prod"
+COMPOSE_DIR="$APP_DIR/apps/server"
 APP_USER="pawify"
 ENVIRONMENT="prod"
 REPO_URL="${PAWIFY_REPO_URL:-https://github.com/zig-zag-zig/Pawify.git}"
@@ -285,29 +286,29 @@ create_user_and_app_dir() {
 }
 
 create_runtime_dirs() {
-  mkdir -p "$APP_DIR/backups/redis"
-  chown -R "$APP_USER:$APP_USER" "$APP_DIR/backups"
-  chmod 750 "$APP_DIR/backups" "$APP_DIR/backups/redis" || true
+  mkdir -p "$COMPOSE_DIR/backups/redis"
+  chown -R "$APP_USER:$APP_USER" "$COMPOSE_DIR/backups"
+  chmod 750 "$COMPOSE_DIR/backups" "$COMPOSE_DIR/backups/redis" || true
 }
 
 cleanup_bootstrap_only_app_dir() {
-  if [[ ! -d "$APP_DIR/backups/redis" ]]; then
+  if [[ ! -d "$COMPOSE_DIR/backups/redis" ]]; then
     return 1
   fi
 
-  if [[ -n "$(find "$APP_DIR/backups/redis" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+  if [[ -n "$(find "$COMPOSE_DIR/backups/redis" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
     return 1
   fi
 
-  if [[ -n "$(find "$APP_DIR" -mindepth 1 \
-    ! -path "$APP_DIR/backups" \
-    ! -path "$APP_DIR/backups/redis" \
+  if [[ -n "$(find "$COMPOSE_DIR" -mindepth 1 \
+    ! -path "$COMPOSE_DIR/backups" \
+    ! -path "$COMPOSE_DIR/backups/redis" \
     -print -quit 2>/dev/null)" ]]; then
     return 1
   fi
 
-  warn "Removing empty bootstrap-only runtime directory before initial clone: $APP_DIR/backups"
-  rm -rf "$APP_DIR/backups"
+  warn "Removing empty bootstrap-only runtime directory before initial clone: $COMPOSE_DIR/backups"
+  rm -rf "$COMPOSE_DIR/backups"
 }
 
 login_to_image_registry() {
@@ -354,17 +355,17 @@ clone_or_update_repo() {
 
 prepare_runtime_files() {
   local owner="$APP_USER:$APP_USER"
-  local secrets_dir="$APP_DIR/secrets/$SECRETS_SUBDIR"
-  local env_path="$APP_DIR/$ENV_FILE"
+  local secrets_dir="$COMPOSE_DIR/secrets/$SECRETS_SUBDIR"
+  local env_path="$COMPOSE_DIR/$ENV_FILE"
   local secret_path="$secrets_dir/dapr-secrets.json"
   local firebase_path="$secrets_dir/firebase-service-account.json"
   local env_source="$SECRETS_SOURCE_DIR/$ENV_FILE"
   local dapr_source="$SECRETS_SOURCE_DIR/dapr-secrets.json"
   local firebase_source="$SECRETS_SOURCE_DIR/firebase-service-account.json"
 
-  mkdir -p "$secrets_dir" "$APP_DIR/backups/redis"
-  chown -R "$owner" "$APP_DIR/secrets" "$APP_DIR/backups"
-  chmod 755 "$APP_DIR/secrets" "$secrets_dir" || true
+  mkdir -p "$secrets_dir" "$COMPOSE_DIR/backups/redis"
+  chown -R "$owner" "$COMPOSE_DIR/secrets" "$COMPOSE_DIR/backups"
+  chmod 755 "$COMPOSE_DIR/secrets" "$secrets_dir" || true
 
   if [[ ! -f "$env_source" && -f "$SECRETS_SOURCE_DIR/.env" ]]; then
     env_source="$SECRETS_SOURCE_DIR/.env"
@@ -413,12 +414,12 @@ prepare_runtime_files() {
 
   chmod 600 "$env_path" 2>/dev/null || true
   chmod 644 "$secret_path" "$firebase_path" 2>/dev/null || true
-  chown -R "$owner" "$APP_DIR/secrets" "$env_path" || true
+  chown -R "$owner" "$COMPOSE_DIR/secrets" "$env_path" || true
 }
 
 validate_before_start() {
-  local env_path="$APP_DIR/$ENV_FILE"
-  local secret_path="$APP_DIR/secrets/$SECRETS_SUBDIR/dapr-secrets.json"
+  local env_path="$COMPOSE_DIR/$ENV_FILE"
+  local secret_path="$COMPOSE_DIR/secrets/$SECRETS_SUBDIR/dapr-secrets.json"
   local redis_password
 
   redis_password="$(read_env_value "$env_path" "REDIS_PASSWORD")"
@@ -442,7 +443,7 @@ validate_before_start() {
   firebase_json="$(read_env_value "$env_path" "FIREBASE_SERVICE_ACCOUNT_JSON")"
   google_credentials="$(read_env_value "$env_path" "GOOGLE_APPLICATION_CREDENTIALS")"
   if [[ -z "$firebase_json" && -n "$google_credentials" ]]; then
-    local firebase_host_path="$APP_DIR/secrets/$SECRETS_SUBDIR/firebase-service-account.json"
+    local firebase_host_path="$COMPOSE_DIR/secrets/$SECRETS_SUBDIR/firebase-service-account.json"
     if [[ ! -f "$firebase_host_path" ]]; then
       err "$env_path uses GOOGLE_APPLICATION_CREDENTIALS, but the host Firebase credential file is missing: $firebase_host_path"
       exit 1
@@ -451,7 +452,7 @@ validate_before_start() {
 }
 
 compose_cmd() {
-  sudo -u "$APP_USER" bash -lc "cd '$APP_DIR' && docker compose -p '$COMPOSE_PROJECT' --env-file '$ENV_FILE' $*"
+  sudo -u "$APP_USER" bash -lc "cd '$COMPOSE_DIR' && docker compose -p '$COMPOSE_PROJECT' --env-file '$ENV_FILE' $*"
 }
 
 stop_existing_stack() {
@@ -521,8 +522,8 @@ Public hostname expected:
 
 Runtime files:
   $APP_DIR/$ENV_FILE
-  $APP_DIR/secrets/$SECRETS_SUBDIR/dapr-secrets.json
-  $APP_DIR/secrets/$SECRETS_SUBDIR/firebase-service-account.json
+  $COMPOSE_DIR/secrets/$SECRETS_SUBDIR/dapr-secrets.json
+  $COMPOSE_DIR/secrets/$SECRETS_SUBDIR/firebase-service-account.json
 
 Logs:
   cd $APP_DIR

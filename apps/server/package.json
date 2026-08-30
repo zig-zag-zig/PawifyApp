@@ -11,7 +11,7 @@
         "test:emulator": "npm run test:integration",
         "test:all": "npm test && npm run test:integration",
         "start": "node --enable-source-maps lib/index.js",
-        "dev": "ts-node src/index.ts",
+        "dev": "tsx watch src/index.ts",
         "verify": "npm run typecheck && npm test",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
@@ -42,7 +42,8 @@
         "firebase-tools": "^15.28.2",
         "prettier": "^3.9.6",
         "ts-node": "^10.9.2",
-        "typescript": "^5.8.2"
+        "typescript": "^5.8.2",
+        "tsx": "^4.20.3"
     },
     "overrides": {
         "gaxios": {

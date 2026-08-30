@@ -30,7 +30,7 @@ For non-technical readers: this service does the heavy lifting behind the app. I
 ## Related Repositories
 
 - [PawifyApp](https://github.com/zig-zag-zig/PawifyApp) - Expo/React Native mobile app
-- [PawifyModule](https://github.com/zig-zag-zig/PawifyModule) - shared music-domain types and helpers
+- `@pawify/shared` (monorepo `packages/shared`) - shared music-domain types and helpers
 
 ## Local Development
 

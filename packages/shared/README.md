@@ -1,6 +1,6 @@
-# PawifyModule
+# @pawify/shared
 
-PawifyModule is the small shared TypeScript module used by Pawify API and Pawify App. It keeps music-domain types and display/date helpers consistent across the backend and mobile client.
+`@pawify/shared` is the small shared TypeScript package used by Pawify API (`apps/server`) and Pawify App (`apps/mobile`). It keeps music-domain types and display/date helpers consistent across the backend and mobile client.
 
 ## What It Contains
 
@@ -10,8 +10,8 @@ PawifyModule is the small shared TypeScript module used by Pawify API and Pawify
 
 ## Used By
 
-- [Pawify](https://github.com/zig-zag-zig/Pawify) - TypeScript/Express backend API
-- [PawifyApp](https://github.com/zig-zag-zig/PawifyApp) - Expo/React Native mobile app
+- `apps/server` - TypeScript/Express backend API
+- `apps/mobile` - Expo/React Native mobile app
 
 ## Project Layout
 
