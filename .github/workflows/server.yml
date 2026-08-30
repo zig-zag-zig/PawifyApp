@@ -50,6 +50,12 @@ jobs:
             apps/server/package-lock.json
             packages/shared/package-lock.json
 
+      - name: Setup Java 21 (Firebase emulators)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Build @pawify/shared
         run: |
           npm install --no-audit --no-fund --prefix ../../packages/shared

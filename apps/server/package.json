@@ -55,6 +55,8 @@
         "pretypecheck": "npm run build:shared",
         "pretest": "npm run build:shared",
         "pretest:coverage": "npm run build:shared",
-        "pretest:integration": "npm run build:shared"
+        "pretest:integration": "npm run build:shared",
+        "docker:up": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait",
+        "docker:down": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down"
     }
 }

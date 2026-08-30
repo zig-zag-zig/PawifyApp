@@ -1,0 +1,25 @@
+{
+    "name": "pawify-monorepo",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Pawify monorepo: apps/server (API), apps/mobile (Expo app), packages/shared (@pawify/shared). Thin delegation layer only — each package owns its own scripts and dependencies; there are no workspaces here.",
+    "license": "0BSD",
+    "scripts": {
+        "server": "npm run --prefix apps/server",
+        "mobile": "npm run --prefix apps/mobile",
+        "shared": "npm run --prefix packages/shared",
+
+        "install:all": "npm install --no-audit --no-fund --prefix packages/shared && npm install --no-audit --no-fund --prefix apps/server && npm install --no-audit --no-fund --prefix apps/mobile",
+
+        "verify": "npm run verify --prefix apps/server && npm run verify --prefix apps/mobile",
+        "typecheck": "npm run typecheck --prefix apps/server && npm run typecheck --prefix apps/mobile",
+        "test": "npm run test --prefix apps/server && npm run test --prefix apps/mobile",
+
+        "dev": "npm run dev --prefix apps/server",
+        "docker:up": "npm run docker:up --prefix apps/server",
+        "docker:down": "npm run docker:down --prefix apps/server",
+
+        "build:release": "npm run build:release --prefix apps/mobile",
+        "build:release:install": "npm run build:release:install --prefix apps/mobile"
+    }
+}
