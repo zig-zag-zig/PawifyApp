@@ -155,6 +155,36 @@ jobs:
       contents: write
 
     steps:
+      - name: Materialize prod secret files (decode + verify runner-side)
+        env:
+          PAWIFY_ENV_FILE_B64: ${{ secrets.PAWIFY_ENV_FILE_B64 }}
+          PAWIFY_DAPR_SECRETS_JSON_B64: ${{ secrets.PAWIFY_DAPR_SECRETS_JSON_B64 }}
+          PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/pawify-prod-secrets"
+          install -d -m 700 "$dir"
+          decode() {
+            local name="$1" dest="$2" val="$3"
+            if [[ -z "$val" ]]; then
+              echo "::error::Missing GitHub environment secret $name" >&2
+              exit 1
+            fi
+            if ! printf '%s' "$val" | base64 -d > "$dest" 2> "$dir/.err"; then
+              echo "::error::Secret $name is not valid base64: $(cat "$dir/.err") (length=${#val})" >&2
+              exit 1
+            fi
+            if [[ ! -s "$dest" ]]; then
+              echo "::error::Secret $name decoded to an empty file" >&2
+              exit 1
+            fi
+            echo "$name -> $(wc -c < "$dest") bytes"
+          }
+          decode PAWIFY_ENV_FILE_B64 "$dir/.env" "$PAWIFY_ENV_FILE_B64"
+          decode PAWIFY_DAPR_SECRETS_JSON_B64 "$dir/dapr-secrets.json" "$PAWIFY_DAPR_SECRETS_JSON_B64"
+          decode PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64 "$dir/firebase-service-account.json" "$PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64"
+          rm -f "$dir/.err"
+
       - name: Deploy on VPS
         env:
           VPS_HOST: ${{ secrets.PAWIFY_VPS_HOST }}
@@ -163,10 +193,6 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.PAWIFY_VPS_SSH_KEY }}
           PAWIFY_REPO_URL: ${{ vars.PAWIFY_REPO_URL || format('https://github.com/{0}.git', github.repository) }}
           PAWIFY_DEPLOY_BRANCH: ${{ github.ref_name }}
-          PAWIFY_PROD_SECRET_SOURCE_DIR: ${{ vars.PAWIFY_PROD_SECRET_SOURCE_DIR }}
-          PAWIFY_ENV_FILE_B64: ${{ secrets.PAWIFY_ENV_FILE_B64 }}
-          PAWIFY_DAPR_SECRETS_JSON_B64: ${{ secrets.PAWIFY_DAPR_SECRETS_JSON_B64 }}
-          PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}
           PAWIFY_DEPLOY_IMAGE: ${{ needs.build-test.outputs.image-ref }}
           PAWIFY_IMAGE_REGISTRY: ghcr.io
           PAWIFY_IMAGE_REGISTRY_USER: ${{ github.actor }}
@@ -180,9 +206,6 @@ jobs:
           : "${PAWIFY_REPO_URL:?Missing PAWIFY_REPO_URL}"
           : "${PAWIFY_DEPLOY_BRANCH:?Missing PAWIFY_DEPLOY_BRANCH}"
           : "${PAWIFY_DEPLOY_IMAGE:?Missing built Docker image ref}"
-          : "${PAWIFY_ENV_FILE_B64:?Missing GitHub environment secret PAWIFY_ENV_FILE_B64}"
-          : "${PAWIFY_DAPR_SECRETS_JSON_B64:?Missing GitHub environment secret PAWIFY_DAPR_SECRETS_JSON_B64}"
-          : "${PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64:?Missing GitHub environment secret PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64}"
 
           if [[ "$PAWIFY_DEPLOY_BRANCH" != "main" ]]; then
             echo "Pawify production deploys must run from main, not $PAWIFY_DEPLOY_BRANCH." >&2
@@ -190,26 +213,28 @@ jobs:
           fi
 
           VPS_PORT="${VPS_PORT:-22}"
-          PAWIFY_PROD_SECRET_SOURCE_DIR="${PAWIFY_PROD_SECRET_SOURCE_DIR:-/root/pawify-prod-secrets}"
+          SECRETS_SOURCE_DIR="$HOME/pawify-prod-secrets"
+          rm -rf "$SECRETS_SOURCE_DIR"
+          cp -r "$RUNNER_TEMP/pawify-prod-secrets" "$SECRETS_SOURCE_DIR"
+          chmod 700 "$SECRETS_SOURCE_DIR"
 
           install -m 700 -d ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/pawify_deploy_key
           chmod 600 ~/.ssh/pawify_deploy_key
           ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
+          scp -P "$VPS_PORT" -i ~/.ssh/pawify_deploy_key -r "$SECRETS_SOURCE_DIR"             "$VPS_USER@$VPS_HOST:/home/$VPS_USER/pawify-prod-secrets"
+
           remote_repo_url="$(printf '%q' "$PAWIFY_REPO_URL")"
           remote_branch="$(printf '%q' "$PAWIFY_DEPLOY_BRANCH")"
-          remote_prod_secret_source_dir="$(printf '%q' "$PAWIFY_PROD_SECRET_SOURCE_DIR")"
-          remote_env_file_b64="$(printf '%q' "$PAWIFY_ENV_FILE_B64")"
-          remote_dapr_secrets_json_b64="$(printf '%q' "$PAWIFY_DAPR_SECRETS_JSON_B64")"
-          remote_firebase_service_account_json_b64="$(printf '%q' "$PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64")"
+          remote_prod_secret_source_dir="$(printf '%q' "/home/$VPS_USER/pawify-prod-secrets")"
           remote_deploy_image="$(printf '%q' "$PAWIFY_DEPLOY_IMAGE")"
           remote_image_registry="$(printf '%q' "$PAWIFY_IMAGE_REGISTRY")"
           remote_image_registry_user="$(printf '%q' "$PAWIFY_IMAGE_REGISTRY_USER")"
           remote_image_registry_token="$(printf '%q' "$PAWIFY_IMAGE_REGISTRY_TOKEN")"
 
           ssh -p "$VPS_PORT" -i ~/.ssh/pawify_deploy_key "$VPS_USER@$VPS_HOST" \
-            "PAWIFY_REPO_URL=$remote_repo_url PAWIFY_DEPLOY_BRANCH=$remote_branch PAWIFY_PROD_SECRET_SOURCE_DIR=$remote_prod_secret_source_dir PAWIFY_ENV_FILE_B64=$remote_env_file_b64 PAWIFY_DAPR_SECRETS_JSON_B64=$remote_dapr_secrets_json_b64 PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64=$remote_firebase_service_account_json_b64 PAWIFY_DEPLOY_IMAGE=$remote_deploy_image PAWIFY_IMAGE_REGISTRY=$remote_image_registry PAWIFY_IMAGE_REGISTRY_USER=$remote_image_registry_user PAWIFY_IMAGE_REGISTRY_TOKEN=$remote_image_registry_token bash -se" <<'REMOTE'
+            "PAWIFY_REPO_URL=$remote_repo_url PAWIFY_DEPLOY_BRANCH=$remote_branch PAWIFY_PROD_SECRET_SOURCE_DIR=$remote_prod_secret_source_dir PAWIFY_DEPLOY_IMAGE=$remote_deploy_image PAWIFY_IMAGE_REGISTRY=$remote_image_registry PAWIFY_IMAGE_REGISTRY_USER=$remote_image_registry_user PAWIFY_IMAGE_REGISTRY_TOKEN=$remote_image_registry_token bash -se" <<'REMOTE'
           set -Eeuo pipefail
 
           require_apt_get() {
@@ -245,33 +270,6 @@ jobs:
             echo "Unsupported deploy branch: $PAWIFY_DEPLOY_BRANCH" >&2
             exit 2
           fi
-
-          write_b64_file() {
-            local encoded="$1"
-            local path="$2"
-            local label="$3"
-            local tmp
-
-            if [[ -z "$encoded" ]]; then
-              echo "Missing GitHub environment secret: $label" >&2
-              exit 1
-            fi
-
-            tmp="$(mktemp)"
-            if ! printf '%s' "$encoded" | base64 -d > "$tmp"; then
-              rm -f "$tmp"
-              echo "Could not base64-decode GitHub environment secret: $label" >&2
-              exit 1
-            fi
-
-            sudo install -d -m 0700 "$(dirname "$path")"
-            sudo install -m 0600 "$tmp" "$path"
-            rm -f "$tmp"
-          }
-
-          write_b64_file "$PAWIFY_ENV_FILE_B64" "$PAWIFY_PROD_SECRET_SOURCE_DIR/.env" PAWIFY_ENV_FILE_B64
-          write_b64_file "$PAWIFY_DAPR_SECRETS_JSON_B64" "$PAWIFY_PROD_SECRET_SOURCE_DIR/dapr-secrets.json" PAWIFY_DAPR_SECRETS_JSON_B64
-          write_b64_file "$PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64" "$PAWIFY_PROD_SECRET_SOURCE_DIR/firebase-service-account.json" PAWIFY_FIREBASE_SERVICE_ACCOUNT_JSON_B64
 
           tmp_dir="$(mktemp -d)"
           cleanup() {
