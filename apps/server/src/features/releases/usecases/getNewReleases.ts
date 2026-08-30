@@ -1,4 +1,9 @@
-import type { NewRelease, NewReleasesResult } from '@pawify/shared';
+import type { NewRelease } from '@pawify/shared';
+
+export type NewReleasesResult = {
+    releases: NewRelease[];
+    releaseCoverTaskId: string;
+};
 import { sortNewReleasesNewestFirst } from '../domain/newReleaseSorting.js';
 import type { NewReleasesById, ReleaseUseCaseDependencies } from '../ports.js';
 

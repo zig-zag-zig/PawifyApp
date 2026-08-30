@@ -1,6 +1,7 @@
 import type { RequestDeduperPort } from '../../common/request/requestDeduper.js';
 import type { ArtistProfileImagesPlanner } from '../../services/backgroundAssets/plannerTypes.js';
-import type { Artist, ArtistSearchResult } from '@pawify/shared';
+import type { Artist } from '@pawify/shared';
+import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { ArtistProfileImageQueueOptions } from '../../utils/types/taskTypes.js';
 

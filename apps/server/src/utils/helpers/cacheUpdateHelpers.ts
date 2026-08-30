@@ -1,5 +1,5 @@
 import { ArtistReleaseGroup, Release } from '@pawify/shared';
-import { dateToTimestamp } from '@pawify/shared';
+import { dateToTimestamp } from '../dateUtil.js';
 import { getCachedData, replaceCachedData } from '../../services/cacheService.js';
 import type { CachedArtistReleases, CachedReleaseGroupReleaseCovers } from '../types/cacheTypes.js';
 import { createCachedArtistReleaseGroups } from './artistReleaseCacheHelpers.js';

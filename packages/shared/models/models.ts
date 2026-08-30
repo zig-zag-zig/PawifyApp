@@ -134,20 +134,8 @@ export interface Member {
   direction: "forward" | "backward"
 }
 
-export interface ArtistSearchResult {
-  artists: ArtistMinimal[];
-  count: number;
-}
 
-export interface ReleaseResult {
-  releases: Release[];
-  "release-count": number;
-}
 
-export type NewReleasesResult = {
-  releases: NewRelease[];
-  releaseCoverTaskId: string;
-};
 
 export type ReleaseNotificationSettings = {
   oldestReleaseDateMonths: number | null;
@@ -159,28 +147,12 @@ export const DEFAULT_RELEASE_NOTIFICATION_SETTINGS: ReleaseNotificationSettings 
   includeReleasesWithoutDate: true,
 };
 
-export type ReleaseGroupCoverTaskResult = {
-  artistId: string;
-  covers: { [releaseGroupId: string]: RemoteValueState };
-};
 
-export type ReleaseGroupReleaseCoverTaskResult = {
-  releaseGroupId: string;
-  covers: { [releaseId: string]: RemoteValueState };
-};
 
 export type NewReleaseCoverTaskResult = {
   covers: { [releaseId: string]: RemoteValueState };
 };
 
-export type TrackLyricsTaskResult = {
-  releaseId: string;
-  tracks: { [trackId: string]: RemoteValueState };
-};
-
-export type ArtistProfileImageTaskResult = {
-  artists: { [artistId: string]: RemoteValueState };
-};
 
 export type ReleaseGroupReleaseListItem = {
   id: string;
