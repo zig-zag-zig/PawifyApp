@@ -1,0 +1,15 @@
+# Root-level junk only.
+# Each package ignores its own build output, deps, env files, and secrets via
+# its own .gitignore (apps/mobile/.gitignore, apps/server/.gitignore,
+# packages/shared/.gitignore).
+
+# OS / editor junk (repo root)
+.DS_Store
+Thumbs.db
+
+# Agent / scratch dirs at repo root
+/.jspace/
+/.pi*
+
+# Scratch logs dropped at repo root
+/*.log
