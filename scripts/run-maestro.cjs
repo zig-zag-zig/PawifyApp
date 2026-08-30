@@ -5,6 +5,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ports = [10001, 9199];
+const appId = process.env.MAESTRO_APP_ID?.trim() || 'vip.chi_chi.pawify';
 const target = process.argv[2] ?? '.maestro';
 const reversedPorts = [];
 const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
@@ -265,11 +266,25 @@ function printFlowSummary(results) {
   console.log(`[e2e] Total: ${results.length}`);
 }
 
+function grantNotificationPermission(deviceId) {
+  // Android 13+ gates local notifications behind POST_NOTIFICATIONS. Grant
+  // it upfront so flows can post local test notifications deterministically
+  // (the runtime permission dialog is not part of any flow).
+  runAdbBestEffort(deviceId, [
+    'shell',
+    'pm',
+    'grant',
+    appId,
+    'android.permission.POST_NOTIFICATIONS',
+  ]);
+}
+
 function runMaestro(deviceId, maestroArgs, flowTargets) {
   const maestroBinary = resolveMaestroBinary();
   const shouldManageAutofill = process.env.MAESTRO_DISABLE_AUTOFILL !== 'false';
   const originalAutofillService = shouldManageAutofill ? getAutofillService(deviceId) : null;
   const deviceState = prepareDeviceForMaestro(deviceId);
+  grantNotificationPermission(deviceId);
   let autofillChanged = false;
   let cleanupComplete = false;
 
@@ -354,7 +369,7 @@ const maestroArgs = ['test', '--device', deviceId];
 if (process.env.MAESTRO_REINSTALL_DRIVER !== 'false') {
   maestroArgs.push('--reinstall-driver');
 }
-for (const name of ['E2E_EMAIL', 'E2E_MUSIC_EMAIL']) {
+for (const name of ['E2E_EMAIL', 'E2E_MUSIC_EMAIL', 'E2E_NOTIFICATION_EMAIL']) {
   if (process.env[name]) {
     maestroArgs.push(`--env=${name}=${process.env[name]}`);
   }

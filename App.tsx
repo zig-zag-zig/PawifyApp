@@ -6,6 +6,7 @@ import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { linking } from './src/navigation/linking';
+import { navigationRef } from './src/navigation/navigationRef';
 import { AppProviders } from './src/providers/AppProviders';
 import { initErrorMonitoring, wrapWithErrorMonitoring } from './src/services/monitoring/sentry';
 import { theme } from './src/styles/theme';
@@ -16,7 +17,7 @@ const appBackgroundColor = theme.colors.appBackground;
 
 const AppContent = () => {
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer linking={linking} ref={navigationRef}>
       <StatusBar
         barStyle="light-content"
         backgroundColor={appBackgroundColor}

@@ -102,6 +102,7 @@ const backendEnv = {
   ...process.env,
   E2E_EMAIL: process.env.E2E_EMAIL || `pawify-e2e-${Date.now().toString(36)}@example.test`,
   E2E_MUSIC_EMAIL: process.env.E2E_MUSIC_EMAIL || `pawify-e2e-music-${Date.now().toString(36)}@example.test`,
+  E2E_NOTIFICATION_EMAIL: process.env.E2E_NOTIFICATION_EMAIL || `pawify-e2e-notification-${Date.now().toString(36)}@example.test`,
   APP_ENV: 'e2e-test',
   NODE_ENV: 'development',
   DEBUG: '',

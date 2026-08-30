@@ -4,7 +4,7 @@ import { removeIds } from '../../../utils/arrays';
 
 type ReleaseAction =
     | { type: 'releaseLoadStarted' }
-    | { type: 'releaseLoadFailed' }
+    | { type: 'releaseLoadFailed'; notFound: boolean }
     | {
         type: 'lyricsLoadingStarted';
         release: Release;
@@ -38,6 +38,7 @@ export function createInitialReleaseState(): ReleasePageState {
         loadingLyrics: false,
         releaseExists: null,
         checkingExistence: true,
+        loadFailed: false,
     };
 }
 
@@ -58,8 +59,11 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 pendingLyricTrackIds: [],
                 pendingArtistImageIds: [],
                 loadingLyrics: false,
-                releaseExists: false,
+                // A 404 means the release is gone for good; anything else
+                // (network failure, server error) may succeed on retry.
+                releaseExists: action.notFound ? false : state.releaseExists,
                 checkingExistence: false,
+                loadFailed: !action.notFound,
             };
 
         case 'lyricsLoadingStarted':
@@ -68,6 +72,7 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 release: action.release,
                 releaseExists: true,
                 checkingExistence: false,
+                loadFailed: false,
                 trackLyrics: action.trackLyrics,
                 artistProfileImages: action.artistProfileImages,
                 pendingLyricTrackIds: action.pendingLyricTrackIds,

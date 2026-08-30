@@ -25,7 +25,7 @@ const ReleaseView = ({
     const styles = getStyles();
     const { width: screenWidth } = useWindowDimensions();
     const tracks = state.release ? flattenReleaseTracks(state.release) : [];
-    const isLoadingRelease = state.checkingExistence && state.releaseExists !== false;
+    const isLoadingRelease = state.checkingExistence && state.releaseExists !== false && !state.loadFailed;
     const { isWaitingForContent, onContentReady } = useContentReady(
         isLoadingRelease,
         !!state.release && !isLoadingRelease
@@ -36,7 +36,16 @@ const ReleaseView = ({
         <ScreenContainer>
             {state.releaseExists === false && (
                 <InfoBanner
-                    message="This release no longer exists"
+                    message="This release no longer exists."
+                    type="error"
+                    position="top"
+                    visible={true}
+                />
+            )}
+
+            {state.loadFailed && (
+                <InfoBanner
+                    message="Could not load this release. Check your connection and try again."
                     type="error"
                     position="top"
                     visible={true}

@@ -3,6 +3,7 @@ import { useEffect, useReducer, useRef } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import type { Release } from '../../../shared/music';
 import { openExternalUrl } from '../../../services/externalNavigation';
+import { isApiCallError } from '../../../services/apiErrors';
 import { extractArtistProfileImages, extractReleaseTrackLyrics } from '../../../utils/taskResultMaps';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
@@ -73,7 +74,7 @@ export function useReleasePage(): ReleasePageController {
             dispatch({ type: 'releaseLoadStarted' });
 
             if (!releaseId) {
-                dispatch({ type: 'releaseLoadFailed' });
+                dispatch({ type: 'releaseLoadFailed', notFound: true });
                 return;
             }
 
@@ -97,7 +98,10 @@ export function useReleasePage(): ReleasePageController {
             } catch (error) {
                 console.error('release-page: fetch release payload failed', error);
                 if (!isCancelled) {
-                    dispatch({ type: 'releaseLoadFailed' });
+                    dispatch({
+                        type: 'releaseLoadFailed',
+                        notFound: isApiCallError(error) && error.statusCode === 404,
+                    });
                 }
                 return;
             }
@@ -250,6 +254,7 @@ export function useReleasePage(): ReleasePageController {
         loadingLyrics: state.loadingLyrics,
         releaseExists: state.releaseExists,
         checkingExistence: state.checkingExistence,
+        loadFailed: state.loadFailed,
     };
 
     return {

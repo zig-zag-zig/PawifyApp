@@ -25,6 +25,7 @@ export const InlineLink = ({
   return (
     <TouchableOpacity
       onPress={onPress}
+      activeOpacity={1}
       style={[
         styles.inlineLink,
         centered && { alignItems: 'center' },

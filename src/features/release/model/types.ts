@@ -24,6 +24,7 @@ export interface ReleasePageState {
     loadingLyrics: boolean;
     releaseExists: boolean | null;
     checkingExistence: boolean;
+    loadFailed: boolean;
 }
 
 export interface ReleasePageUiState {
@@ -36,6 +37,7 @@ export interface ReleasePageUiState {
     loadingLyrics: boolean;
     releaseExists: boolean | null;
     checkingExistence: boolean;
+    loadFailed: boolean;
 }
 
 export interface ReleaseGroupPageUiState {

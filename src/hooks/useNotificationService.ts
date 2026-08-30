@@ -1,5 +1,4 @@
 import * as Device from 'expo-device';
-import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -8,9 +7,9 @@ import { captureAppError } from '../services/monitoring/reportError';
 import { takePendingBackgroundEvents } from '../services/backgroundEventStorage';
 import {
   extractNotificationEventData,
-  getDeepLinkPathForEvent,
   registerNotificationEvent,
 } from '../services/notifications/notificationEvents';
+import { openNotificationNavigation } from '../services/notifications/notificationNavigation';
 import {
   BACKGROUND_NOTIFICATION_TASK,
   defineBackgroundNotificationTask,
@@ -21,22 +20,12 @@ import {
 defineBackgroundNotificationTask();
 
 export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
-  const openDeepLinkForEvent = async (eventData: { eventName: string } | null) => {
+  const openNavigationForEvent = async (eventData: { eventName: string; payload?: Record<string, unknown> } | null) => {
     if (!eventData) {
       return;
     }
 
-    const path = getDeepLinkPathForEvent(eventData.eventName);
-    if (!path) {
-      return;
-    }
-
-    try {
-      await Linking.openURL(Linking.createURL(path));
-    } catch (error) {
-      console.error('fcm: open deep link failed', { path, error });
-      captureAppError(error, { scope: 'fcm', action: 'open-deep-link', path });
-    }
+    await openNotificationNavigation(eventData.eventName, eventData.payload);
   };
 
   const createNotificationChannel = async () => {
@@ -133,7 +122,7 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
         const { title, body, data } = response.notification.request.content;
 
         if (title || body) {
-          await openDeepLinkForEvent(extractNotificationEventData(data));
+          await openNavigationForEvent(extractNotificationEventData(data));
         }
       }
     );
@@ -144,7 +133,7 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
       const { title, body, data } = response?.notification.request.content ?? {};
       if (title || body) {
         setTimeout(() => {
-          void openDeepLinkForEvent(extractNotificationEventData(data));
+          void openNavigationForEvent(extractNotificationEventData(data));
         }, Device.osName === 'iOS' ? 300 : 500);
       }
     };

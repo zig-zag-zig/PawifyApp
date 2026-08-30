@@ -39,7 +39,9 @@ const ArtistMinimalCard: React.FC<ArtistMinimalCardProps> = ({
   const containerStyle = [
     styles.artistMinimalContainer,
     compactTouchTarget && {
-      alignSelf: 'flex-start' as const,
+      // Stretch across the full row so the entire row is a tap target
+      // instead of only the picture/name area.
+      alignSelf: 'stretch' as const,
       paddingHorizontal: 6,
       paddingVertical: 4,
     },
@@ -50,6 +52,9 @@ const ArtistMinimalCard: React.FC<ArtistMinimalCardProps> = ({
     <TouchableOpacity
       onPress={onPress}
       onLongPress={onLongPress}
+      // Press-in dimming flashes rows while scrolling or long-pressing to
+      // select; selection state itself is the visual feedback.
+      activeOpacity={1}
       style={containerStyle}
       onLayout={(e) => onLayout ? onLayout(e, artist.id) : undefined}
     >

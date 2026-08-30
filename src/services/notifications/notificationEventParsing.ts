@@ -34,6 +34,21 @@ export function getTaskCompletedEventName(payload: EventPayload | undefined): st
 }
 
 /**
+ * Release id attached to new-release notifications so a notification tap
+ * can deep-link straight to that release's page.
+ */
+export function extractReleaseIdFromEventPayload(payload: EventPayload | undefined): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const maybeReleaseId = payload.releaseId ?? payload.release_id;
+  return typeof maybeReleaseId === 'string' && maybeReleaseId.trim().length > 0
+    ? maybeReleaseId
+    : null;
+}
+
+/**
  * Deep-link destination for a notification tap, routed by event name.
  * Task events and unknown events do not navigate (they only refresh data
  * in place via the EventService).

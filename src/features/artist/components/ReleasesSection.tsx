@@ -94,6 +94,7 @@ const ReleasesSection = ({
                 <TouchableOpacity
                     key={`release-group-${releaseGroup.id}`}
                     onPress={() => void onReleaseGroupPressed(releaseGroup)}
+                    activeOpacity={1}
                     style={styles.albumContainer}
                     disabled={isLoadingReleaseGroup}
                 >

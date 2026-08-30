@@ -2,6 +2,7 @@ import { EventPayload, EventService } from '../eventService';
 import {
   extractNotificationEventData,
   extractNotificationEventPayload,
+  extractReleaseIdFromEventPayload,
   extractTaskId,
   getDeepLinkPathForEvent,
   getTaskCompletedEventName,
@@ -13,6 +14,7 @@ import {
 export {
   extractNotificationEventData,
   extractNotificationEventPayload,
+  extractReleaseIdFromEventPayload,
   extractTaskId,
   getDeepLinkPathForEvent,
   getTaskCompletedEventName,
