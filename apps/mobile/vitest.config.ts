@@ -7,9 +7,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // vitest ignores Metro's "react-native" main-field convention, so map the
-      // workspace package straight to its TS source — no shared build required.
-      '@pawify/shared': path.resolve(__dirname, '../../packages/shared'),
+      // vitest ignores Metro's "react-native" main-field convention; alias the
+      // exact TS entry file so runtime imports never need a shared dist build.
+      '@pawify/shared': path.resolve(__dirname, '../../packages/shared/index.ts'),
     },
   },
   test: {
