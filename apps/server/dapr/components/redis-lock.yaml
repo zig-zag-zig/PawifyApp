@@ -1,0 +1,18 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+    name: pawify-lock
+spec:
+    type: lock.redis
+    version: v1
+    metadata:
+        - name: redisHost
+          value: redis:6379
+        - name: redisPassword
+          secretKeyRef:
+              name: REDIS_PASSWORD
+              key: REDIS_PASSWORD
+        - name: enableTLS
+          value: 'false'
+auth:
+    secretStore: pawify-env-secrets

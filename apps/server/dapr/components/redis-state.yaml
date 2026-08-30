@@ -1,0 +1,20 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+    name: pawify-state
+spec:
+    type: state.redis
+    version: v1
+    metadata:
+        - name: redisHost
+          value: redis:6379
+        - name: redisPassword
+          secretKeyRef:
+              name: REDIS_PASSWORD
+              key: REDIS_PASSWORD
+        - name: enableTLS
+          value: 'false'
+        - name: actorStateStore
+          value: 'false'
+auth:
+    secretStore: pawify-env-secrets

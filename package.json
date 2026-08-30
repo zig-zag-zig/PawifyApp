@@ -1,85 +1,25 @@
 {
-  "name": "pawify",
-  "license": "0BSD",
-  "version": "2.2.0",
-  "main": "index.ts",
-  "scripts": {
-    "start": "node scripts/with-env.cjs development -- npx expo start",
-    "android": "node scripts/with-env.cjs development -- expo run:android",
-    "ios": "node scripts/with-env.cjs development -- expo run:ios",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm test",
-    "doctor": "node scripts/expo-maintenance-check.cjs",
-    "deps:update": "node scripts/with-env.cjs development -- npx expo install --fix && npm run doctor && npm run verify",
-    "env:check:development": "node scripts/with-env.cjs development --print",
-    "env:check:production": "node scripts/with-env.cjs production --print",
-    "env:check:e2e": "node scripts/with-local-e2e-env.cjs -- node scripts/with-env.cjs e2e-test --print",
-    "build:debug": "npm run verify && node scripts/with-env.cjs development -- node scripts/android-local-build.cjs debug",
-    "build:debug:install": "npm run verify && node scripts/with-env.cjs development -- node scripts/android-local-build.cjs debug --install",
-    "build:release": "npm run verify && npm run doctor && node scripts/with-env.cjs production -- node scripts/android-local-build.cjs release",
-    "build:release:install": "npm run verify && npm run doctor && node scripts/with-env.cjs production -- node scripts/android-local-build.cjs release --install",
-    "e2e": "npm run verify && node scripts/run-local-android-e2e.cjs",
-    "e2e:smoke": "npm run verify && node scripts/run-local-android-e2e.cjs --smoke"
-  },
-  "expo": {
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "listUnknownPackages": false
-      }
+    "name": "pawify-monorepo",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Pawify monorepo: apps/server (API), apps/mobile (Expo app), packages/shared (@pawify/shared). Thin delegation layer only — each package owns its own scripts and dependencies; there are no workspaces here.",
+    "license": "0BSD",
+    "scripts": {
+        "server": "npm run --prefix apps/server",
+        "mobile": "npm run --prefix apps/mobile",
+        "shared": "npm run --prefix packages/shared",
+
+        "install:all": "npm install --no-audit --no-fund --prefix packages/shared && npm install --no-audit --no-fund --prefix apps/server && npm install --no-audit --no-fund --prefix apps/mobile",
+
+        "verify": "npm run verify --prefix apps/server && npm run verify --prefix apps/mobile",
+        "typecheck": "npm run typecheck --prefix apps/server && npm run typecheck --prefix apps/mobile",
+        "test": "npm run test --prefix apps/server && npm run test --prefix apps/mobile",
+
+        "dev": "npm run dev --prefix apps/server",
+        "docker:up": "npm run docker:up --prefix apps/server",
+        "docker:down": "npm run docker:down --prefix apps/server",
+
+        "build:release": "npm run build:release --prefix apps/mobile",
+        "build:release:install": "npm run build:release:install --prefix apps/mobile"
     }
-  },
-  "dependencies": {
-    "@expo/vector-icons": "^15.0.2",
-    "@react-native-async-storage/async-storage": "2.2.0",
-    "@react-native-community/netinfo": "12.0.1",
-    "@react-navigation/bottom-tabs": "^7.2.0",
-    "@react-navigation/native": "^7.0.14",
-    "@react-navigation/stack": "^7.1.1",
-    "@sentry/react-native": "~7.11.0",
-    "expo": "~57.0.18",
-    "expo-constants": "~57.0.13",
-    "expo-dev-client": "~57.0.16",
-    "expo-device": "~57.0.1",
-    "expo-file-system": "~57.0.5",
-    "expo-font": "~57.0.1",
-    "expo-linear-gradient": "~57.0.1",
-    "expo-linking": "~57.0.8",
-    "expo-notifications": "~57.0.15",
-    "expo-secure-store": "~57.0.2",
-    "expo-splash-screen": "~57.0.8",
-    "expo-system-ui": "~57.0.3",
-    "expo-task-manager": "~57.0.14",
-    "expo-updates": "~57.0.19",
-    "firebase": "^12.12.1",
-    "react": "19.2.3",
-    "react-native": "0.86.3",
-    "react-native-device-info": "^15.0.2",
-    "react-native-gesture-handler": "~2.32.0",
-    "react-native-reanimated": "4.5.1",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0",
-    "react-native-svg": "15.15.4",
-    "react-native-uuid": "^2.0.3",
-    "react-native-worklets": "0.10.1"
-  },
-  "devDependencies": {
-    "@react-native-community/cli": "20.1.3",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/react": "~19.2.14",
-    "babel-preset-expo": "~57.0.7",
-    "dotenv": "^16.6.1",
-    "firebase-tools": "^13.35.1",
-    "jsdom": "^29.1.1",
-    "react-dom": "19.2.3",
-    "typescript": "~6.0.3",
-    "vitest": "^4.1.7"
-  },
-  "overrides": {
-    "uuid": "^11.1.1",
-    "tar": "^7.5.20"
-  },
-  "private": true
 }

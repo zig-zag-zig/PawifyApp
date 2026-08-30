@@ -1,0 +1,1 @@
+export const nameWithDisambiguation = (disambiguation: string | null, name: string) => disambiguation ? name + ' (' + disambiguation + ')' : name;

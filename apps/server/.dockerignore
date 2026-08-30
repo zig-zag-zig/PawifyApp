@@ -1,0 +1,15 @@
+**/node_modules
+**/npm-debug.log
+**/*.log
+.git
+.env
+.env.*
+secrets
+backups
+coverage
+**/lib
+**/lib-test
+**/lib-test-emulator
+**/dist
+.DS_Store
+apps/mobile
