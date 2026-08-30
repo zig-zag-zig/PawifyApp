@@ -1,4 +1,9 @@
-import type { ArtistSearchResult } from '@pawify/shared';
+import type { ArtistMinimal } from '@pawify/shared';
+
+export interface ArtistSearchResult {
+  artists: ArtistMinimal[];
+  count: number;
+}
 import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 import { createLogger } from '../../common/logging/logger.js';
 import { isPlainObject } from '../../common/utils/objectGuards.js';

@@ -3,11 +3,10 @@ import { describe, it } from 'node:test';
 
 import {
     dateToTimestamp,
-    formatDate,
     isFutureDate,
     sortReleasesByDate,
-} from '@pawify/shared';
-import type { Release } from '@pawify/shared';
+} from '../src/utils/dateUtil.js';
+import { formatDate, type Release } from '@pawify/shared';
 import { createRelease } from './helpers/releaseFixtures.js';
 
 const dateTimeMin = -8640000000000000;

@@ -1,5 +1,5 @@
 import { ArtistReleaseGroup, Release } from '@pawify/shared';
-import { dateToTimestamp, sortReleasesByDate } from '@pawify/shared';
+import { dateToTimestamp, sortReleasesByDate } from '../dateUtil.js';
 import type { CachedArtistReleases, CachedReleaseGroupReleases } from '../types/cacheTypes.js';
 
 export const createCachedArtistReleaseGroups = (

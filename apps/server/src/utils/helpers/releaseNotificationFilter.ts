@@ -3,7 +3,7 @@ import {
     type Release,
     type ReleaseNotificationSettings,
 } from '@pawify/shared';
-import { dateToTimestamp } from '@pawify/shared';
+import { dateToTimestamp } from '../dateUtil.js';
 
 const invalidReleaseDateTime = -8640000000000000;
 

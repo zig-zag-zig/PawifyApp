@@ -1,6 +1,6 @@
 import { mapToReleaseResult } from '../../infrastructure/musicbrainz/musicbrainzMapper.js';
 import type { Release, ReleaseGroupReleaseListItem } from '@pawify/shared';
-import { isFutureDate, sortReleasesByDate } from '@pawify/shared';
+import { isFutureDate, sortReleasesByDate } from '../../utils/dateUtil.js';
 import { nameWithDisambiguation } from '@pawify/shared';
 import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 import {

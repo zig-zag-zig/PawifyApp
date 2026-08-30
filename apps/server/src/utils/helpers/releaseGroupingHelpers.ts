@@ -1,5 +1,5 @@
 import { ArtistReleaseGroup, Release } from '@pawify/shared';
-import { dateToTimestamp, sortReleasesByDate } from '@pawify/shared';
+import { dateToTimestamp, sortReleasesByDate } from '../dateUtil.js';
 
 export type DedupeReleaseGroupReleasesResult = {
     releases: Release[];

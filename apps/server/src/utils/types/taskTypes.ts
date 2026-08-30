@@ -1,18 +1,26 @@
-import type {
-    ArtistProfileImageTaskResult,
-    NewReleaseCoverTaskResult,
-    ReleaseGroupCoverTaskResult,
-    ReleaseGroupReleaseCoverTaskResult,
-    TrackLyricsTaskResult,
-} from '@pawify/shared';
+import type { NewReleaseCoverTaskResult } from '@pawify/shared';
+import type { RemoteValueState } from '@pawify/shared';
 
-export type {
-    ArtistProfileImageTaskResult,
-    NewReleaseCoverTaskResult,
-    ReleaseGroupCoverTaskResult,
-    ReleaseGroupReleaseCoverTaskResult,
-    TrackLyricsTaskResult,
-} from '@pawify/shared';
+export type { NewReleaseCoverTaskResult } from '@pawify/shared';
+
+export type ArtistProfileImageTaskResult = {
+    artists: { [artistId: string]: RemoteValueState };
+};
+
+export type ReleaseGroupCoverTaskResult = {
+    artistId: string;
+    covers: { [releaseGroupId: string]: RemoteValueState };
+};
+
+export type ReleaseGroupReleaseCoverTaskResult = {
+    releaseGroupId: string;
+    covers: { [releaseId: string]: RemoteValueState };
+};
+
+export type TrackLyricsTaskResult = {
+    releaseId: string;
+    tracks: { [trackId: string]: RemoteValueState };
+};
 
 export type BackgroundTaskType =
     | 'release_group_covers'

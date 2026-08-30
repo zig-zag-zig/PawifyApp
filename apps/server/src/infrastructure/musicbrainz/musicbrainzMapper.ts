@@ -6,7 +6,6 @@ import {
     NewRelease,
     Release,
     ReleaseGroup,
-    ReleaseResult,
     Track,
 } from '@pawify/shared';
 import { formatDate } from '@pawify/shared';
@@ -124,6 +123,11 @@ export const mapToNewRelease = (release: Release): NewRelease => ({
     date_for_display: release.date_for_display,
     'primary-type': release['release-group']?.['primary-type'] ?? null,
 });
+
+export interface ReleaseResult {
+    releases: Release[];
+    "release-count": number;
+}
 
 export const mapToReleaseResult = (data: any, artistId?: string): ReleaseResult => ({
     releases: data.releases?.map((d: any) => mapToRelease(d, artistId)) ?? [],
