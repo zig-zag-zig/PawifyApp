@@ -35,6 +35,7 @@ jobs:
     outputs:
       image-ref: ${{ steps.image.outputs.image_ref }}
       should-ship: ${{ steps.gate.outputs.should_ship }}
+      version: ${{ steps.gate.outputs.version }}
 
     steps:
       - name: Checkout
@@ -77,17 +78,18 @@ jobs:
             exit 2
           fi
 
-          version="$(node -p "require('./apps/server/package.json').version")"
+          version="$(node -p "require('./apps/server/package.json').version || '0.0.0'")"
           last_tag="$(git tag --list 'server-v*' --sort=-v:refname | head -1 || true)"
 
-          if [[ -z "$last_tag" ]]; then
-            echo "No server-v* tag found — first release candidate: server-v${version}"
-            echo "should_ship=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$(git tag --list "server-v${version}")" ]]; then
+          if [[ -n "$last_tag" ]] && [[ "$(git tag --list "server-v${version}")" ]]; then
             echo "Version ${version} already released (${last_tag}); skipping deploy."
             echo "should_ship=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Version bump detected: ${last_tag#server-v} -> ${version}"
+            if [[ -n "$last_tag" ]]; then
+              echo "Version bump detected: ${last_tag#server-v} -> ${version}"
+            else
+              echo "No server-v* tag found — first tracked release: server-v${version}"
+            fi
             echo "should_ship=true" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -280,3 +282,12 @@ jobs:
             --prebuilt-image "$PAWIFY_DEPLOY_IMAGE" \
             --secrets-source-dir "$PAWIFY_PROD_SECRET_SOURCE_DIR"
           REMOTE
+
+      - name: Tag released version
+        if: success()
+        run: |
+          set -Eeuo pipefail
+          version="${{ needs.build-test.outputs.version }}"
+          git tag "server-v${version}" "${{ github.sha }}"
+          git push origin "server-v${version}"
+          echo "Tagged server-v${version}"

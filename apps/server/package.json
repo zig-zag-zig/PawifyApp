@@ -1,5 +1,37 @@
 {
     "name": "pawify-api",
+    "version": "1.7.0",
+    "_comment": "Overrides: (1) gaxios/teeny-request still declare uuid ^9 (vulnerable per GHSA-w5hq-g745-h8pq, fixed in >=11.1.1); scoped to them instead of global because universal-analytics needs uuid ^14 and a global override breaks the tree (npm ls ELSPROBLEMS). uuid is only used for request ids via uuid.v4(), API-stable across majors. (2) @opentelemetry/core ^2.8.0 fixes GHSA-8988-4f7v-96qf for @google-cloud/pubsub (via firebase-tools); validated: npm ls exits 0 and npm run verify passes.",
+    "dependencies": {
+        "@sentry/node": "^10.72.0",
+        "dotenv": "^17.4.2",
+        "express": "^4.21.2",
+        "firebase-admin": "^14.2.0",
+        "@pawify/shared": "file:../../packages/shared"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.13.8",
+        "firebase-tools": "^15.28.2",
+        "prettier": "^3.9.6",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.8.2",
+        "tsx": "^4.20.3"
+    },
+    "engines": {
+        "node": "22"
+    },
+    "main": "lib/index.js",
+    "overrides": {
+        "gaxios": {
+            "uuid": "^11.1.1"
+        },
+        "teeny-request": {
+            "uuid": "^11.1.1"
+        },
+        "@opentelemetry/core": "^2.8.0"
+    },
+    "private": true,
     "scripts": {
         "build": "npm run test:all && npm run build:unchecked",
         "build:unchecked": "tsc",
@@ -24,36 +56,5 @@
         "pretest": "npm run build:shared",
         "pretest:coverage": "npm run build:shared",
         "pretest:integration": "npm run build:shared"
-    },
-    "engines": {
-        "node": "22"
-    },
-    "main": "lib/index.js",
-    "dependencies": {
-        "@sentry/node": "^10.72.0",
-        "dotenv": "^17.4.2",
-        "express": "^4.21.2",
-        "firebase-admin": "^14.2.0",
-        "@pawify/shared": "file:../../packages/shared"
-    },
-    "devDependencies": {
-        "@types/express": "^5.0.0",
-        "@types/node": "^22.13.8",
-        "firebase-tools": "^15.28.2",
-        "prettier": "^3.9.6",
-        "ts-node": "^10.9.2",
-        "typescript": "^5.8.2",
-        "tsx": "^4.20.3"
-    },
-    "overrides": {
-        "gaxios": {
-            "uuid": "^11.1.1"
-        },
-        "teeny-request": {
-            "uuid": "^11.1.1"
-        },
-        "@opentelemetry/core": "^2.8.0"
-    },
-    "_comment": "Overrides: (1) gaxios/teeny-request still declare uuid ^9 (vulnerable per GHSA-w5hq-g745-h8pq, fixed in >=11.1.1); scoped to them instead of global because universal-analytics needs uuid ^14 and a global override breaks the tree (npm ls ELSPROBLEMS). uuid is only used for request ids via uuid.v4(), API-stable across majors. (2) @opentelemetry/core ^2.8.0 fixes GHSA-8988-4f7v-96qf for @google-cloud/pubsub (via firebase-tools); validated: npm ls exits 0 and npm run verify passes.",
-    "private": true
+    }
 }
