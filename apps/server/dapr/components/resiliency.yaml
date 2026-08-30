@@ -1,0 +1,85 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+    name: pawify-resiliency
+scopes:
+    - pawify-api
+spec:
+    policies:
+        timeouts:
+            musicbrainzTimeout: 30s
+            coverartTimeout: 20s
+            discogsTimeout: 30s
+            geniusTimeout: 30s
+            expoTimeout: 30s
+            smtpTimeout: 30s
+            redisStateTimeout: 10s
+            redisLockTimeout: 10s
+        retries:
+            externalHttpRetry:
+                policy: exponential
+                duration: 1s
+                maxRetries: 3
+                matching:
+                    httpStatusCodes: '429,500-599'
+            noRetry:
+                policy: constant
+                duration: 1s
+                maxRetries: 0
+            redisRetry:
+                policy: exponential
+                duration: 200ms
+                maxRetries: 3
+            smtpRetry:
+                policy: exponential
+                duration: 1s
+                maxRetries: 3
+            expoRetry:
+                policy: exponential
+                duration: 1s
+                maxRetries: 3
+                matching:
+                    httpStatusCodes: '429,500-599'
+        circuitBreakers:
+            musicbrainzCircuitBreaker:
+                maxRequests: 1
+                timeout: 30s
+                trip: consecutiveFailures >= 5
+            genericProviderCircuitBreaker:
+                maxRequests: 5
+                timeout: 30s
+                trip: consecutiveFailures >= 10
+    targets:
+        apps:
+            musicbrainz:
+                retry: externalHttpRetry
+                timeout: musicbrainzTimeout
+                circuitBreaker: musicbrainzCircuitBreaker
+            coverartarchive:
+                retry: noRetry
+                timeout: coverartTimeout
+            discogs:
+                retry: externalHttpRetry
+                timeout: discogsTimeout
+                circuitBreaker: genericProviderCircuitBreaker
+            genius:
+                retry: externalHttpRetry
+                timeout: geniusTimeout
+                circuitBreaker: genericProviderCircuitBreaker
+            expo:
+                retry: expoRetry
+                timeout: expoTimeout
+                circuitBreaker: genericProviderCircuitBreaker
+        components:
+            pawify-state:
+                outbound:
+                    retry: redisRetry
+                    timeout: redisStateTimeout
+            pawify-lock:
+                outbound:
+                    retry: redisRetry
+                    timeout: redisLockTimeout
+            smtp-gmail:
+                outbound:
+                    retry: smtpRetry
+                    timeout: smtpTimeout

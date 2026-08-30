@@ -1,0 +1,15 @@
+# Shared package is source-only TypeScript — no build output is committed.
+
+# dependencies (if the package is ever installed standalone)
+node_modules/
+
+# type-check / build output
+*.tsbuildinfo
+dist/
+lib/
+
+# local env files and secrets
+.env
+.env.*
+!.env.example
+secrets/

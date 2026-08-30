@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "strict": true,
+    "paths": {
+      "@pawify/shared": ["../../packages/shared/index.ts"]
+    }
+  }
+}
