@@ -71,10 +71,19 @@ describe('releaseReducer', () => {
   });
 
   describe('releaseLoadFailed', () => {
-    it('marks release as non-existent', () => {
-      const state = releaseReducer(createInitialReleaseState(), { type: 'releaseLoadFailed' });
+    it('marks release as non-existent for not-found failures', () => {
+      const state = releaseReducer(createInitialReleaseState(), { type: 'releaseLoadFailed', notFound: true });
       expect(state.releaseExists).toBe(false);
       expect(state.checkingExistence).toBe(false);
+      expect(state.loadFailed).toBe(false);
+    });
+
+    it('marks the load as failed without claiming the release is gone', () => {
+      const state = releaseReducer(createInitialReleaseState(), { type: 'releaseLoadFailed', notFound: false });
+      expect(state.releaseExists).toBeNull();
+      expect(state.checkingExistence).toBe(false);
+      expect(state.loadFailed).toBe(true);
+      expect(state.release).toBeNull();
     });
   });
 
@@ -157,7 +166,7 @@ describe('releaseReducer', () => {
       pendingArtistImageIds: ['artist-1'],
     });
 
-    expect(releaseReducer(loaded, { type: 'releaseLoadFailed' })).toEqual({
+    expect(releaseReducer(loaded, { type: 'releaseLoadFailed', notFound: true })).toEqual({
       ...createInitialReleaseState(),
       releaseExists: false,
       checkingExistence: false,

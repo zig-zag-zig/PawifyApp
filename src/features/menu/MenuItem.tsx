@@ -27,7 +27,7 @@ export function MenuItem({ icon, label, subtitle, onPress, rightElement, danger 
         disabled && styles.menuItemDisabled,
       ]}
       onPress={onPress}
-      activeOpacity={!isDisabled ? 0.7 : 1}
+      activeOpacity={1}
       disabled={isDisabled}
     >
       <MaterialIcons

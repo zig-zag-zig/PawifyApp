@@ -249,13 +249,12 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
                 onPress={() => openExternalLink(link)}
                 accessibilityRole="link"
                 accessibilityLabel={`Open ${link.displayLabel}`}
-                style={({ pressed }) => [
+                style={[
                     styles.linkButton,
                     compact && styles.compactLinkButton,
                     {
                         backgroundColor: compact ? mutedBackgroundColor : backgroundColor,
                         borderColor,
-                        opacity: pressed ? 0.66 : 1,
                     },
                 ]}
             >
@@ -279,11 +278,8 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
             accessibilityRole="button"
             accessibilityLabel={showOverflowLinks ? 'Hide additional links' : `Show ${overflowLinks.length} additional links`}
             accessibilityState={{ expanded: showOverflowLinks }}
-            style={({ pressed }) => [
+            style={[
                 styles.moreChip,
-                {
-                    opacity: pressed ? 0.7 : 1,
-                },
             ]}
         >
             <MaterialCommunityIcons

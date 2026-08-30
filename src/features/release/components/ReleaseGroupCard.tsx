@@ -30,6 +30,7 @@ const ReleaseGroupCard = ({
                 <TouchableOpacity
                     key={`release-${release.id}`}
                     onPress={() => onPress(release)}
+                    activeOpacity={1}
                     style={styles.albumContainer}
                 >
                     <CachedImageComponent

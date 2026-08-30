@@ -40,6 +40,10 @@ const ReleaseItem = ({
             <TouchableOpacity
                 onPress={onPress}
                 onLongPress={onLongPress}
+                // Press-in dimming flashes items while scrolling or
+                // long-pressing to select; selection highlight + page
+                // navigation are the feedback instead.
+                activeOpacity={1}
                 style={styles.releaseItem}
                 onLayout={(e) => onLayout ? onLayout(e, release.id) : undefined}
             >

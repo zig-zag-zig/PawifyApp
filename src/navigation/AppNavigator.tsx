@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useContentReady } from '../hooks/useContentReady';
 import { useGlobalSpinner } from '../contexts/GlobalSpinnerContext';
 import { useNotificationService } from '../hooks/useNotificationService';
+import { useE2eNotificationTestTrigger } from '../hooks/useE2eNotificationTestTrigger';
 import { useStartupUpdateCheck } from '../features/updates/hooks/useStartupUpdateCheck';
 import { AuthStack } from './AuthStack';
 import { MainStack } from './MainStack';
@@ -13,6 +14,7 @@ export const AppNavigator = () => {
     const { isWaitingForContent, onContentReady } = useContentReady(!authCompleted, authCompleted);
     useGlobalSpinner(!authCompleted || isWaitingForContent);
     useNotificationService({ enabled: authCompleted });
+    useE2eNotificationTestTrigger();
     useStartupUpdateCheck();
 
     return (

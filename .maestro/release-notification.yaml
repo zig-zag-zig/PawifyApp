@@ -1,0 +1,91 @@
+appId: vip.chi_chi.pawify
+---
+# E2E for new-release notification taps: release page navigation,
+# back landing on the releases tab, cold-start tap, and the 404 case.
+# The notification is posted locally by the app via the e2e-test-only
+# trigger link pawify://e2e/release-notification (real FCM delivery is
+# stubbed by the local E2E backend); everything from the notification
+# shade onward is the production pipeline.
+#
+# Maestro 2.x has no openNotifications command, so the shade is pulled
+# down with a swipe from the status bar.
+
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: "Android app compatibility"
+    commands:
+      - tapOn: "Don't show again"
+- extendedWaitUntil:
+    visible: "Email"
+    timeout: 30000
+- tapOn: "Don't have an account? Sign Up"
+- extendedWaitUntil:
+    visible: "Confirm Password"
+    timeout: 15000
+- tapOn: "Email"
+- inputText: ${E2E_NOTIFICATION_EMAIL}
+- tapOn: "Password"
+- inputText: "Pawify-e2e-password-123"
+- tapOn: "Confirm Password"
+- inputText: "Pawify-e2e-password-123"
+- hideKeyboard
+- tapOn: "Sign Up"
+- extendedWaitUntil:
+    visible: "Search artists"
+    timeout: 30000
+
+# --- Foreground: tap a new-release notification -> release page -> back -> releases tab ---
+- openLink: "pawify://e2e/release-notification?releaseId=pawify-e2e-release-midnight-signals;title=Midnight%20Signals;body=By%20Aurora%20Test%20Ensemble"
+- swipe:
+    start: "50%,1%"
+    end: "50%,50%"
+- extendedWaitUntil:
+    visible: "Midnight Signals"
+    timeout: 10000
+- tapOn: "Midnight Signals"
+- extendedWaitUntil:
+    visible: "Signal Drift"
+    timeout: 30000
+- assertVisible: "Skyline Loop"
+- assertVisible: "Aurora Test Ensemble"
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "No new releases"
+    timeout: 15000
+
+# --- 404: notification for a release that no longer exists ---
+- openLink: "pawify://e2e/release-notification?releaseId=pawify-e2e-release-missing;title=Ghost%20Release;body=By%20Nobody"
+- swipe:
+    start: "50%,1%"
+    end: "50%,50%"
+- extendedWaitUntil:
+    visible: "Ghost Release"
+    timeout: 10000
+- tapOn: "Ghost Release"
+- extendedWaitUntil:
+    visible: "This release no longer exists."
+    timeout: 30000
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "No new releases"
+    timeout: 15000
+
+# --- Cold start: kill the app, tap the notification, land on the release page ---
+- openLink: "pawify://e2e/release-notification?releaseId=pawify-e2e-release-midnight-signals;title=Midnight%20Signals;body=By%20Aurora%20Test%20Ensemble"
+- killApp
+- swipe:
+    start: "50%,1%"
+    end: "50%,50%"
+- extendedWaitUntil:
+    visible: "Midnight Signals"
+    timeout: 10000
+- tapOn: "Midnight Signals"
+- extendedWaitUntil:
+    visible: "Signal Drift"
+    timeout: 60000
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "No new releases"
+    timeout: 15000

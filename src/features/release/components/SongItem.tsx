@@ -65,7 +65,7 @@ const SongItem = ({
         >
             <TouchableOpacity
                 onPress={() => onPress(track)}
-                activeOpacity={0.82}
+                activeOpacity={1}
                 style={{
                     paddingHorizontal: CONTAINER_HORIZONTAL_PADDING,
                     paddingTop: 14,
@@ -95,6 +95,7 @@ const SongItem = ({
                             }
                         }}
                         disabled={!hasLyrics || isLyricsLoading}
+                        activeOpacity={1}
                         style={{
                             width: 40,
                             height: 40,

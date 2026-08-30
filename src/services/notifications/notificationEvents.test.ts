@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   extractNotificationEventData,
   extractNotificationEventPayload,
+  extractReleaseIdFromEventPayload,
   extractTaskId,
   getDeepLinkPathForEvent,
   getTaskCompletedEventName,
@@ -95,5 +96,19 @@ describe('getDeepLinkPathForEvent', () => {
 
     it('does not navigate for unknown events', () => {
         expect(getDeepLinkPathForEvent('somethingNew')).toBeNull();
+    });
+});
+
+describe('extractReleaseIdFromEventPayload', () => {
+    it('reads the release id from a notification payload', () => {
+        expect(extractReleaseIdFromEventPayload({ releaseId: 'release-42' })).toBe('release-42');
+        expect(extractReleaseIdFromEventPayload({ release_id: 'release-43' })).toBe('release-43');
+    });
+
+    it('returns null for missing, empty, or non-string ids', () => {
+        expect(extractReleaseIdFromEventPayload(undefined)).toBeNull();
+        expect(extractReleaseIdFromEventPayload({})).toBeNull();
+        expect(extractReleaseIdFromEventPayload({ releaseId: '   ' })).toBeNull();
+        expect(extractReleaseIdFromEventPayload({ releaseId: 123 })).toBeNull();
     });
 });

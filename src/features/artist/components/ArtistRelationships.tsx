@@ -38,6 +38,7 @@ const RelationshipItem = React.memo(({
 }: RelationshipItemProps) => (
     <TouchableOpacity
         onPress={() => onArtistPressed(member.id)}
+        activeOpacity={1}
         style={styles.relationshipItem}
     >
         <CachedImageComponent
@@ -122,6 +123,7 @@ const ArtistRelationships = ({
         <View style={styles.groupAffiliationsContainer}>
             <TouchableOpacity
                 onPress={handleToggleGroupAffiliations}
+                activeOpacity={1}
                 style={styles.groupAffiliationsHeader}
             >
                 <Text style={styles.groupAffiliationsTitle}>

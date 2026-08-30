@@ -1,5 +1,13 @@
 import { StackNavigationProp } from "@react-navigation/stack";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import { ReleaseGroupReleaseListItem } from "../shared/music";
+
+export type HomeTabParamList = {
+    Search: undefined;
+    Artists: undefined;
+    Releases: undefined;
+    Menu: undefined;
+};
 
 export type RootStackParamList = {
     Menu: undefined;
@@ -20,7 +28,7 @@ export type RootStackParamList = {
         initialReleaseCovers?: Record<string, string | null>;
     };
     Auth: undefined;
-    Home: undefined;
+    Home: NavigatorScreenParams<HomeTabParamList> | undefined;
 };
 
 export type ReleaseNavigationProp = StackNavigationProp<RootStackParamList, 'Release'>;
