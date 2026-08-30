@@ -337,19 +337,17 @@ clone_or_update_repo() {
     fi
 
     log "Cloning $REPO_URL branch $REPO_BRANCH into $APP_DIR"
-    sudo -u "$APP_USER" git clone --recurse-submodules --branch "$REPO_BRANCH" "$REPO_URL" "$APP_DIR"
+    sudo -u "$APP_USER" git clone --branch "$REPO_BRANCH" "$REPO_URL" "$APP_DIR"
   else
     log "Updating git repo in $APP_DIR to branch $REPO_BRANCH"
     sudo -u "$APP_USER" git -C "$APP_DIR" remote set-url origin "$REPO_URL" || true
     sudo -u "$APP_USER" git -C "$APP_DIR" fetch origin "$REPO_BRANCH" --prune
-    sudo -u "$APP_USER" git -C "$APP_DIR" checkout "$REPO_BRANCH"
-    sudo -u "$APP_USER" git -C "$APP_DIR" pull --ff-only origin "$REPO_BRANCH"
-  fi
-
-  if [[ -f "$APP_DIR/.gitmodules" ]]; then
-    log "Updating git submodules"
-    sudo -u "$APP_USER" git -C "$APP_DIR" submodule sync --recursive
-    sudo -u "$APP_USER" git -C "$APP_DIR" submodule update --init --recursive
+    # The deploy clone is read-only (runtime files live in ignored paths), so a
+    # hard reset to the fetched branch is safe. This also transparently handles
+    # the one-time migration from the pre-monorepo repository layout, where a
+    # fast-forward pull is impossible because the remote history was re-rooted.
+    sudo -u "$APP_USER" git -C "$APP_DIR" checkout -B "$REPO_BRANCH" "origin/$REPO_BRANCH"
+    sudo -u "$APP_USER" git -C "$APP_DIR" reset --hard "origin/$REPO_BRANCH"
   fi
 }
 
