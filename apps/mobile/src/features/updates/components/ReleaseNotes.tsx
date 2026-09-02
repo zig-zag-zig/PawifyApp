@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { updateCopy } from '../domain/updateCopy';
 import type { AppRelease, UpdateStatus } from '../model/types';
 import { appUpdateModalStyles as styles } from './appUpdateModalStyles';
+import { MarkdownText } from './MarkdownText';
 
 type ReleaseNotesProps = {
   release: AppRelease | null;
@@ -36,7 +37,7 @@ export function ReleaseNotes({ release, status, error }: ReleaseNotesProps) {
         contentContainerStyle={styles.notesContent}
         nestedScrollEnabled
       >
-        <Text style={styles.notesText}>{release.body}</Text>
+        <MarkdownText markdown={release.body} />
       </ScrollView>
     </View>
   );

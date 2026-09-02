@@ -144,6 +144,71 @@ export const appUpdateModalStyles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
+  markdownContainer: {
+    gap: 8,
+  },
+  markdownHeading: {
+    color: appUpdateModalColors.text,
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  markdownSubheading: {
+    color: appUpdateModalColors.text,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  markdownBody: {
+    color: appUpdateModalColors.text,
+    fontSize: 14,
+    lineHeight: 21,
+    flex: 1,
+  },
+  markdownBold: {
+    fontWeight: '700',
+  },
+  markdownItalic: {
+    fontStyle: 'italic',
+  },
+  markdownCode: {
+    fontFamily: 'monospace',
+    color: appUpdateModalColors.info,
+    fontSize: 13,
+  },
+  markdownLink: {
+    color: appUpdateModalColors.primary,
+    textDecorationLine: 'underline',
+  },
+  markdownBulletRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  markdownBulletMarker: {
+    color: appUpdateModalColors.primary,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  markdownCodeBlock: {
+    backgroundColor: appUpdateModalColors.surface,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: appUpdateModalColors.border,
+    padding: 8,
+  },
+  markdownCodeBlockText: {
+    color: appUpdateModalColors.muted,
+    fontFamily: 'monospace',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  markdownRule: {
+    height: 1,
+    backgroundColor: appUpdateModalColors.border,
+    marginVertical: 4,
+  },
   messageBox: {
     backgroundColor: '#2a1719',
     borderWidth: 1,
