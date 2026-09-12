@@ -354,9 +354,16 @@ Back up `credentials.json` and the entire `.credentials/android/` directory in a
 Releases are built and published locally; the signing keystore never leaves the dev machine.
 
 ```bash
-npm run build:release        # bumps version, builds signed APK
-gh release create v<version> android/app/build/outputs/apk/release/Pawify.apk --generate-notes
+npm run build:release        # bumps version, builds signed APK + Pawify.apk.sha256
+gh release create v<version> \
+  android/app/build/outputs/apk/release/Pawify.apk \
+  android/app/build/outputs/apk/release/Pawify.apk.sha256 \
+  --generate-notes
 ```
+
+`Pawify.apk.sha256` is written next to the APK so anyone can verify a download
+with `sha256sum -c`. Android additionally refuses an update whose signing
+signature differs from the installed app.
 
 The `mobile.yml` CI workflow type-checks and tests every PR, and flags a warning on `main` when `app.json` has a version bump without a matching `v*` GitHub Release yet.
 
