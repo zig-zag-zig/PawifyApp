@@ -15,8 +15,8 @@ The app includes email and Google sign-in, artist search, followed artist manage
 
 ## Tech Stack
 
-- Expo SDK 56
-- React Native 0.85
+- Expo SDK 57
+- React Native 0.86
 - React 19
 - TypeScript
 - Firebase Authentication
