@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const path = require('path');
 
@@ -450,19 +449,6 @@ if (!dryRun) {
 run(gradlew, gradleArgs, { cwd: androidRoot });
 
 const apkPath = moveNamedApk();
-
-// Release APKs get a <name>.sha256 sidecar so the published checksum can be
-// verified with `sha256sum -c` and uploaded to the GitHub Release alongside the
-// APK. Android already refuses an APK whose signing signature does not match
-// the installed app, so this is for download-integrity provenance, not a
-// security gate inside the app.
-if (variant === 'release' && !dryRun) {
-  const digest = crypto.createHash('sha256').update(fs.readFileSync(apkPath)).digest('hex');
-  const sidecarPath = `${apkPath}.sha256`;
-  fs.writeFileSync(sidecarPath, `${digest}  ${path.basename(apkPath)}\n`);
-  console.log(`[android-build] sha256 ${digest} -> ${path.relative(projectRoot, sidecarPath)}`);
-}
-
 if (install) {
   installOnMainProfile(apkPath);
 }
