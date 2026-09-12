@@ -5,6 +5,7 @@ import React from 'react';
 import { Share, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
+import ListenNowButton from './ListenNowButton';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
 import type { ArtistCredit, Release } from '@pawify/shared';
 import { nameWithDisambiguation } from '@pawify/shared';
@@ -97,6 +98,7 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                         Share
                     </SelectableText>
                 </TouchableOpacity>
+                <ListenNowButton links={release.externalLinks} />
                 <ExternalLinksGrid links={release.externalLinks} />
             </View>
         </View>
