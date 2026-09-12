@@ -145,6 +145,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         releaseGroupReleaseCovers,
         pendingReleaseCoverIds,
         isLoadingReleases,
+        releaseGroupId: releaseGroupId ?? null,
     };
 
     const onReleasePressed = useCallback((release: ReleaseGroupReleaseListItem) => {

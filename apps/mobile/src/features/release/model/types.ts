@@ -45,6 +45,7 @@ export interface ReleaseGroupPageUiState {
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     isLoadingReleases: boolean;
+    releaseGroupId: string | null;
 }
 
 export interface ReleasesPageController {

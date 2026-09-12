@@ -11,6 +11,7 @@ interface ReleaseGroupViewProps {
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     isLoadingReleases: boolean;
+    releaseGroupId: string | null;
     onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
 }
 
@@ -21,6 +22,7 @@ const ReleaseGroupView = ({
     releaseGroupReleaseCovers,
     pendingReleaseCoverIds,
     isLoadingReleases,
+    releaseGroupId,
     onReleasePressed
 }: ReleaseGroupViewProps) => {
     const navigation = useNavigation<ReleaseGroupNavigationProp>();
@@ -67,6 +69,7 @@ const ReleaseGroupView = ({
             releases={releases}
             releaseCovers={releaseGroupReleaseCovers}
             pendingReleaseCoverIds={pendingReleaseCoverIds}
+            releaseGroupId={releaseGroupId}
             onPress={onReleasePressed}
             onContentReady={onContentReady}
         />
