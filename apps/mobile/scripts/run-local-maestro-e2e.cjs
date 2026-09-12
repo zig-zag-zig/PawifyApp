@@ -9,7 +9,7 @@ const { spawn, spawnSync } = require('child_process');
 const { startDaprFixtureServer } = require('../tests/e2e/daprFixtureServer.cjs');
 
 const appRoot = path.resolve(__dirname, '..');
-const backendRoot = path.resolve(appRoot, '..', 'Pawify');
+const backendRoot = path.resolve(appRoot, '..', 'server');
 const backendPort = Number(process.env.PAWIFY_E2E_BACKEND_PORT || 10001);
 const firebaseProject = process.env.PAWIFY_E2E_FIREBASE_PROJECT || 'demo-pawify-e2e';
 const firebaseAuthHost = process.env.PAWIFY_E2E_FIREBASE_AUTH_HOST || '127.0.0.1:9199';
