@@ -3,7 +3,7 @@ import * as Linking from 'expo-linking';
 import React from 'react';
 import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
-import { ScreenContainer, SelectableText } from '../../../components/ui';
+import { InlineLink, ScreenContainer, SelectableText } from '../../../components/ui';
 import { ReleaseGroupReleaseListItem } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 
@@ -12,7 +12,9 @@ interface ReleaseGroupCardProps {
     releaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     releaseGroupId: string | null;
+    releaseLoadFailed: boolean;
     onPress: (release: ReleaseGroupReleaseListItem) => void;
+    onRetryLoadReleases: () => void;
     onContentReady: () => void;
 }
 
@@ -21,7 +23,9 @@ const ReleaseGroupCard = ({
     releaseCovers,
     pendingReleaseCoverIds,
     releaseGroupId,
+    releaseLoadFailed,
     onPress,
+    onRetryLoadReleases,
     onContentReady,
 }: ReleaseGroupCardProps) => {
     const styles = getStyles();
@@ -103,7 +107,14 @@ const ReleaseGroupCard = ({
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={onContentReady}
             >
-                {renderReleases()}
+                {releaseLoadFailed ? (
+                    <View style={cardStyles.errorState}>
+                        <Text style={cardStyles.errorText}>Unable to load this release group.</Text>
+                        <InlineLink onPress={onRetryLoadReleases}>Retry</InlineLink>
+                    </View>
+                ) : (
+                    renderReleases()
+                )}
             </ScrollView>
         </ScreenContainer>
     );
@@ -125,6 +136,16 @@ const cardStyles = StyleSheet.create({
         backgroundColor: 'rgba(56, 189, 248, 0.12)',
         paddingHorizontal: 12,
         paddingVertical: 6,
+    },
+    errorState: {
+        alignItems: 'center',
+        paddingVertical: 32,
+        gap: 8,
+    },
+    errorText: {
+        color: '#FCA5A5',
+        fontSize: 14,
+        textAlign: 'center',
     },
     shareText: {
         color: '#81ddff',

@@ -11,8 +11,10 @@ interface ReleaseGroupViewProps {
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     isLoadingReleases: boolean;
+    releaseLoadFailed: boolean;
     releaseGroupId: string | null;
     onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
+    onRetryLoadReleases: () => void;
 }
 
 const RELEASE_GROUP_TRANSITION_FALLBACK_MS = 600;
@@ -22,8 +24,10 @@ const ReleaseGroupView = ({
     releaseGroupReleaseCovers,
     pendingReleaseCoverIds,
     isLoadingReleases,
+    releaseLoadFailed,
     releaseGroupId,
-    onReleasePressed
+    onReleasePressed,
+    onRetryLoadReleases
 }: ReleaseGroupViewProps) => {
     const navigation = useNavigation<ReleaseGroupNavigationProp>();
     const [isTransitionReady, setIsTransitionReady] = React.useState(false);
@@ -70,7 +74,9 @@ const ReleaseGroupView = ({
             releaseCovers={releaseGroupReleaseCovers}
             pendingReleaseCoverIds={pendingReleaseCoverIds}
             releaseGroupId={releaseGroupId}
+            releaseLoadFailed={releaseLoadFailed}
             onPress={onReleasePressed}
+            onRetryLoadReleases={onRetryLoadReleases}
             onContentReady={onContentReady}
         />
     );

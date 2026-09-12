@@ -85,7 +85,10 @@ type BuiltReleaseNotification = ReturnType<typeof buildReleaseNotifications>[num
 const buildDigestNotificationBody = (
     notifications: BuiltReleaseNotification[],
 ): string => {
-    const digestLines = notifications.map((notification) => notification.title);
+    const digestLines = notifications.map((notification) => {
+        const artistLine = notification.body.split('\n')[0]?.trim();
+        return artistLine ? `${notification.title} — ${artistLine.replace(/^By\s+/i, '')}` : notification.title;
+    });
     const shownTitles = digestLines.slice(0, 10);
     const remaining = digestLines.length - shownTitles.length;
 
@@ -127,7 +130,7 @@ const notifyUserAboutNewReleases = async (userId: string): Promise<NotificationD
 
             if (digestNotifications.length > 0) {
                 await sendPushNotificationToTokens(userId, validPushTokens, {
-                    title: `${digestNotifications.length} more new releases`,
+                    title: `${digestNotifications.length} more new releases from your artists`,
                     body: buildDigestNotificationBody(digestNotifications),
                     data: { eventName: notificationEvents.releases },
                 });
