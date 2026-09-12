@@ -18,6 +18,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const { getReleaseGroupReleases, waitForTaskResultById } = useReleaseApi();
     const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
     const [fetchedReleases, setFetchedReleases] = useState<ReleaseGroupReleaseListItem[]>([]);
+    const [lazyReleaseCoverTaskId, setLazyReleaseCoverTaskId] = useState<string | null>(null);
     const [isLoadingReleases, setIsLoadingReleases] = useState(false);
     const { releaseGroupId, releases: routeReleases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
 
@@ -38,6 +39,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
                 }
 
                 setFetchedReleases(result.releases);
+                setLazyReleaseCoverTaskId(result.releaseCoverTaskId);
                 const immediateCovers = normalizeNullableStringMap(result.releaseCovers);
                 if (Object.keys(immediateCovers).length > 0) {
                     setReleaseGroupReleaseCovers(prev =>
@@ -61,7 +63,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const releases = routeReleases ?? fetchedReleases;
 
     useEffect(() => {
-        const releaseCoverTaskId = initialReleaseCoverTaskId;
+        const releaseCoverTaskId = initialReleaseCoverTaskId ?? lazyReleaseCoverTaskId;
         const immediateCovers = normalizeNullableStringMap(initialReleaseCovers);
 
         // Merge immediate covers so cached values render without polling.
@@ -132,6 +134,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         };
     }, [
         initialReleaseCoverTaskId,
+        lazyReleaseCoverTaskId,
         getReleaseGroupReleases,
         releaseGroupId,
         releaseGroupReleaseCovers,
