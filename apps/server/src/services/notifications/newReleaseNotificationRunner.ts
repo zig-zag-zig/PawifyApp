@@ -14,6 +14,13 @@ const logger = createLogger('services.notifications');
 const newReleaseNotificationUserConcurrency = 4;
 const userVisibleNotificationConcurrency = 4;
 
+/**
+ * Visible pushes are sent one-per-release up to this count; when a scan finds
+ * more new releases than this, the remainder are collapsed into a single
+ * digest push so a busy drop day cannot spam the device.
+ */
+const maxIndividualReleaseNotifications = 3;
+
 type NotificationDelivery = {
     visibleNotificationsSent: number;
     userHasNewReleases: boolean;
@@ -68,6 +75,25 @@ const buildReleaseNotifications = (
     );
 };
 
+type BuiltReleaseNotification = ReturnType<typeof buildReleaseNotifications>[number];
+
+/**
+ * One-line-per-release digest body for the notifications that overflowed the
+ * per-release cap. Tapping it opens the Releases tab (no single release id), so
+ * the user lands on the full list.
+ */
+const buildDigestNotificationBody = (
+    notifications: BuiltReleaseNotification[],
+): string => {
+    const digestLines = notifications.map((notification) => notification.title);
+    const shownTitles = digestLines.slice(0, 10);
+    const remaining = digestLines.length - shownTitles.length;
+
+    return remaining > 0
+        ? [...shownTitles, `+${remaining} more`].join('\n')
+        : shownTitles.join('\n');
+};
+
 const notifyUserAboutNewReleases = async (userId: string): Promise<NotificationDelivery> => {
     try {
         const startedAt = Date.now();
@@ -86,16 +112,27 @@ const notifyUserAboutNewReleases = async (userId: string): Promise<NotificationD
         }
 
         const notifications = buildReleaseNotifications(notificationsData);
+        const individualNotifications = notifications.slice(0, maxIndividualReleaseNotifications);
+        const digestNotifications = notifications.slice(maxIndividualReleaseNotifications);
         const validPushTokens = await getValidPushTokens(userId);
 
         if (validPushTokens.length > 0) {
             await mapWithConcurrency(
-                notifications,
+                individualNotifications,
                 userVisibleNotificationConcurrency,
                 async (notification) => {
                     await sendPushNotificationToTokens(userId, validPushTokens, notification);
                 },
             );
+
+            if (digestNotifications.length > 0) {
+                await sendPushNotificationToTokens(userId, validPushTokens, {
+                    title: `${digestNotifications.length} more new releases`,
+                    body: buildDigestNotificationBody(digestNotifications),
+                    data: { eventName: notificationEvents.releases },
+                });
+            }
+
             await sendPushNotificationToTokens(
                 userId,
                 validPushTokens,
@@ -106,7 +143,9 @@ const notifyUserAboutNewReleases = async (userId: string): Promise<NotificationD
             );
         }
 
-        const visibleNotificationsSent = validPushTokens.length > 0 ? notifications.length : 0;
+        const visibleNotificationsSent = validPushTokens.length > 0
+            ? individualNotifications.length + (digestNotifications.length > 0 ? 1 : 0)
+            : 0;
         logger.debug('notify user about new releases completed', {
             userId,
             userHasNewReleases: true,

@@ -11,7 +11,7 @@ import {
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
-import { fetchAllReleasesForArtist } from './releaseQueries.js';
+import { getArtistReleaseScan } from './artistReleaseScanCache.js';
 
 type ArtistProcessResult = {
     deletedReleaseIds: string[];
@@ -19,7 +19,7 @@ type ArtistProcessResult = {
 };
 
 const getArtistReleasesForProcessing = async (artistId: string): Promise<Release[]> => {
-    return await fetchAllReleasesForArtist(artistId, true);
+    return await getArtistReleaseScan(artistId);
 };
 
 const processSingleArtist = async (
