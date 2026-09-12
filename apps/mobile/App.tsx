@@ -8,6 +8,7 @@ import { AppNavigator } from './src/navigation/AppNavigator';
 import { linking } from './src/navigation/linking';
 import { navigationRef } from './src/navigation/navigationRef';
 import { AppProviders } from './src/providers/AppProviders';
+import OfflineBanner from './src/components/OfflineBanner';
 import { initErrorMonitoring, wrapWithErrorMonitoring } from './src/services/monitoring/sentry';
 import { theme } from './src/styles/theme';
 
@@ -24,6 +25,7 @@ const AppContent = () => {
         translucent={false}
       />
       <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: appBackgroundColor }}>
+        <OfflineBanner />
         <AppNavigator />
       </SafeAreaView>
     </NavigationContainer>
