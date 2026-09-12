@@ -15,6 +15,9 @@ export type ArtistWirePresenters = {
         result: NonNullable<Awaited<ReturnType<ArtistUseCases['getArtistDetails']>>>,
     ) => unknown;
     searchArtists: (result: Awaited<ReturnType<ArtistUseCases['searchArtists']>>) => unknown;
+    searchReleaseGroups: (
+        result: Awaited<ReturnType<ArtistUseCases['searchReleaseGroups']>>,
+    ) => unknown;
 };
 
 /** v1 exact old contract: task ids always present, no immediate maps. */
@@ -32,6 +35,10 @@ export const artistPresentersV1: ArtistWirePresenters = {
         count: result.count,
         profileImageTaskId: result.profileImageTaskId,
     }),
+    searchReleaseGroups: (result) => ({
+        releaseGroups: result.releaseGroups,
+        count: result.count,
+    }),
 };
 
 /** v2: full cache-first response with immediate maps and nullable task ids. */
@@ -39,6 +46,7 @@ export const artistPresentersV2: ArtistWirePresenters = {
     getFollowing: (result) => result,
     getArtistDetails: (result) => result,
     searchArtists: (result) => result,
+    searchReleaseGroups: (result) => result,
 };
 
 export const createArtistHandlers = (
@@ -73,6 +81,21 @@ export const createArtistHandlers = (
             res.status(200).send(
                 presenters.searchArtists(
                     await artistUseCases.searchArtists(userId, query, offset, limit),
+                ),
+            );
+        },
+    );
+
+    const searchReleaseGroupsHandler = authenticatedHandler(
+        '/searchReleaseGroups',
+        async ({ req, res, userId }) => {
+            const query = requireString(req.body, 'query');
+            const limit = optionalIntegerInRange(req.body, 'limit', 25, 1, 100);
+            const offset = optionalNonNegativeInteger(req.body, 'offset', 0);
+
+            res.status(200).send(
+                presenters.searchReleaseGroups(
+                    await artistUseCases.searchReleaseGroups(userId, query, offset, limit),
                 ),
             );
         },
@@ -115,6 +138,7 @@ export const createArtistHandlers = (
         getFollowingHandler,
         getArtistDetailsHandler,
         searchArtistsHandler,
+        searchReleaseGroupsHandler,
         followArtistHandler,
         unfollowArtistHandler,
         unfollowArtistsHandler,

@@ -665,6 +665,9 @@ describe('artist use cases', () => {
                             offset: 0,
                         };
                     },
+                    async searchReleaseGroups(_userId, _query, _offset, _limit) {
+                        return { releaseGroups: [], count: 0 };
+                    },
                 },
                 requestDeduper: fakeRequestDeduper,
             };
@@ -748,6 +751,9 @@ describe('artist use cases', () => {
                             offset: 0,
                         };
                     },
+                    async searchReleaseGroups(_userId, _query, _offset, _limit) {
+                        return { releaseGroups: [], count: 0 };
+                    },
                 },
                 requestDeduper: fakeRequestDeduper,
             };
@@ -829,6 +835,9 @@ describe('artist use cases', () => {
                             count: 2,
                             offset: 0,
                         };
+                    },
+                    async searchReleaseGroups(_userId, _query, _offset, _limit) {
+                        return { releaseGroups: [], count: 0 };
                     },
                 },
                 requestDeduper: fakeRequestDeduper,

@@ -1,7 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as Linking from 'expo-linking';
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Share, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
@@ -27,6 +28,21 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
         () => dedupeArtistCredits(release['artist-credit']),
         [release]
     );
+
+    const onShare = React.useCallback(() => {
+        const releaseTitle = nameWithDisambiguation(release.disambiguation, release.title);
+        const artistNames = dedupeArtistCredits(release['artist-credit'])
+            .map((artist) => artist.name)
+            .join(', ');
+        const link = Linking.createURL(`release/${release.id}`);
+
+        void Share.share({
+            message: `${releaseTitle}${artistNames ? ` by ${artistNames}` : ''} — ${link}`,
+            url: link,
+        }).catch(() => {
+            // User dismissed the sheet — nothing to do.
+        });
+    }, [release]);
 
     return (
         <View style={{ backgroundColor: styles.container.backgroundColor }}>
@@ -70,6 +86,17 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                 <SelectableText style={styles.releaseDate}>
                     Released {release.date_for_display}
                 </SelectableText>
+                <TouchableOpacity
+                    onPress={onShare}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Share ${nameWithDisambiguation(release.disambiguation, release.title)}`}
+                    style={shareStyles.shareButton}
+                >
+                    <MaterialIcons name="share" size={16} color="#81ddff" />
+                    <SelectableText style={shareStyles.shareText} selectable={false}>
+                        Share
+                    </SelectableText>
+                </TouchableOpacity>
                 <ExternalLinksGrid links={release.externalLinks} />
             </View>
         </View>
@@ -99,6 +126,27 @@ const chipStyles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         lineHeight: 18,
+    },
+});
+
+const shareStyles = StyleSheet.create({
+    shareButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: 'rgba(56, 189, 248, 0.52)',
+        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginBottom: 12,
+    },
+    shareText: {
+        color: '#81ddff',
+        fontSize: 14,
+        fontWeight: '600',
     },
 });
 

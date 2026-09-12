@@ -10,6 +10,7 @@ interface ReleaseGroupViewProps {
     releases: ReleaseGroupReleaseListItem[];
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
+    isLoadingReleases: boolean;
     onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
 }
 
@@ -19,13 +20,14 @@ const ReleaseGroupView = ({
     releases,
     releaseGroupReleaseCovers,
     pendingReleaseCoverIds,
+    isLoadingReleases,
     onReleasePressed
 }: ReleaseGroupViewProps) => {
     const navigation = useNavigation<ReleaseGroupNavigationProp>();
     const [isTransitionReady, setIsTransitionReady] = React.useState(false);
     const { isWaitingForContent, onContentReady } = useContentReady(
         false,
-        releases.length > 0
+        releases.length > 0 || !isLoadingReleases
     );
     useGlobalSpinner(isWaitingForContent || !isTransitionReady);
 

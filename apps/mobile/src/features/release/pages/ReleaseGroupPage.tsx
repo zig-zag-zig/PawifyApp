@@ -10,6 +10,7 @@ const ReleaseGroupPage = () => {
             releases={releaseGroupPage.state.releases}
             releaseGroupReleaseCovers={releaseGroupPage.state.releaseGroupReleaseCovers}
             pendingReleaseCoverIds={releaseGroupPage.state.pendingReleaseCoverIds}
+            isLoadingReleases={releaseGroupPage.state.isLoadingReleases}
             onReleasePressed={releaseGroupPage.onReleasePressed}
         />
     );

@@ -18,6 +18,7 @@ import { getArtistKnownReleaseIds } from '../../../services/musicbrainz/cachedRe
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
 import { searchForArtist } from '../../../services/musicbrainz/artistSearch.js';
+import { searchReleaseGroups } from '../../../services/musicbrainz/releaseGroupSearch.js';
 import type { ArtistUseCaseDependencies } from '../ports.js';
 
 const logger = createLogger('features.artists.dependencies');
@@ -67,6 +68,8 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
     artistSearchGateway: {
         searchArtists: async (userId, query, offset, limit) =>
             await searchForArtist(userId, query, offset, limit),
+        searchReleaseGroups: async (userId, query, offset, limit) =>
+            await searchReleaseGroups(userId, query, offset, limit),
     },
     followingNotifier: {
         notifyFollowingChanged: async (userId, sourcePushToken) => {
