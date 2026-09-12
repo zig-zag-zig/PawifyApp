@@ -3,6 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useApiClient } from '../../../hooks/useApiClient';
 import type {
     SearchArtistsResponse,
+    SearchReleaseGroupsResponse,
 } from '../../../types/apiTypes';
 
 export function useSearchApi() {
@@ -13,6 +14,10 @@ export function useSearchApi() {
         return {
             searchArtists: async (query: string, limit: number, offset = 0) =>
                 await apiClient.request<SearchArtistsResponse>('searchArtists', {
+                    body: { query, offset, limit },
+                }),
+            searchReleaseGroups: async (query: string, limit: number, offset = 0) =>
+                await apiClient.request<SearchReleaseGroupsResponse>('searchReleaseGroups', {
                     body: { query, offset, limit },
                 }),
             waitForTaskResultById: apiClient.waitForTaskResultById,

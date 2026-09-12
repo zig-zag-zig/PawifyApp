@@ -1,5 +1,6 @@
 import type {
   Artist,
+  ArtistCredit,
   ArtistMinimal,
   ArtistReleaseGroup,
   NewRelease,
@@ -18,6 +19,19 @@ export interface ArtistDetailsResponse {
   artist: Artist;
   profileImageTaskId: string | null;
   profileImages: Record<string, string | null>;
+}
+
+export interface ReleaseGroupSearchResultItem {
+  id: string;
+  title: string;
+  'primary-type': string | null;
+  'first-release-date': string | null;
+  'artist-credit': ArtistCredit[];
+}
+
+export interface SearchReleaseGroupsResponse {
+  releaseGroups: ReleaseGroupSearchResultItem[];
+  count: number;
 }
 
 export interface SearchArtistsResponse {

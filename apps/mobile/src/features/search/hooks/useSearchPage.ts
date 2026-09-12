@@ -9,6 +9,7 @@ import { extractArtistProfileImages } from '../../../utils/taskResultMaps';
 import { appendUniqueArtists } from '../domain/deduplicateArtists';
 import { ArtistNavigationProp } from '../../../types/navigation';
 import { useSearchApi } from '../api/searchApi';
+import { addSearchHistoryEntry } from '../../../services/searchHistoryStorage';
 import type { SearchPageController, SearchPageUiState } from '../model/types';
 import {
     createInitialSearchState,
@@ -352,6 +353,11 @@ export function useSearchPage(): SearchPageController {
         state: uiState,
         onQueryChanged: (query: string) => dispatch({ type: 'queryChanged', query }),
         onSubmitSearch: async (query?: string) => {
+            const submitted = (query ?? state.query).trim();
+            if (submitted) {
+                void addSearchHistoryEntry(submitted, 'artists');
+            }
+
             await runSearch(false, query);
         },
         onLoadMore: async () => {
