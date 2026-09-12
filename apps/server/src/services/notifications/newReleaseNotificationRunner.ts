@@ -9,6 +9,7 @@ import {
 import { getNewReleases } from '../musicbrainz/newReleaseDetection.js';
 import { getValidPushTokens, sendPushNotificationToTokens } from './pushNotificationDelivery.js';
 import { notificationEvents } from './notificationEvents.js';
+import { cacheConfig } from '../../config/runtimeConfig.js';
 
 const logger = createLogger('services.notifications');
 const newReleaseNotificationUserConcurrency = 4;
@@ -19,7 +20,7 @@ const userVisibleNotificationConcurrency = 4;
  * more new releases than this, the remainder are collapsed into a single
  * digest push so a busy drop day cannot spam the device.
  */
-const maxIndividualReleaseNotifications = 3;
+const maxIndividualReleaseNotifications = cacheConfig.maxIndividualReleaseNotifications;
 
 type NotificationDelivery = {
     visibleNotificationsSent: number;

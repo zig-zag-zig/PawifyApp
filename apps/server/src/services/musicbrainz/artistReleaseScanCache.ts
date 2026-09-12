@@ -34,21 +34,37 @@ export const getArtistReleaseScan = async (
     try {
         const cached = await getCachedData<Release[]>(cacheKey);
         if (cached) {
+            logger.debug('artist release scan cache hit', {
+                artistId,
+                releaseCount: cached.length,
+            });
             return cached;
         }
+        logger.debug('artist release scan cache miss', { artistId });
     } catch (error) {
         // A cache outage must never break the notification scan — fall through
         // to the direct fetch exactly as before this cache existed.
-        logger.warn('artist release scan cache read failed', { artistId, error });
+        logger.warn('artist release scan cache read failed; falling back to MusicBrainz', {
+            artistId,
+            error,
+        });
     }
 
     const releases = await fetchAllReleasesForArtist(artistId, false);
+    logger.debug('artist release scan fetched from MusicBrainz', {
+        artistId,
+        releaseCount: releases.length,
+    });
 
     try {
         await replaceCachedData(cacheKey, releases, ttl);
     } catch (error) {
         // Cache failures must never break the notification scan.
-        logger.warn('artist release scan cache write failed', { artistId, error });
+        logger.warn('artist release scan cache write failed', {
+            artistId,
+            releaseCount: releases.length,
+            error,
+        });
     }
 
     return releases;
