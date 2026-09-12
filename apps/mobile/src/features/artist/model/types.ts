@@ -32,6 +32,7 @@ export interface ArtistRelationshipBuckets {
     memberOfGroups: MemberRelationship[];
     subgroupOf: MemberRelationship[];
     subgroups: MemberRelationship[];
+    related: MemberRelationship[];
 }
 
 export interface MemberRelationship {
@@ -39,6 +40,8 @@ export interface MemberRelationship {
     name: string;
     begin: string | null;
     end: string | null;
+    /** Optional relation descriptor shown after the name (e.g. "Remixer"). */
+    note?: string | null;
 }
 
 export interface ArtistRelationshipGroup {

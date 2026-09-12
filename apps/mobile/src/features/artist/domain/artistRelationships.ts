@@ -14,6 +14,38 @@ function mapMember(member: Member): MemberRelationship {
     };
 }
 
+/** Human-readable labels for the relation types the server surfaces. */
+const RELATED_ARTIST_LABELS: Record<string, string> = {
+    'collaboration': 'Collaboration',
+    'remixer': 'Remixer',
+    'producer': 'Producer',
+    'instrumental supporting musician': 'Supporting musician',
+    'vocal supporting musician': 'Supporting musician',
+    'supporting musician': 'Supporting musician',
+    'conductor': 'Conductor',
+    'DJ-mix': 'DJ mix',
+    'samples from artist': 'Sampled artist',
+    'tribute': 'Tribute',
+    'is person': 'Real name',
+    'parent': 'Parent',
+    'sibling': 'Sibling',
+    'married': 'Married to',
+    'named after': 'Named after',
+    'teacher': 'Teacher',
+    'student': 'Student',
+    'involved with': 'Involved with',
+};
+
+function mapRelatedArtist(relation: NonNullable<Artist['relatedArtists']>[number]): MemberRelationship {
+    return {
+        id: relation.id,
+        name: relation.name,
+        begin: null,
+        end: null,
+        note: RELATED_ARTIST_LABELS[relation.type] ?? null,
+    };
+}
+
 export function getArtistRelationshipBuckets(artist: Artist): ArtistRelationshipBuckets {
     const memberIds = new Set<string>();
     const groupIds = new Set<string>();
@@ -24,7 +56,8 @@ export function getArtistRelationshipBuckets(artist: Artist): ArtistRelationship
         groupMembers: [],
         memberOfGroups: [],
         subgroupOf: [],
-        subgroups: []
+        subgroups: [],
+        related: []
     };
 
     artist.members.forEach(member => {
@@ -60,6 +93,15 @@ export function getArtistRelationshipBuckets(artist: Artist): ArtistRelationship
         }
     });
 
+    const relatedIds = new Set<string>();
+    (artist.relatedArtists ?? []).forEach(relation => {
+        if (relatedIds.has(relation.id)) {
+            return;
+        }
+        relatedIds.add(relation.id);
+        buckets.related.push(mapRelatedArtist(relation));
+    });
+
     return buckets;
 }
 
@@ -74,6 +116,7 @@ export function buildArtistRelationshipGroups(
         { title: 'Members', data: relationships.groupMembers },
         { title: 'Member Of', data: relationships.memberOfGroups },
         { title: 'Subgroups', data: relationships.subgroups },
-        { title: 'Parent Groups', data: relationships.subgroupOf }
+        { title: 'Parent Groups', data: relationships.subgroupOf },
+        { title: 'Related Artists', data: relationships.related }
     ].filter(group => group.data.length > 0);
 }

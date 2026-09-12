@@ -113,6 +113,10 @@ export interface Artist extends ArtistMinimal {
   disambiguation: string | null;
   aliases: { name: string }[];
   members: Member[];
+  /** Non-membership artist relations (collaborations, remixes, production,
+   * family, side-projects) used for artist discovery. May be absent in
+   * responses/caches written before this field existed. */
+  relatedArtists?: ArtistRelation[];
   externalLinks: ExternalLink[];
   lifeSpan: {
     begin: string | null;
@@ -132,6 +136,15 @@ export interface Member {
   artistType: "Person" | "Group";
   type: "member of band" | "subgroup";
   direction: "forward" | "backward"
+}
+
+export interface ArtistRelation {
+  id: string;
+  name: string;
+  /** Raw MusicBrainz artist-artist relation type (e.g. "remixer"). */
+  type: string;
+  direction: "forward" | "backward";
+  artistType: "Person" | "Group";
 }
 
 
