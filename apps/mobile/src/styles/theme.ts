@@ -23,6 +23,7 @@ export const theme = {
       label: '#E2E8F0',
       fallbackIcon: '#CBD5E1',
       overflowToggle: '#BFDBFE',
+      accent: '#38BDF8',
     },
   },
   tabBar: {

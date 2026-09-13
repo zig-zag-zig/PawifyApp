@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View, type LayoutChangeEvent } from 'react-native';
-import type { ExternalLink } from '@pawify/shared';
+import type { ExternalLink, ExternalLinkService } from '@pawify/shared';
 import { openExternalUrl } from '../services/externalNavigation';
 import { theme } from '../styles/theme';
 import { ExternalLinkIcon } from './externalLinks/ExternalLinkIcon';
@@ -15,13 +15,18 @@ import {
     getExternalLinkColor,
     getExternalLinkIconConfig,
     getLinkKey,
+    groupLinksBySection,
     normalizeLinks,
-    splitLinks,
+    type ExternalLinkSectionKey,
     type RankedExternalLink,
 } from './externalLinks/externalLinkRanking';
 
 interface ExternalLinksGridProps {
     links?: ExternalLink[];
+    /** Preferred streaming service, pulled to the front of the "Listen on" section. */
+    preferredService?: ExternalLinkService | null;
+    /** Called on long-press of a streaming tile to set the preferred service. */
+    onPreferredServiceChange?: (service: ExternalLinkService) => void;
 }
 
 interface AutoScrollingLinkLabelProps {
@@ -177,8 +182,14 @@ const AutoScrollingLinkLabel = ({ compact, color, label }: AutoScrollingLinkLabe
     );
 };
 
-const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
-    const [showOverflowLinks, setShowOverflowLinks] = useState(false);
+const ExternalLinksGrid = ({
+    links,
+    preferredService = null,
+    onPreferredServiceChange,
+}: ExternalLinksGridProps) => {
+    const [expandedSections, setExpandedSections] = useState<Set<ExternalLinkSectionKey>>(
+        () => new Set(),
+    );
     const [gridWidth, setGridWidth] = useState(0);
 
     const openingUrlRef = useRef<string | null>(null);
@@ -187,19 +198,28 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
         () => normalizeLinks(links),
         [links]
     );
+    const sections = useMemo(
+        () => groupLinksBySection(normalizedLinks, preferredService),
+        [normalizedLinks, preferredService]
+    );
     const columnCount = useMemo(
         () => getColumnCount(gridWidth),
         [gridWidth]
     );
-    const collapsedCapacity = columnCount * 2;
-    const shouldCollapseLinks = normalizedLinks.length > collapsedCapacity;
-    const visibleLinkLimit = shouldCollapseLinks
-        ? Math.max(1, collapsedCapacity - 1)
-        : normalizedLinks.length;
-    const { visibleLinks, overflowLinks } = useMemo(
-        () => splitLinks(normalizedLinks, visibleLinkLimit),
-        [normalizedLinks, visibleLinkLimit]
-    );
+    // Two rows per section before the chevron takes over.
+    const sectionCapacity = Math.max(1, columnCount * 2);
+
+    const toggleSection = useCallback((key: ExternalLinkSectionKey) => {
+        setExpandedSections(previous => {
+            const next = new Set(previous);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    }, []);
 
     const handleGridLayout = useCallback((event: LayoutChangeEvent) => {
         const nextWidth = event.nativeEvent.layout.width;
@@ -232,23 +252,41 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
             });
     }, []);
 
-    if (visibleLinks.length === 0) {
+    if (sections.length === 0) {
         return null;
     }
 
-    const { border: borderColor, background: backgroundColor, mutedBackground: mutedBackgroundColor, label: labelColor, fallbackIcon: fallbackColor, overflowToggle: overflowButtonTextColor } = theme.colors.externalLinks;
+    const { border: borderColor, background: backgroundColor, mutedBackground: mutedBackgroundColor, label: labelColor, fallbackIcon: fallbackColor, overflowToggle: overflowButtonTextColor, accent: accentColor } = theme.colors.externalLinks;
 
-    const renderLinkButton = (link: RankedExternalLink, compact = false) => {
+    const renderLinkButton = (
+        link: RankedExternalLink,
+        compact = false,
+        /** Only streaming tiles can be chosen as the preferred service. */
+        isStreaming = false,
+    ) => {
         const linkKey = getLinkKey(link);
         const iconConfig = getExternalLinkIconConfig(link);
         const iconColor = getExternalLinkColor(link, fallbackColor);
+        const isPreferred =
+            isStreaming && preferredService !== null && link.resolvedService === preferredService;
+        const canSetPreferred =
+            isStreaming && onPreferredServiceChange !== undefined && !compact;
 
         return (
             <Pressable
                 key={linkKey}
                 onPress={() => openExternalLink(link)}
+                onLongPress={
+                    canSetPreferred && !isPreferred
+                        ? () => onPreferredServiceChange(link.resolvedService)
+                        : undefined
+                }
                 accessibilityRole="link"
-                accessibilityLabel={`Open ${link.displayLabel}`}
+                accessibilityLabel={
+                    canSetPreferred
+                        ? `Open ${link.displayLabel}. Long-press to make it your preferred service.`
+                        : `Open ${link.displayLabel}`
+                }
                 style={[
                     styles.linkButton,
                     compact && styles.compactLinkButton,
@@ -256,6 +294,7 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
                         backgroundColor: compact ? mutedBackgroundColor : backgroundColor,
                         borderColor,
                     },
+                    isPreferred && [styles.preferredLinkButton, { borderColor: accentColor }],
                 ]}
             >
                 <View style={styles.iconBox}>
@@ -271,19 +310,19 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
         );
     };
 
-    const renderOverflowToggle = () => (
+    const renderOverflowToggle = (key: ExternalLinkSectionKey, expanded: boolean, count: number) => (
         <Pressable
-            key="external-links-overflow-toggle"
-            onPress={() => setShowOverflowLinks(value => !value)}
+            key={`external-links-overflow-toggle-${key}`}
+            onPress={() => toggleSection(key)}
             accessibilityRole="button"
-            accessibilityLabel={showOverflowLinks ? 'Hide additional links' : `Show ${overflowLinks.length} additional links`}
-            accessibilityState={{ expanded: showOverflowLinks }}
+            accessibilityLabel={expanded ? 'Hide additional links' : `Show ${count} additional links`}
+            accessibilityState={{ expanded }}
             style={[
                 styles.moreChip,
             ]}
         >
             <MaterialCommunityIcons
-                name={showOverflowLinks ? 'chevron-up' : 'chevron-down'}
+                name={expanded ? 'chevron-up' : 'chevron-down'}
                 size={24}
                 color={overflowButtonTextColor}
             />
@@ -311,25 +350,46 @@ const ExternalLinksGrid = ({ links }: ExternalLinksGridProps) => {
         })
     );
 
-    const collapsedItems = [
-        ...visibleLinks.map(link => renderLinkButton(link)),
-        ...(overflowLinks.length > 0 ? [renderOverflowToggle()] : []),
-    ];
-
     return (
-        <View style={styles.container}>
-            <View style={styles.grid} onLayout={handleGridLayout}>
-                {renderRows(collapsedItems, 'external-links-visible')}
-            </View>
+        <View style={styles.container} onLayout={handleGridLayout}>
+            {sections.map(section => {
+                const shouldCollapse = section.links.length > sectionCapacity;
+                const expanded = expandedSections.has(section.key);
+                const collapsedCount = Math.max(1, sectionCapacity - 1);
+                const visible = shouldCollapse
+                    ? section.links.slice(0, collapsedCount)
+                    : section.links;
+                const overflow = shouldCollapse
+                    ? section.links.slice(collapsedCount)
+                    : [];
 
-            {showOverflowLinks && (
-                <View style={[styles.grid, styles.overflowGrid]}>
-                    {renderRows(
-                        overflowLinks.map(link => renderLinkButton(link, true)),
-                        'external-links-overflow'
-                    )}
-                </View>
-            )}
+                const isStreamingSection = section.key === 'listen';
+                const visibleItems = [
+                    ...visible.map(link => renderLinkButton(link, false, isStreamingSection)),
+                    ...(overflow.length > 0
+                        ? [renderOverflowToggle(section.key, expanded, overflow.length)]
+                        : []),
+                ];
+
+                return (
+                    <View key={section.key} style={styles.section}>
+                        <Text style={styles.sectionTitle}>{section.title}</Text>
+                        <View style={styles.grid}>
+                            {renderRows(visibleItems, `external-links-${section.key}`)}
+                        </View>
+
+                        {expanded && overflow.length > 0 && (
+                            <View style={[styles.grid, styles.overflowGrid]}>
+                                {renderRows(
+                                    overflow.map(link =>
+                                        renderLinkButton(link, true, isStreamingSection)),
+                                    `external-links-${section.key}-overflow`
+                                )}
+                            </View>
+                        )}
+                    </View>
+                );
+            })}
         </View>
     );
 };

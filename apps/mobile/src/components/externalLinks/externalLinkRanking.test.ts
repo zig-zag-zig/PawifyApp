@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExternalLink, ExternalLinkCategory, ExternalLinkService } from '@pawify/shared';
-import { normalizeLinks, splitLinks } from './externalLinkRanking';
+import { groupLinksBySection, normalizeLinks } from './externalLinkRanking';
 
 function externalLink(
     service: ExternalLinkService,
@@ -34,51 +34,63 @@ describe('external link ranking', () => {
         });
     });
 
-    describe('splitLinks', () => {
-        it('returns empty visible and overflow for empty links', () => {
-            const { visibleLinks, overflowLinks } = splitLinks([], 7);
-            expect(visibleLinks).toEqual([]);
-            expect(overflowLinks).toEqual([]);
+    describe('groupLinksBySection', () => {
+        const servicesOf = (links: { resolvedService: string }[]) =>
+            links.map(link => link.resolvedService);
+
+        it('returns no sections for empty input', () => {
+            expect(groupLinksBySection([])).toEqual([]);
         });
 
-        it('puts all links in visible when fewer than max', () => {
-            const links = normalizeLinks([
-                externalLink('spotify', 'streaming'),
-                externalLink('official', 'official'),
-            ]);
-            const { visibleLinks, overflowLinks } = splitLinks(links, 5);
-            expect(visibleLinks).toHaveLength(2);
-            expect(overflowLinks).toHaveLength(0);
+        it('splits streaming, profile and other links into ordered sections', () => {
+            const sections = groupLinksBySection(
+                normalizeLinks([
+                    externalLink('discogs', 'database'),
+                    externalLink('spotify', 'streaming'),
+                    externalLink('instagram', 'social'),
+                    externalLink('appleMusic', 'streaming'),
+                ]),
+            );
+
+            expect(sections.map(section => section.key)).toEqual(['listen', 'follow', 'more']);
+            expect(sections.map(section => section.title)).toEqual(['Listen on', 'Follow', 'More']);
+            expect(servicesOf(sections[0].links)).toEqual(['spotify', 'appleMusic']);
+            expect(servicesOf(sections[1].links)).toEqual(['instagram']);
+            expect(servicesOf(sections[2].links)).toEqual(['discogs']);
         });
 
-        it('fills the collapsed grid after featured links so the chevron can end the second row', () => {
-            const links = normalizeLinks([
-                externalLink('spotify', 'streaming'),
-                externalLink('tidal', 'streaming'),
-                externalLink('deezer', 'streaming'),
-                externalLink('official', 'official'),
-                externalLink('x', 'social'),
-                externalLink('discogs', 'database'),
-                externalLink('allMusic', 'database'),
-                externalLink('rateYourMusic', 'database'),
-                externalLink('wikidata', 'database'),
-            ]);
+        it('omits empty sections', () => {
+            const sections = groupLinksBySection(
+                normalizeLinks([externalLink('spotify', 'streaming')]),
+            );
 
-            const { visibleLinks, overflowLinks } = splitLinks(links, 7);
+            expect(sections).toHaveLength(1);
+            expect(sections[0].key).toBe('listen');
+        });
 
-            expect(visibleLinks.map(link => link.resolvedService)).toEqual([
-                'spotify',
-                'tidal',
+        it('moves the preferred streaming service to the front of the listen section', () => {
+            const sections = groupLinksBySection(
+                normalizeLinks([
+                    externalLink('spotify', 'streaming'),
+                    externalLink('appleMusic', 'streaming'),
+                    externalLink('deezer', 'streaming'),
+                ]),
                 'deezer',
-                'official',
-                'x',
-                'discogs',
-                'allMusic',
-            ]);
-            expect(overflowLinks.map(link => link.resolvedService)).toEqual([
-                'rateYourMusic',
-                'wikidata',
-            ]);
+            );
+
+            expect(servicesOf(sections[0].links)).toEqual(['deezer', 'spotify', 'appleMusic']);
+        });
+
+        it('keeps rank order when no preference is set', () => {
+            const sections = groupLinksBySection(
+                normalizeLinks([
+                    externalLink('deezer', 'streaming'),
+                    externalLink('spotify', 'streaming'),
+                ]),
+                null,
+            );
+
+            expect(servicesOf(sections[0].links)).toEqual(['spotify', 'deezer']);
         });
     });
 });

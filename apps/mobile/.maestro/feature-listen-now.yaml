@@ -1,9 +1,10 @@
 appId: vip.chi_chi.pawify
 ---
-# Covers A4 + A8 share chip: the release page shows the "Listen on" pill when a
-# streaming link exists, and the Share chip. Tapping Listen opens an external
-# URL (which Maestro leaves to the OS), so we assert the button + the
-# long-press picker and Cancel, not the external app.
+# Covers A4 + A8 share chip: streaming links are grouped under a "Listen on"
+# section header (with the other link categories in their own sections), and
+# the release header shows the Share chip. Tapping a tile opens an external
+# URL (which Maestro leaves to the OS), so we assert the grouping, not the
+# external app.
 # Fixture-backed: the Midnight Signals release carries a Spotify url-rel.
 
 - launchApp:
@@ -46,14 +47,9 @@ appId: vip.chi_chi.pawify
     visible: "Signal Drift"
     timeout: 30000
 
-# --- A4: Listen Now pill + long-press service picker ---
-- assertVisible: "Listen on Spotify"
-- longPressOn: "Listen on Spotify"
-- extendedWaitUntil:
-    visible: "Listen on…"
-    timeout: 10000
+# --- A4: streaming services grouped under a "Listen on" section ---
+- assertVisible: "Listen on"
 - assertVisible: "Spotify"
-- tapOn: "Cancel"
 
 # --- A8: share chip on the release header ---
 - assertVisible: "Share"

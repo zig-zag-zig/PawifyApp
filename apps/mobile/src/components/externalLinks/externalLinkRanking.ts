@@ -9,7 +9,6 @@ import {
     SERVICE_RANK,
     SERVICE_HOSTS,
     SERVICE_HOST_MATCH_ORDER,
-    MAX_FEATURED_LINKS,
     type ExternalLinkIconConfig,
 } from './externalLinkConstants';
 
@@ -89,16 +88,6 @@ const getResolvedService = (link: ExternalLink, normalizedUrl: string): External
     if (labelKey === 'tidal') return 'tidal';
 
     return 'other';
-};
-
-const isFeaturedCandidate = (link: RankedExternalLink): boolean => {
-    return STREAMING_SERVICES.has(link.resolvedService) ||
-        PERSONAL_SERVICES.has(link.resolvedService) ||
-        STREAMING_SERVICES.has(link.icon) ||
-        PERSONAL_SERVICES.has(link.icon) ||
-        link.category === 'streaming' ||
-        link.category === 'official' ||
-        link.category === 'social';
 };
 
 const getLinkRank = (link: ExternalLink, resolvedService: ExternalLinkService): number => {
@@ -183,57 +172,71 @@ export const getLinkKey = (link: RankedExternalLink): string => {
     return `${link.resolvedService}:${link.normalizedUrl}`;
 };
 
-export const splitLinks = (links: RankedExternalLink[], maxVisibleLinks = MAX_FEATURED_LINKS): {
-    visibleLinks: RankedExternalLink[];
-    overflowLinks: RankedExternalLink[];
-} => {
-    const visibleLinkLimit = Math.max(0, Math.min(maxVisibleLinks, links.length));
-    const featuredServiceKeys = new Set<ExternalLinkService>();
-    const featuredLinks: RankedExternalLink[] = [];
+export type ExternalLinkSectionKey = 'listen' | 'follow' | 'more';
+
+export interface ExternalLinkSection {
+    key: ExternalLinkSectionKey;
+    title: string;
+    links: RankedExternalLink[];
+}
+
+export const EXTERNAL_LINK_SECTION_TITLES: Record<ExternalLinkSectionKey, string> = {
+    listen: 'Listen on',
+    follow: 'Follow',
+    more: 'More',
+};
+
+const SECTION_ORDER: ExternalLinkSectionKey[] = ['listen', 'follow', 'more'];
+
+const getSectionKey = (link: RankedExternalLink): ExternalLinkSectionKey => {
+    if (STREAMING_SERVICES.has(link.resolvedService) || STREAMING_SERVICES.has(link.icon)) {
+        return 'listen';
+    }
+
+    if (
+        link.resolvedService === 'official' ||
+        PERSONAL_SERVICES.has(link.resolvedService) ||
+        PERSONAL_SERVICES.has(link.icon)
+    ) {
+        return 'follow';
+    }
+
+    return 'more';
+};
+
+/**
+ * Splits ranked links into display sections: streaming services first, then
+ * artist/profile links, then everything else. The caller's preferred streaming
+ * service (if any) is pulled to the front of the "Listen on" section so the
+ * user's service is the first tile — this replaces the old single-service
+ * "Listen on X" pill, which duplicated the grid below it.
+ */
+export const groupLinksBySection = (
+    links: RankedExternalLink[],
+    preferredService: ExternalLinkService | null = null,
+): ExternalLinkSection[] => {
+    const buckets: Record<ExternalLinkSectionKey, RankedExternalLink[]> = {
+        listen: [],
+        follow: [],
+        more: [],
+    };
 
     links.forEach(link => {
-        if (featuredLinks.length >= visibleLinkLimit || !isFeaturedCandidate(link)) {
-            return;
-        }
-
-        if (featuredServiceKeys.has(link.resolvedService)) {
-            return;
-        }
-
-        featuredServiceKeys.add(link.resolvedService);
-        featuredLinks.push(link);
+        buckets[getSectionKey(link)].push(link);
     });
 
-    const visibleLinks = featuredLinks.length > 0
-        ? featuredLinks
-        : links.slice(0, visibleLinkLimit);
-
-    if (visibleLinks.length < visibleLinkLimit) {
-        const visibleUrlKeys = new Set(visibleLinks.map(link => link.normalizedUrl.toLowerCase()));
-
-        links.forEach(link => {
-            if (visibleLinks.length >= visibleLinkLimit) {
-                return;
-            }
-
-            const urlKey = link.normalizedUrl.toLowerCase();
-
-            if (visibleUrlKeys.has(urlKey)) {
-                return;
-            }
-
-            visibleUrlKeys.add(urlKey);
-            visibleLinks.push(link);
+    if (preferredService !== null && buckets.listen.length > 1) {
+        // Stable sort keeps the existing rank order within each group.
+        buckets.listen = [...buckets.listen].sort((a, b) => {
+            const aPreferred = a.resolvedService === preferredService ? 0 : 1;
+            const bPreferred = b.resolvedService === preferredService ? 0 : 1;
+            return aPreferred - bPreferred;
         });
     }
 
-    const visibleUrlKeys = new Set(visibleLinks.map(link => link.normalizedUrl.toLowerCase()));
-    const overflowLinks = links.filter(link => !visibleUrlKeys.has(link.normalizedUrl.toLowerCase()));
-
-    return {
-        visibleLinks,
-        overflowLinks,
-    };
+    return SECTION_ORDER
+        .map(key => ({ key, title: EXTERNAL_LINK_SECTION_TITLES[key], links: buckets[key] }))
+        .filter(section => section.links.length > 0);
 };
 
 export const getExternalLinkIconConfig = (link: RankedExternalLink): ExternalLinkIconConfig => {

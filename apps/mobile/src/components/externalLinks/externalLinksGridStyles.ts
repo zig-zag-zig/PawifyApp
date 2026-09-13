@@ -13,6 +13,16 @@ export const styles = StyleSheet.create({
         alignSelf: 'stretch',
         overflow: 'visible',
     },
+    section: {
+        marginTop: 10,
+    },
+    sectionTitle: {
+        marginBottom: 8,
+        paddingHorizontal: EXTERNAL_LINK_GRID_HORIZONTAL_PADDING,
+        color: '#94A3B8',
+        fontSize: 13,
+        fontWeight: '700',
+    },
     grid: {
         gap: EXTERNAL_LINK_GRID_GAP,
         paddingHorizontal: EXTERNAL_LINK_GRID_HORIZONTAL_PADDING,
@@ -36,6 +46,9 @@ export const styles = StyleSheet.create({
         paddingVertical: 7,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    preferredLinkButton: {
+        borderWidth: 2,
     },
     compactLinkButton: {
         width: EXTERNAL_LINK_BUTTON_WIDTH,

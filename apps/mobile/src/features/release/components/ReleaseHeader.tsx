@@ -5,9 +5,12 @@ import React from 'react';
 import { Share, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
-import ListenNowButton from './ListenNowButton';
+import {
+    loadPreferredStreamingService,
+    savePreferredStreamingService,
+} from '../../../services/preferredStreamingService';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import type { ArtistCredit, Release } from '@pawify/shared';
+import type { ArtistCredit, ExternalLinkService, Release } from '@pawify/shared';
 import { nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 import { ArtistNavigationProp } from '../../../types/navigation';
@@ -29,6 +32,24 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
         () => dedupeArtistCredits(release['artist-credit']),
         [release]
     );
+    const [preferredService, setPreferredService] = React.useState<ExternalLinkService | null>(null);
+
+    React.useEffect(() => {
+        let isCancelled = false;
+        void loadPreferredStreamingService().then(service => {
+            if (!isCancelled) {
+                setPreferredService(service);
+            }
+        });
+        return () => {
+            isCancelled = true;
+        };
+    }, []);
+
+    const onPreferredServiceChange = React.useCallback((service: ExternalLinkService) => {
+        setPreferredService(service);
+        void savePreferredStreamingService(service);
+    }, []);
 
     const onShare = React.useCallback(() => {
         const releaseTitle = nameWithDisambiguation(release.disambiguation, release.title);
@@ -98,8 +119,11 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                         Share
                     </SelectableText>
                 </TouchableOpacity>
-                <ListenNowButton links={release.externalLinks} />
-                <ExternalLinksGrid links={release.externalLinks} />
+                <ExternalLinksGrid
+                    links={release.externalLinks}
+                    preferredService={preferredService}
+                    onPreferredServiceChange={onPreferredServiceChange}
+                />
             </View>
         </View>
     );
