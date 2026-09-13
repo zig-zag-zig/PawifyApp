@@ -65,9 +65,26 @@ describe('parseE2eReleaseNotificationUrl', () => {
     expect(parseE2eReleaseNotificationUrl('pawify://e2e/release-notification/extra')).toBeNull();
   });
 
-  it('rejects urls without a release id or with a blank one', () => {
-    expect(parseE2eReleaseNotificationUrl('pawify://e2e/release-notification')).toBeNull();
-    expect(parseE2eReleaseNotificationUrl('pawify://e2e/release-notification?releaseId=%20%20')).toBeNull();
+  it('treats a blank release id as a digest trigger (no release to open)', () => {
+    expect(parseE2eReleaseNotificationUrl('pawify://e2e/release-notification')).toEqual({
+      title: 'New release',
+      body: '',
+    });
+    expect(parseE2eReleaseNotificationUrl('pawify://e2e/release-notification?releaseId=%20%20')).toEqual({
+      title: 'New release',
+      body: '',
+    });
+  });
+
+  it('parses a digest trigger without a release id', () => {
+    expect(
+      parseE2eReleaseNotificationUrl(
+        'pawify://e2e/release-notification?title=3%20more%20new%20releases;body=Midnight%20Signals%20%E2%80%94%20Aurora',
+      ),
+    ).toEqual({
+      title: '3 more new releases',
+      body: 'Midnight Signals — Aurora',
+    });
   });
 
   it('rejects null, non-link, and fragment-bearing-but-invalid urls', () => {
@@ -106,6 +123,25 @@ describe('postE2eReleaseNotification', () => {
       trigger: null,
     });
     expect(requestPermissionsMock).not.toHaveBeenCalled();
+  });
+
+  it('schedules the digest shape (no release id) for the overflow digest', async () => {
+    await expect(
+      postE2eReleaseNotification({
+        title: '3 more new releases from your artists',
+        body: 'Midnight Signals — Aurora Test Ensemble',
+      }),
+    ).resolves.toBe(true);
+
+    expect(scheduleMock).toHaveBeenCalledWith({
+      content: {
+        title: '3 more new releases from your artists',
+        body: 'Midnight Signals — Aurora Test Ensemble',
+        // No payload: the digest tap must fall back to the Releases tab.
+        data: { eventName: 'releases' },
+      },
+      trigger: null,
+    });
   });
 
   it('requests permission first when it is not already granted', async () => {
