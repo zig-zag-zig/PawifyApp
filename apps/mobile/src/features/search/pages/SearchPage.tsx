@@ -55,15 +55,25 @@ const SearchPage = () => {
         [scope, searchPage, releaseGroupSearch],
     );
 
+    const onQueryChanged = useCallback(
+        (query: string) => {
+            // The input is shared by both scopes, so both must drop results that
+            // no longer correspond to what is being typed.
+            searchPage.onQueryChanged(query);
+            releaseGroupSearch.onQueryChanged(query);
+        },
+        [releaseGroupSearch, searchPage],
+    );
+
     const onHistoryEntryPressed = useCallback(
         (entry: SearchHistoryEntry) => {
-            searchPage.onQueryChanged(entry.query);
+            onQueryChanged(entry.query);
             setScope(entry.scope);
             void (entry.scope === 'artists'
                 ? searchPage.onSubmitSearch(entry.query)
                 : releaseGroupSearch.onSubmitSearch(entry.query));
         },
-        [searchPage, releaseGroupSearch],
+        [onQueryChanged, releaseGroupSearch, searchPage],
     );
 
     const onClearHistory = useCallback(() => {
@@ -85,7 +95,7 @@ const SearchPage = () => {
             pendingReleaseGroupCoverIds={releaseGroupSearch.state.pendingCoverIds}
             isReleasesLoading={releaseGroupSearch.state.isLoading}
             canLoadMoreReleaseGroups={releaseGroupSearch.canLoadMore}
-            onQueryChanged={searchPage.onQueryChanged}
+            onQueryChanged={onQueryChanged}
             onScopeChanged={setScope}
             onSubmitSearch={onSubmitSearch}
             onLoadMoreArtists={searchPage.onLoadMore}

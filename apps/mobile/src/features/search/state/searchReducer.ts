@@ -30,12 +30,26 @@ export function createInitialSearchState(): SearchPageState {
 
 export function searchReducer(state: SearchPageState, action: SearchAction): SearchPageState {
     switch (action.type) {
-        case 'queryChanged':
+        case 'queryChanged': {
+            // Results belong to submittedQuery. As soon as the typed query
+            // diverges, the rendered results no longer correspond to what the
+            // user is typing, so drop them instead of showing a previous
+            // search's results under a new query.
+            const divergedFromResults = action.query.trim() !== state.submittedQuery;
+
             return {
                 ...state,
                 query: action.query,
                 shouldPreserveState: false,
+                ...(divergedFromResults
+                    ? {
+                        artists: [],
+                        offset: 0,
+                        allResultsFetched: false,
+                    }
+                    : {}),
             };
+        }
 
         case 'searchStarted':
             return {

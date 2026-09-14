@@ -340,6 +340,11 @@ export function useSearchPage(): SearchPageController {
         && !state.allResultsFetched
         && state.artists.length > 0;
 
+    const onQueryChanged = useCallback(
+        (query: string) => dispatch({ type: 'queryChanged', query }),
+        [],
+    );
+
     const uiState: SearchPageUiState = {
         query: state.query,
         artists: state.artists,
@@ -351,7 +356,7 @@ export function useSearchPage(): SearchPageController {
 
     return {
         state: uiState,
-        onQueryChanged: (query: string) => dispatch({ type: 'queryChanged', query }),
+        onQueryChanged,
         onSubmitSearch: async (query?: string) => {
             const submitted = (query ?? state.query).trim();
             if (submitted) {
