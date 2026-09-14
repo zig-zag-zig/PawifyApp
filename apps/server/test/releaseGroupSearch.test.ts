@@ -60,4 +60,49 @@ describe('release group search', () => {
             /invalid release-group search response/,
         );
     });
+
+    it('reports an upstream failure instead of blaming the payload', async () => {
+        // MusicBrainz answers 503 "busy" when it throttles. That must not be
+        // reported as a malformed response.
+        let attempts = 0;
+        installFetch(() => {
+            attempts += 1;
+            return new Response('busy', { status: 503 });
+        });
+
+        await assert.rejects(
+            searchReleaseGroups('user-1', 'test', 0, 10),
+            (error: unknown) =>
+                error instanceof Error &&
+                error.message === 'MusicBrainz release-group search failed',
+        );
+        assert.equal(attempts, 3, 'should retry the transient upstream failure');
+    });
+
+    it('includes the status for a non-retriable upstream rejection', async () => {
+        installFetch(() => new Response('bad request', { status: 400 }));
+
+        await assert.rejects(
+            searchReleaseGroups('user-1', 'test', 0, 10),
+            /MusicBrainz release-group search failed \(status 400\)/,
+        );
+    });
+
+    it('recovers when a retry after an upstream failure succeeds', async () => {
+        let attempts = 0;
+        installFetch(() => {
+            attempts += 1;
+            return attempts === 1
+                ? new Response('busy', { status: 503 })
+                : new Response(JSON.stringify({
+                    count: 1,
+                    'release-groups': [{ id: 'group-1', title: 'Album One' }],
+                }), { status: 200 });
+        });
+
+        const result = await searchReleaseGroups('user-1', 'test', 0, 10);
+
+        assert.equal(result.releaseGroups.length, 1);
+        assert.equal(attempts, 2);
+    });
 });

@@ -1,5 +1,6 @@
 import type { ArtistCredit } from '@pawify/shared';
-import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
+import { fetchMusicBrainzWithStatus } from '../musicApi/musicBrainzClient.js';
+import { isFetchFailureResult } from '../musicApi/types.js';
 import { isPlainObject } from '../../common/utils/objectGuards.js';
 
 export interface ReleaseGroupSearchResultItem {
@@ -85,9 +86,21 @@ const fetchReleaseGroupSearchResponse = async (
 
     for (let attempt = 1; attempt <= SEARCH_ATTEMPT_COUNT; attempt += 1) {
         try {
-            const response = await fetchMusicBrainz(
+            const response = await fetchMusicBrainzWithStatus(
                 `/release-group?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}&offset=${offset}`,
             );
+
+            if (isFetchFailureResult(response)) {
+                // Distinguish an upstream outage/rate-limit (MusicBrainz answers 503
+                // "busy" when throttling) from a malformed payload, so the logged
+                // cause and the client-visible failure reflect what actually happened.
+                throw new Error(
+                    `MusicBrainz release-group search failed${
+                        response.status === null ? '' : ` (status ${response.status})`
+                    }`,
+                );
+            }
+
             return parseMusicBrainzReleaseGroupSearchResponse(response);
         } catch (error) {
             lastError = error;
