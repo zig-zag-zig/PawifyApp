@@ -369,7 +369,15 @@ const maestroArgs = ['test', '--device', deviceId];
 if (process.env.MAESTRO_REINSTALL_DRIVER !== 'false') {
   maestroArgs.push('--reinstall-driver');
 }
-for (const name of ['E2E_EMAIL', 'E2E_MUSIC_EMAIL', 'E2E_NOTIFICATION_EMAIL']) {
+for (const name of [
+  'E2E_EMAIL',
+  'E2E_MUSIC_EMAIL',
+  'E2E_NOTIFICATION_EMAIL',
+  'E2E_FEATURE_SEARCH_EMAIL',
+  'E2E_FEATURE_RELATED_EMAIL',
+  'E2E_FEATURE_DEEPLINK_EMAIL',
+  'E2E_FEATURE_LISTEN_EMAIL',
+]) {
   if (process.env[name]) {
     maestroArgs.push(`--env=${name}=${process.env[name]}`);
   }

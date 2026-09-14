@@ -34,7 +34,7 @@ describe('linking config', () => {
         expect(screens.ResetPassword).toMatchObject({ path: 'reset-password/:tempToken' });
     });
 
-    it('does not deep-link ReleaseGroup (params carry data, not URLs)', () => {
-        expect(screens.ReleaseGroup).toBeUndefined();
+    it('deep-links ReleaseGroup by id (the page lazy-fetches its release list)', () => {
+        expect(screens.ReleaseGroup).toMatchObject({ path: 'release-group/:releaseGroupId' });
     });
 });

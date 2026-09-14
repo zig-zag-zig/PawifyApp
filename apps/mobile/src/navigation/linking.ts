@@ -25,8 +25,9 @@ export const linking = {
             Security: {
                 path: 'security/:actionType',
             },
-            // ReleaseGroup is intentionally NOT deep-linked: its route params
-            // carry a full releases array that cannot be expressed in a URL.
+            ReleaseGroup: {
+                path: 'release-group/:releaseGroupId',
+            },
             SignIn: 'sign-in',
             SignUp: 'sign-up',
             ForgotPassword: 'forgot-password',

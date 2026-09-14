@@ -1,5 +1,4 @@
 import { createLogger } from '../../common/logging/logger.js';
-import { nameWithDisambiguation } from '@pawify/shared';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
 import { getAllUsers } from '../firebase/userStore.js';
 import {
@@ -8,65 +7,25 @@ import {
 } from '../firebase/notificationRunLockStore.js';
 import { getNewReleases } from '../musicbrainz/newReleaseDetection.js';
 import { getValidPushTokens, sendPushNotificationToTokens } from './pushNotificationDelivery.js';
-import { notificationEvents } from './notificationEvents.js';
+import { buildReleaseNotifications } from './releaseNotificationContent.js';
+import { deliverReleaseNotifications } from './releaseNotificationDelivery.js';
+import { cacheConfig } from '../../config/runtimeConfig.js';
 
 const logger = createLogger('services.notifications');
 const newReleaseNotificationUserConcurrency = 4;
-const userVisibleNotificationConcurrency = 4;
+
+/**
+ * Visible pushes are sent one-per-release up to this count; when a scan finds
+ * more new releases than this, the remainder are collapsed into a single
+ * digest push so a busy drop day cannot spam the device.
+ */
+const maxIndividualReleaseNotifications = cacheConfig.maxIndividualReleaseNotifications;
 
 type NotificationDelivery = {
     visibleNotificationsSent: number;
     userHasNewReleases: boolean;
 };
 
-const buildReleaseNotifications = (
-    notificationsData: Awaited<ReturnType<typeof getNewReleases>>,
-) => {
-    const releaseMap = new Map<
-        string,
-        {
-            title: string;
-            artistNames: Set<string>;
-            disambiguation: string | null;
-            date_for_display: string;
-        }
-    >();
-
-    for (const release of notificationsData) {
-        const artistNames = Object.values(release.artists)
-            .map((name) => name.trim())
-            .filter(Boolean);
-
-        if (artistNames.length === 0) {
-            artistNames.push('Unknown Artist');
-        }
-
-        if (releaseMap.has(release.id)) {
-            const existingEntry = releaseMap.get(release.id)!;
-            artistNames.forEach((name) => existingEntry.artistNames.add(name));
-        } else {
-            releaseMap.set(release.id, {
-                title: release.title,
-                artistNames: new Set(artistNames),
-                disambiguation: release.disambiguation,
-                date_for_display: release.date_for_display,
-            });
-        }
-    }
-
-    return Array.from(releaseMap.entries()).map(
-        ([releaseId, { title, disambiguation, artistNames, date_for_display }]) => ({
-            body: `By ${Array.from(artistNames).join(', ')}\nReleased ${date_for_display}`,
-            title: nameWithDisambiguation(disambiguation, title),
-            // Lets the app deep-link to this release's page when the
-            // notification is tapped.
-            data: {
-                eventName: notificationEvents.releases,
-                payload: { releaseId },
-            },
-        }),
-    );
-};
 
 const notifyUserAboutNewReleases = async (userId: string): Promise<NotificationDelivery> => {
     try {
@@ -88,25 +47,13 @@ const notifyUserAboutNewReleases = async (userId: string): Promise<NotificationD
         const notifications = buildReleaseNotifications(notificationsData);
         const validPushTokens = await getValidPushTokens(userId);
 
-        if (validPushTokens.length > 0) {
-            await mapWithConcurrency(
-                notifications,
-                userVisibleNotificationConcurrency,
-                async (notification) => {
-                    await sendPushNotificationToTokens(userId, validPushTokens, notification);
-                },
-            );
-            await sendPushNotificationToTokens(
-                userId,
-                validPushTokens,
-                {
-                    eventName: notificationEvents.releases,
-                },
-                'data',
-            );
-        }
-
-        const visibleNotificationsSent = validPushTokens.length > 0 ? notifications.length : 0;
+        const { visibleNotificationsSent } = await deliverReleaseNotifications(notifications, {
+            maxIndividual: maxIndividualReleaseNotifications,
+            hasPushTokens: validPushTokens.length > 0,
+            send: async (options, mode) => {
+                await sendPushNotificationToTokens(userId, validPushTokens, options, mode);
+            },
+        });
         logger.debug('notify user about new releases completed', {
             userId,
             userHasNewReleases: true,

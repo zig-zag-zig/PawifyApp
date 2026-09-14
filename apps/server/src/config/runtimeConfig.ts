@@ -50,6 +50,14 @@ export const cacheConfig = {
     artistTtlHours: parsePositiveIntEnv(process.env.ARTIST_CACHE_TTL_HOURS, 24 * 61),
     transientArtistTtlHours: parsePositiveIntEnv(process.env.TRANSIENT_ARTIST_CACHE_TTL_HOURS, 24),
     releaseLyricsTtlHours: parsePositiveIntEnv(process.env.RELEASE_LYRICS_CACHE_TTL_HOURS, 24 * 14),
+    // New-release scan cache: short on purpose. It only exists to dedupe
+    // per-artist MusicBrainz fetches *within* one notification run (and across
+    // closely-spaced runs), so it must expire well before the next scan.
+    releaseScanTtlHours: parsePositiveIntEnv(process.env.RELEASE_SCAN_CACHE_TTL_HOURS, 2),
+    maxIndividualReleaseNotifications: parsePositiveIntEnv(
+        process.env.MAX_INDIVIDUAL_RELEASE_NOTIFICATIONS,
+        3,
+    ),
     artistMetadataRefreshTtlMs: parsePositiveIntEnv(
         process.env.ARTIST_METADATA_REFRESH_TTL_MS,
         1000 * 60 * 60 * 24 * 28,

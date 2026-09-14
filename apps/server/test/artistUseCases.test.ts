@@ -665,6 +665,9 @@ describe('artist use cases', () => {
                             offset: 0,
                         };
                     },
+                    async searchReleaseGroups(_userId, _query, _offset, _limit) {
+                        return { releaseGroups: [], count: 0 };
+                    },
                 },
                 requestDeduper: fakeRequestDeduper,
             };
@@ -748,6 +751,9 @@ describe('artist use cases', () => {
                             offset: 0,
                         };
                     },
+                    async searchReleaseGroups(_userId, _query, _offset, _limit) {
+                        return { releaseGroups: [], count: 0 };
+                    },
                 },
                 requestDeduper: fakeRequestDeduper,
             };
@@ -830,6 +836,9 @@ describe('artist use cases', () => {
                             offset: 0,
                         };
                     },
+                    async searchReleaseGroups(_userId, _query, _offset, _limit) {
+                        return { releaseGroups: [], count: 0 };
+                    },
                 },
                 requestDeduper: fakeRequestDeduper,
             };
@@ -843,6 +852,133 @@ describe('artist use cases', () => {
             assert.equal(plannedLookups.length, 2);
             assert.equal(plannedLookups[0]!.artistId, 'artist-1');
             assert.equal(plannedLookups[1]!.artistId, 'artist-2');
+        });
+    });
+
+    describe('searchReleaseGroups', () => {
+        const fakeRequestDeduper = {
+            async run<T>(_key: string, worker: () => Promise<T>): Promise<T> {
+                return worker();
+            },
+            invalidate(): void {},
+        };
+
+        const gatewayWith = (
+            releaseGroups: Array<{ id: string; title: string }>,
+            count: number,
+        ) => ({
+            async searchArtists() {
+                throw new Error('should not run');
+            },
+            async searchReleaseGroups() {
+                return {
+                    releaseGroups: releaseGroups.map((group) => ({
+                        ...group,
+                        'primary-type': 'Album',
+                        'first-release-date': '2025-01-01',
+                        'artist-credit': [],
+                    })),
+                    count,
+                };
+            },
+        });
+
+        it('plans group covers with the search scope and returns the task id', async () => {
+            const { createSearchReleaseGroupsUseCase } =
+                await import('../src/features/artists/usecases/searchReleaseGroups.js');
+            let plannedScope = '';
+            let plannedEntries: Array<{ releaseGroupId: string; releaseIds: string[] }> = [];
+
+            const deps: Pick<
+                ArtistReadUseCaseDependencies,
+                'artistSearchGateway' | 'assetPlanner' | 'requestDeduper'
+            > = {
+                assetPlanner: createDefaultAssetPlanner({
+                    planArtistReleaseGroupCovers: async ({ scope, pageEntries }) => {
+                        plannedScope = scope;
+                        plannedEntries = pageEntries;
+                        return { taskId: 'rg-cover-task-1', resolved: {} };
+                    },
+                }),
+                artistSearchGateway: gatewayWith(
+                    [
+                        { id: 'group-1', title: 'Album One' },
+                        { id: 'group-2', title: 'Album Two' },
+                    ],
+                    2,
+                ),
+                requestDeduper: fakeRequestDeduper,
+            };
+
+            const useCase = createSearchReleaseGroupsUseCase(deps);
+            const result = await useCase('user-1', 'album', 0, 10);
+
+            assert.equal(result.count, 2);
+            assert.equal(result.releaseGroups.length, 2);
+            assert.equal(result.releaseGroupCoverTaskId, 'rg-cover-task-1');
+            assert.deepEqual(result.releaseGroupCovers, {});
+            assert.equal(plannedScope, 'searchReleaseGroups:album:10:0');
+            // A search result carries no release ids; the group cover is looked
+            // up by group id alone.
+            assert.deepEqual(plannedEntries, [
+                { releaseGroupId: 'group-1', releaseIds: [] },
+                { releaseGroupId: 'group-2', releaseIds: [] },
+            ]);
+        });
+
+        it('returns cached covers immediately with no task when all are cached', async () => {
+            const { createSearchReleaseGroupsUseCase } =
+                await import('../src/features/artists/usecases/searchReleaseGroups.js');
+
+            const deps: Pick<
+                ArtistReadUseCaseDependencies,
+                'artistSearchGateway' | 'assetPlanner' | 'requestDeduper'
+            > = {
+                assetPlanner: createDefaultAssetPlanner({
+                    planArtistReleaseGroupCovers: async () => ({
+                        taskId: null,
+                        resolved: { 'group-1': 'https://cover.example/one.jpg' },
+                    }),
+                }),
+                artistSearchGateway: gatewayWith([{ id: 'group-1', title: 'Album One' }], 1),
+                requestDeduper: fakeRequestDeduper,
+            };
+
+            const useCase = createSearchReleaseGroupsUseCase(deps);
+            const result = await useCase('user-1', 'album', 0, 10);
+
+            assert.deepEqual(result.releaseGroupCovers, {
+                'group-1': 'https://cover.example/one.jpg',
+            });
+            assert.equal(result.releaseGroupCoverTaskId, null);
+        });
+
+        it('plans no covers and returns a null task for an empty result set', async () => {
+            const { createSearchReleaseGroupsUseCase } =
+                await import('../src/features/artists/usecases/searchReleaseGroups.js');
+            let planned = false;
+
+            const deps: Pick<
+                ArtistReadUseCaseDependencies,
+                'artistSearchGateway' | 'assetPlanner' | 'requestDeduper'
+            > = {
+                assetPlanner: createDefaultAssetPlanner({
+                    planArtistReleaseGroupCovers: async ({ pageEntries }) => {
+                        planned = true;
+                        assert.deepEqual(pageEntries, []);
+                        return { taskId: null, resolved: {} };
+                    },
+                }),
+                artistSearchGateway: gatewayWith([], 0),
+                requestDeduper: fakeRequestDeduper,
+            };
+
+            const useCase = createSearchReleaseGroupsUseCase(deps);
+            const result = await useCase('user-1', 'nothing', 0, 10);
+
+            assert.equal(planned, true);
+            assert.deepEqual(result.releaseGroups, []);
+            assert.equal(result.releaseGroupCoverTaskId, null);
         });
     });
 });

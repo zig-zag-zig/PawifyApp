@@ -9,8 +9,6 @@ export type ExternalLinkIconConfig =
     | { family: 'wikidata' }
     | { family: 'text'; text: string };
 
-export const MAX_FEATURED_LINKS = 7;
-
 export const STREAMING_SERVICES = new Set<ExternalLinkService>([
     'spotify',
     'appleMusic',

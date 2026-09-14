@@ -4,6 +4,7 @@ export const getCacheKey = (
         | 'artistDetails'
         | 'artistImages'
         | 'artistReleases'
+        | 'artistReleaseScan'
         | 'artistReleaseGroupCovers'
         | 'releaseGroupReleases'
         | 'releaseGroupReleaseCovers'

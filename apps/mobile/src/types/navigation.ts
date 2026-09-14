@@ -23,7 +23,9 @@ export type RootStackParamList = {
     Release: { releaseId: string };
     ReleaseGroup: {
         releaseGroupId?: string;
-        releases: ReleaseGroupReleaseListItem[];
+        // Optional so the screen can be deep-linked by id alone; when absent
+        // the page fetches the release list itself.
+        releases?: ReleaseGroupReleaseListItem[];
         initialReleaseCoverTaskId?: string | null;
         initialReleaseCovers?: Record<string, string | null>;
     };

@@ -10,7 +10,11 @@ const ReleaseGroupPage = () => {
             releases={releaseGroupPage.state.releases}
             releaseGroupReleaseCovers={releaseGroupPage.state.releaseGroupReleaseCovers}
             pendingReleaseCoverIds={releaseGroupPage.state.pendingReleaseCoverIds}
+            isLoadingReleases={releaseGroupPage.state.isLoadingReleases}
+            releaseLoadFailed={releaseGroupPage.state.releaseLoadFailed}
+            releaseGroupId={releaseGroupPage.state.releaseGroupId}
             onReleasePressed={releaseGroupPage.onReleasePressed}
+            onRetryLoadReleases={releaseGroupPage.onRetryLoadReleases}
         />
     );
 };

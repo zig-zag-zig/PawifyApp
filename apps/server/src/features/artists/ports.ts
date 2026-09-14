@@ -1,7 +1,11 @@
 import type { RequestDeduperPort } from '../../common/request/requestDeduper.js';
-import type { ArtistProfileImagesPlanner } from '../../services/backgroundAssets/plannerTypes.js';
+import type {
+    ArtistProfileImagesPlanner,
+    ArtistReleaseGroupCoversPlanner,
+} from '../../services/backgroundAssets/plannerTypes.js';
 import type { Artist } from '@pawify/shared';
 import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
+import type { ReleaseGroupSearchResult } from '../../services/musicbrainz/releaseGroupSearch.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { ArtistProfileImageQueueOptions } from '../../utils/types/taskTypes.js';
 
@@ -62,6 +66,13 @@ interface ArtistSearchGateway {
         offset: number,
         limit: number,
     ): Promise<ArtistSearchResult>;
+
+    searchReleaseGroups(
+        userId: string,
+        query: string,
+        offset: number,
+        limit: number,
+    ): Promise<ReleaseGroupSearchResult>;
 }
 
 interface FollowingNotifier {
@@ -78,7 +89,8 @@ type ArtistSharedUseCaseDependencies = {
 };
 
 export type ArtistReadUseCaseDependencies = ArtistSharedUseCaseDependencies & {
-    assetPlanner: ArtistProfileImagesPlanner;
+    /** Search needs profile images; release-group search needs group covers. */
+    assetPlanner: ArtistProfileImagesPlanner & ArtistReleaseGroupCoversPlanner;
     requestDeduper: RequestDeduperPort;
 };
 

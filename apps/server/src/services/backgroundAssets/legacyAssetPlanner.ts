@@ -22,10 +22,10 @@ export const createLegacyAssetPlanner = (deps: {
         ),
         resolved: {},
     }),
-    planArtistReleaseGroupCovers: async ({ userId, artistId, pageEntries, ttl }) => ({
+    planArtistReleaseGroupCovers: async ({ userId, scope, pageEntries, ttl }) => ({
         taskId: deps.releaseTaskQueue.queueArtistReleaseGroupCovers(
             userId,
-            artistId,
+            scope,
             pageEntries,
             ttl,
         ),

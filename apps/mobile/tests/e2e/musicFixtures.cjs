@@ -1,6 +1,7 @@
 const artistId = 'pawify-e2e-artist-aurora';
 const releaseGroupId = 'pawify-e2e-rg-midnight-signals';
 const releaseId = 'pawify-e2e-release-midnight-signals';
+const relatedArtistId = 'pawify-e2e-artist-nova';
 
 const artistCredit = [
   {
@@ -20,7 +21,17 @@ const artist = {
   aliases: [
     { name: 'ATE Fixture' },
   ],
-  relations: [],
+  relations: [
+    {
+      type: 'member of band',
+      direction: 'backward',
+      'target-type': 'artist',
+      artist: {
+        id: relatedArtistId,
+        name: 'Nova Fixture',
+      },
+    },
+  ],
   'life-span': {
     begin: '2018-01-01',
     end: null,
@@ -37,6 +48,7 @@ const releaseGroup = {
   'first-release-date': '2025-04-18',
   'primary-type': 'Album',
   disambiguation: null,
+  'artist-credit': artistCredit,
 };
 
 const release = {
@@ -66,7 +78,27 @@ const release = {
       ],
     },
   ],
+  relations: [
+    {
+      type: 'streaming',
+      'target-type': 'url',
+      url: { resource: 'https://open.spotify.com/album/pawify-e2e-midnight-signals' },
+    },
+  ],
+};
+
+const relatedArtist = {
+  id: relatedArtistId,
+  name: 'Nova Fixture',
+  type: 'Person',
+  disambiguation: 'Pawify E2E Related Fixture',
+  aliases: [],
   relations: [],
+  'life-span': {
+    begin: '1995-06-01',
+    end: null,
+    ended: false,
+  },
 };
 
 const artistSearchResponse = {
@@ -93,4 +125,6 @@ module.exports = {
   releaseGroupId,
   releaseId,
   releaseSearchResponse,
+  relatedArtist,
+  relatedArtistId,
 };

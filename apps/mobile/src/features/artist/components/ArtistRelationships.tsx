@@ -60,6 +60,11 @@ const RelationshipItem = React.memo(({
                         {` (${formatDate(member.begin)} - ${member.end ? formatDate(member.end) : 'Present'})`}
                     </Text>
                 )}
+                {member.note ? (
+                    <Text style={styles.relationshipDates}>
+                        {` — ${member.note}`}
+                    </Text>
+                ) : null}
             </SelectableText>
         </View>
     </TouchableOpacity>
@@ -127,7 +132,7 @@ const ArtistRelationships = ({
                 style={styles.groupAffiliationsHeader}
             >
                 <Text style={styles.groupAffiliationsTitle}>
-                    Group Affiliations
+                    Connections
                 </Text>
                 <MaterialCommunityIcons
                     name={showGroupAffiliations ? "chevron-up" : "chevron-down"}

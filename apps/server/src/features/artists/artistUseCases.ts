@@ -1,17 +1,23 @@
 import { createLogger } from '../../common/logging/logger.js';
 import { withOperationLogging } from '../../common/logging/operationLogger.js';
-import type { ArtistProfileImagesPlanner } from '../../services/backgroundAssets/plannerTypes.js';
 import { artistDependencies } from './infrastructure/artistDependencies.js';
 import { createFollowArtistUseCase } from './usecases/followArtist.js';
 import { createGetArtistDetailsUseCase } from './usecases/getArtistDetails.js';
 import { createGetFollowingUseCase } from './usecases/getFollowing.js';
 import { createSearchArtistsUseCase } from './usecases/searchArtists.js';
+import { createSearchReleaseGroupsUseCase } from './usecases/searchReleaseGroups.js';
 import { createUnfollowArtistsUseCase } from './usecases/unfollowArtists.js';
 import type { ArtistUseCaseDependencies } from './ports.js';
+import type {
+    ArtistProfileImagesPlanner,
+    ArtistReleaseGroupCoversPlanner,
+} from '../../services/backgroundAssets/plannerTypes.js';
 
 const logger = createLogger('features.artists');
 
-export const createArtistUseCases = (assetPlanner: ArtistProfileImagesPlanner) => {
+export const createArtistUseCases = (
+    assetPlanner: ArtistProfileImagesPlanner & ArtistReleaseGroupCoversPlanner,
+) => {
     const dependencies: ArtistUseCaseDependencies = {
         ...artistDependencies,
         assetPlanner,
@@ -57,6 +63,15 @@ export const createArtistUseCases = (assetPlanner: ArtistProfileImagesPlanner) =
             {
                 getMetadata: (_userId, query, offset, limit) => ({ query, offset, limit }),
                 getResultMetadata: (result) => ({ resultCount: result.artists.length }),
+            },
+        ),
+        searchReleaseGroups: withOperationLogging(
+            logger,
+            'searchReleaseGroups',
+            createSearchReleaseGroupsUseCase(dependencies),
+            {
+                getMetadata: (_userId, query, offset, limit) => ({ query, offset, limit }),
+                getResultMetadata: (result) => ({ resultCount: result.releaseGroups.length }),
             },
         ),
         unfollowArtists: withOperationLogging(

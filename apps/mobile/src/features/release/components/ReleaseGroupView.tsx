@@ -10,7 +10,11 @@ interface ReleaseGroupViewProps {
     releases: ReleaseGroupReleaseListItem[];
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
+    isLoadingReleases: boolean;
+    releaseLoadFailed: boolean;
+    releaseGroupId: string | null;
     onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
+    onRetryLoadReleases: () => void;
 }
 
 const RELEASE_GROUP_TRANSITION_FALLBACK_MS = 600;
@@ -19,13 +23,17 @@ const ReleaseGroupView = ({
     releases,
     releaseGroupReleaseCovers,
     pendingReleaseCoverIds,
-    onReleasePressed
+    isLoadingReleases,
+    releaseLoadFailed,
+    releaseGroupId,
+    onReleasePressed,
+    onRetryLoadReleases
 }: ReleaseGroupViewProps) => {
     const navigation = useNavigation<ReleaseGroupNavigationProp>();
     const [isTransitionReady, setIsTransitionReady] = React.useState(false);
     const { isWaitingForContent, onContentReady } = useContentReady(
         false,
-        releases.length > 0
+        releases.length > 0 || !isLoadingReleases
     );
     useGlobalSpinner(isWaitingForContent || !isTransitionReady);
 
@@ -65,7 +73,10 @@ const ReleaseGroupView = ({
             releases={releases}
             releaseCovers={releaseGroupReleaseCovers}
             pendingReleaseCoverIds={pendingReleaseCoverIds}
+            releaseGroupId={releaseGroupId}
+            releaseLoadFailed={releaseLoadFailed}
             onPress={onReleasePressed}
+            onRetryLoadReleases={onRetryLoadReleases}
             onContentReady={onContentReady}
         />
     );

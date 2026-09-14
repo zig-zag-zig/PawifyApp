@@ -44,6 +44,9 @@ export interface ReleaseGroupPageUiState {
     releases: ReleaseGroupReleaseListItem[];
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
+    isLoadingReleases: boolean;
+    releaseLoadFailed: boolean;
+    releaseGroupId: string | null;
 }
 
 export interface ReleasesPageController {
@@ -63,4 +66,5 @@ export interface ReleasePageController {
 export interface ReleaseGroupPageController {
     state: ReleaseGroupPageUiState;
     onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
+    onRetryLoadReleases: () => void;
 }

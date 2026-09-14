@@ -9,7 +9,7 @@ const { spawn, spawnSync } = require('child_process');
 const { startDaprFixtureServer } = require('../tests/e2e/daprFixtureServer.cjs');
 
 const appRoot = path.resolve(__dirname, '..');
-const backendRoot = path.resolve(appRoot, '..', 'Pawify');
+const backendRoot = path.resolve(appRoot, '..', 'server');
 const backendPort = Number(process.env.PAWIFY_E2E_BACKEND_PORT || 10001);
 const firebaseProject = process.env.PAWIFY_E2E_FIREBASE_PROJECT || 'demo-pawify-e2e';
 const firebaseAuthHost = process.env.PAWIFY_E2E_FIREBASE_AUTH_HOST || '127.0.0.1:9199';
@@ -103,6 +103,10 @@ const backendEnv = {
   E2E_EMAIL: process.env.E2E_EMAIL || `pawify-e2e-${Date.now().toString(36)}@example.test`,
   E2E_MUSIC_EMAIL: process.env.E2E_MUSIC_EMAIL || `pawify-e2e-music-${Date.now().toString(36)}@example.test`,
   E2E_NOTIFICATION_EMAIL: process.env.E2E_NOTIFICATION_EMAIL || `pawify-e2e-notification-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_SEARCH_EMAIL: process.env.E2E_FEATURE_SEARCH_EMAIL || `pawify-e2e-search-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_RELATED_EMAIL: process.env.E2E_FEATURE_RELATED_EMAIL || `pawify-e2e-related-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_DEEPLINK_EMAIL: process.env.E2E_FEATURE_DEEPLINK_EMAIL || `pawify-e2e-deeplink-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_LISTEN_EMAIL: process.env.E2E_FEATURE_LISTEN_EMAIL || `pawify-e2e-listen-${Date.now().toString(36)}@example.test`,
   APP_ENV: 'e2e-test',
   NODE_ENV: 'development',
   DEBUG: '',
@@ -305,7 +309,13 @@ function stopChild(child, label) {
 async function runInsideEmulators() {
   const daprFixtureServer = process.env.PAWIFY_E2E_USE_DAPR_FIXTURES === 'false'
     ? null
-    : await startDaprFixtureServer();
+    : await startDaprFixtureServer({
+        useRealUpstreams: process.env.PAWIFY_E2E_REAL_UPSTREAMS === 'true',
+      });
+
+  if (daprFixtureServer && process.env.PAWIFY_E2E_REAL_UPSTREAMS === 'true') {
+    console.log('[e2e] Dapr fixtures proxying musicbrainz+coverartarchive to live upstreams');
+  }
   const e2eBackendEnv = {
     ...backendEnv,
     ...(daprFixtureServer ? { DAPR_HTTP_ENDPOINT: daprFixtureServer.url } : {}),

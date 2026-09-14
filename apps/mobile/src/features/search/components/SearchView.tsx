@@ -2,34 +2,65 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ScreenContainer } from '../../../components/ui';
 import type { Artist } from '@pawify/shared';
+import type { ReleaseGroupSearchResultItem } from '../../../types/apiTypes';
+import type { SearchHistoryEntry, SearchScope } from '../../../services/searchHistoryStorage';
 import SearchInput from './SearchInput';
 import SearchResults from './SearchResults';
+import SearchTabs from './SearchTabs';
+import SearchHistoryList from './SearchHistoryList';
+import ReleaseGroupSearchResults from './ReleaseGroupSearchResults';
 
 interface SearchViewProps {
     query: string;
+    scope: SearchScope;
+    history: SearchHistoryEntry[];
     artists: Artist[];
     artistProfileImages: Record<string, string | null | undefined>;
     pendingArtistImageIds: string[];
-    isLoading: boolean;
-    canLoadMore: boolean;
+    isArtistsLoading: boolean;
+    canLoadMoreArtists: boolean;
+    releaseGroups: ReleaseGroupSearchResultItem[];
+    releaseGroupCovers: Record<string, string | null | undefined>;
+    pendingReleaseGroupCoverIds: string[];
+    isReleasesLoading: boolean;
+    canLoadMoreReleaseGroups: boolean;
     onQueryChanged: (query: string) => void;
+    onScopeChanged: (scope: SearchScope) => void;
     onSubmitSearch: (query?: string) => Promise<void>;
-    onLoadMore: () => Promise<void>;
+    onLoadMoreArtists: () => Promise<void>;
+    onLoadMoreReleaseGroups: () => Promise<void>;
     onArtistPressed: (artistId: string) => void;
+    onReleaseGroupPressed: (releaseGroupId: string) => void;
+    onHistoryEntryPressed: (entry: SearchHistoryEntry) => void;
+    onClearHistory: () => void;
 }
 
 const SearchView = ({
     query,
+    scope,
+    history,
     artists,
     artistProfileImages,
     pendingArtistImageIds,
-    isLoading,
-    canLoadMore,
+    isArtistsLoading,
+    canLoadMoreArtists,
+    releaseGroups,
+    releaseGroupCovers,
+    pendingReleaseGroupCoverIds,
+    isReleasesLoading,
+    canLoadMoreReleaseGroups,
     onQueryChanged,
+    onScopeChanged,
     onSubmitSearch,
-    onLoadMore,
+    onLoadMoreArtists,
+    onLoadMoreReleaseGroups,
     onArtistPressed,
+    onReleaseGroupPressed,
+    onHistoryEntryPressed,
+    onClearHistory,
 }: SearchViewProps) => {
+    const showHistory = query.trim().length === 0;
+
     return (
         <ScreenContainer>
             <View style={styles.searchInputContainer}>
@@ -39,15 +70,35 @@ const SearchView = ({
                     onSubmitEditing={(submittedQuery) => void onSubmitSearch(submittedQuery)}
                 />
             </View>
-            <SearchResults
-                artists={artists}
-                artistProfileImages={artistProfileImages}
-                pendingArtistImageIds={pendingArtistImageIds}
-                isLoading={isLoading}
-                canLoadMore={canLoadMore}
-                onLoadMore={() => void onLoadMore()}
-                onArtistPress={onArtistPressed}
-            />
+            <SearchTabs scope={scope} onScopeChange={onScopeChanged} />
+            {showHistory ? (
+                <SearchHistoryList
+                    entries={history}
+                    scope={scope}
+                    onEntryPress={onHistoryEntryPressed}
+                    onClear={onClearHistory}
+                />
+            ) : scope === 'artists' ? (
+                <SearchResults
+                    artists={artists}
+                    artistProfileImages={artistProfileImages}
+                    pendingArtistImageIds={pendingArtistImageIds}
+                    isLoading={isArtistsLoading}
+                    canLoadMore={canLoadMoreArtists}
+                    onLoadMore={() => void onLoadMoreArtists()}
+                    onArtistPress={onArtistPressed}
+                />
+            ) : (
+                <ReleaseGroupSearchResults
+                    releaseGroups={releaseGroups}
+                    releaseGroupCovers={releaseGroupCovers}
+                    pendingCoverIds={pendingReleaseGroupCoverIds}
+                    isLoading={isReleasesLoading}
+                    canLoadMore={canLoadMoreReleaseGroups}
+                    onLoadMore={() => void onLoadMoreReleaseGroups()}
+                    onReleaseGroupPress={onReleaseGroupPressed}
+                />
+            )}
         </ScreenContainer>
     );
 };
@@ -55,6 +106,7 @@ const SearchView = ({
 const styles = StyleSheet.create({
     searchInputContainer: {
         marginHorizontal: -10,
+        marginBottom: 10,
     },
 });
 

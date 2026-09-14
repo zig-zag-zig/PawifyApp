@@ -9,12 +9,17 @@ import { ENV } from '../../config/env';
  * real tap pipeline (notification shade → expo-notifications response →
  * parsing → navigation → release page → back) without real FCM delivery,
  * which the local E2E backend stubs by design.
+ *
+ * Omitting `releaseId` posts the DIGEST shape instead: the backend's overflow
+ * digest carries only `{ eventName: 'releases' }` with no release id, so the
+ * tap must land on the Releases tab rather than a specific release.
  */
 
 export const E2E_RELEASE_NOTIFICATION_PATH = 'e2e/release-notification';
 
 export type E2eReleaseNotificationParams = {
-    releaseId: string;
+    /** Absent for a digest notification (no single release to open). */
+    releaseId?: string;
     title: string;
     body: string;
 };
@@ -67,12 +72,9 @@ export function parseE2eReleaseNotificationUrl(
     });
 
     const releaseId = queryParams.releaseId?.trim();
-    if (!releaseId) {
-        return null;
-    }
 
     return {
-        releaseId,
+        ...(releaseId ? { releaseId } : {}),
         title: queryParams.title || 'New release',
         body: queryParams.body || '',
     };
@@ -95,10 +97,11 @@ export async function postE2eReleaseNotification(
         content: {
             title: params.title,
             body: params.body,
-            data: {
-                eventName: 'releases',
-                payload: { releaseId: params.releaseId },
-            },
+            // Mirrors the backend: a per-release push carries the release id,
+            // the overflow digest carries only the event name.
+            data: params.releaseId
+                ? { eventName: 'releases', payload: { releaseId: params.releaseId } }
+                : { eventName: 'releases' },
         },
         trigger: null,
     });

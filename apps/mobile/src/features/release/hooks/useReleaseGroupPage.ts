@@ -17,10 +17,58 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const { releaseGroupReleaseCovers, setReleaseGroupReleaseCovers } = useCache();
     const { getReleaseGroupReleases, waitForTaskResultById } = useReleaseApi();
     const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
-    const { releaseGroupId, releases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
+    const [fetchedReleases, setFetchedReleases] = useState<ReleaseGroupReleaseListItem[]>([]);
+    const [lazyReleaseCoverTaskId, setLazyReleaseCoverTaskId] = useState<string | null>(null);
+    const [isLoadingReleases, setIsLoadingReleases] = useState(false);
+    const [releaseLoadFailed, setReleaseLoadFailed] = useState(false);
+    const { releaseGroupId, releases: routeReleases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
+
+    // Deep links / share URLs carry only releaseGroupId — fetch the list when
+    // the caller did not hand it over in params.
+    useEffect(() => {
+        if (routeReleases || !releaseGroupId) {
+            return;
+        }
+
+        let isCancelled = false;
+        setIsLoadingReleases(true);
+        setReleaseLoadFailed(false);
+
+        getReleaseGroupReleases(releaseGroupId)
+            .then(result => {
+                if (isCancelled) {
+                    return;
+                }
+
+                setFetchedReleases(result.releases);
+                setLazyReleaseCoverTaskId(result.releaseCoverTaskId);
+                const immediateCovers = normalizeNullableStringMap(result.releaseCovers);
+                if (Object.keys(immediateCovers).length > 0) {
+                    setReleaseGroupReleaseCovers(prev =>
+                        mergeNullableStringMaps(prev, immediateCovers));
+                }
+            })
+            .catch(error => {
+                console.error('release-group-page: lazy fetch of releases failed', error);
+                if (!isCancelled) {
+                    setReleaseLoadFailed(true);
+                }
+            })
+            .finally(() => {
+                if (!isCancelled) {
+                    setIsLoadingReleases(false);
+                }
+            });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [routeReleases, releaseGroupId, getReleaseGroupReleases, setReleaseGroupReleaseCovers]);
+
+    const releases = routeReleases ?? fetchedReleases;
 
     useEffect(() => {
-        const releaseCoverTaskId = initialReleaseCoverTaskId;
+        const releaseCoverTaskId = initialReleaseCoverTaskId ?? lazyReleaseCoverTaskId;
         const immediateCovers = normalizeNullableStringMap(initialReleaseCovers);
 
         // Merge immediate covers so cached values render without polling.
@@ -91,6 +139,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         };
     }, [
         initialReleaseCoverTaskId,
+        lazyReleaseCoverTaskId,
         getReleaseGroupReleases,
         releaseGroupId,
         releaseGroupReleaseCovers,
@@ -103,14 +152,45 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         releases,
         releaseGroupReleaseCovers,
         pendingReleaseCoverIds,
+        isLoadingReleases,
+        releaseLoadFailed,
+        releaseGroupId: releaseGroupId ?? null,
     };
 
     const onReleasePressed = useCallback((release: ReleaseGroupReleaseListItem) => {
         navigation.navigate('Release', { releaseId: release.id });
     }, [navigation]);
 
+    const onRetryLoadReleases = useCallback(() => {
+        if (!releaseGroupId) {
+            return;
+        }
+
+        setFetchedReleases([]);
+        setLazyReleaseCoverTaskId(null);
+        setReleaseLoadFailed(false);
+        setIsLoadingReleases(true);
+
+        getReleaseGroupReleases(releaseGroupId)
+            .then(result => {
+                setFetchedReleases(result.releases);
+                setLazyReleaseCoverTaskId(result.releaseCoverTaskId);
+                const immediateCovers = normalizeNullableStringMap(result.releaseCovers);
+                if (Object.keys(immediateCovers).length > 0) {
+                    setReleaseGroupReleaseCovers(prev =>
+                        mergeNullableStringMaps(prev, immediateCovers));
+                }
+            })
+            .catch(error => {
+                console.error('release-group-page: retry fetch failed', error);
+                setReleaseLoadFailed(true);
+            })
+            .finally(() => setIsLoadingReleases(false));
+    }, [getReleaseGroupReleases, releaseGroupId, setReleaseGroupReleaseCovers]);
+
     return {
         state,
         onReleasePressed,
+        onRetryLoadReleases,
     };
 }

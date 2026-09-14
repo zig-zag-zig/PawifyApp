@@ -40,6 +40,55 @@ describe('searchReducer', () => {
       expect(state.query).toBe('new query');
       expect(state.shouldPreserveState).toBe(false);
     });
+
+    it('drops results once the typed query diverges from the submitted one', () => {
+      const state = searchReducer(
+        {
+          ...createInitialSearchState(),
+          query: 'radiohead',
+          submittedQuery: 'radiohead',
+          artists: [artist('radiohead-1')],
+          offset: 10,
+          allResultsFetched: true,
+        },
+        { type: 'queryChanged', query: 'nirvana' },
+      );
+
+      expect(state.query).toBe('nirvana');
+      expect(state.artists).toEqual([]);
+      expect(state.offset).toBe(0);
+      expect(state.allResultsFetched).toBe(false);
+    });
+
+    it('drops results when the query is cleared', () => {
+      const state = searchReducer(
+        {
+          ...createInitialSearchState(),
+          query: 'radiohead',
+          submittedQuery: 'radiohead',
+          artists: [artist('radiohead-1')],
+        },
+        { type: 'queryChanged', query: '' },
+      );
+
+      expect(state.artists).toEqual([]);
+    });
+
+    it('keeps results while the typed query still matches the submitted one', () => {
+      const state = searchReducer(
+        {
+          ...createInitialSearchState(),
+          query: 'radiohead',
+          submittedQuery: 'radiohead',
+          artists: [artist('radiohead-1')],
+          offset: 10,
+        },
+        { type: 'queryChanged', query: 'radiohead ' },
+      );
+
+      expect(state.artists).toHaveLength(1);
+      expect(state.offset).toBe(10);
+    });
   });
 
   describe('searchStarted', () => {

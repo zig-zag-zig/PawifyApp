@@ -1,12 +1,17 @@
+const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const {
   artist,
   artistId,
   artistSearchResponse,
   release,
+  releaseGroup,
   releaseGroupId,
   releaseId,
   releaseSearchResponse,
+  relatedArtist,
+  relatedArtistId,
 } = require('./musicFixtures.cjs');
 
 const stateStores = new Map();
@@ -147,8 +152,78 @@ function searchMatchesFixture(query) {
     || normalizedQuery.includes('midnight');
 }
 
+// Real-upstream pass-through: when enabled, the musicbrainz, coverartarchive
+// and discogs Dapr endpoints are proxied to the live services instead of being
+// served from fixtures. State, expo and genius stay local. Discogs needs a
+// token (pass secretsFile) and artist images come from Discogs alone.
+const REAL_UPSTREAMS = {
+  musicbrainz: 'https://musicbrainz.org',
+  coverartarchive: 'https://coverartarchive.org',
+  discogs: 'https://api.discogs.com',
+};
+
+function proxyToRealUpstream(request, response, invocation, baseUrl) {
+  const target = `${baseUrl}${invocation.methodPath}${
+    invocation.searchParams.size ? `?${invocation.searchParams.toString()}` : ''
+  }`;
+
+  // Forward the caller's headers so provider credentials survive the hop
+  // (Discogs authenticates with an Authorization header). host/connection are
+  // hop-by-hop and must not be relayed.
+  const headers = {};
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (name === 'host' || name === 'connection' || name === 'content-length') {
+      continue;
+    }
+    if (value !== undefined) {
+      headers[name] = value;
+    }
+  }
+  headers.accept = headers.accept || 'application/json';
+  // MusicBrainz requires a descriptive User-Agent; mirror the server's.
+  headers['user-agent'] = 'PawifyE2E/1.0 (pawify-e2e@example.test)';
+
+  const transport = target.startsWith('https:') ? https : http;
+  const proxy = transport.request(
+    target,
+    { method: request.method, headers },
+    (upstream) => {
+      // Pass every upstream header through: Cover Art Archive answers with a
+      // 307 redirect to archive.org, so dropping Location would break covers.
+      const responseHeaders = { ...upstream.headers };
+      delete responseHeaders['transfer-encoding'];
+      delete responseHeaders.connection;
+
+      response.writeHead(upstream.statusCode || 502, responseHeaders);
+      upstream.pipe(response);
+    },
+  );
+
+  proxy.on('error', (error) => {
+    writeJson(response, 502, { error: `upstream proxy failed: ${error.message}` });
+  });
+
+  if (request.method === 'POST' || request.method === 'PUT') {
+    request.pipe(proxy);
+  } else {
+    proxy.end();
+  }
+}
+
 function handleMusicBrainz(request, response, invocation) {
   const { methodPath, searchParams } = invocation;
+
+  // Release-group search is exercised by the new e2e flows. Serve a fixture
+  // entry that matches Aurora/Midnight queries so the Releases tab has a row.
+  if (methodPath === '/ws/2/release-group') {
+    const query = (searchParams.get('query') || '').trim().toLowerCase();
+    const matches = query.includes('midnight') || query.includes('aurora') || query.includes('signal');
+    writeJson(response, 200, {
+      'release-groups': matches ? [releaseGroup] : [],
+      count: matches ? 1 : 0,
+    });
+    return;
+  }
 
   if (request.method === 'HEAD') {
     writeEmpty(response, methodPath === `/ws/2/release/${releaseId}` ? 200 : 404);
@@ -165,6 +240,13 @@ function handleMusicBrainz(request, response, invocation) {
 
   if (methodPath === `/ws/2/artist/${artistId}`) {
     writeJson(response, 200, artist);
+    return;
+  }
+
+  // A second artist used by the related-artists e2e flow. The fixture artist
+  // lists it in `relations` (member-of), so the app can navigate to it.
+  if (methodPath === `/ws/2/artist/${relatedArtistId}`) {
+    writeJson(response, 200, relatedArtist);
     return;
   }
 
@@ -202,11 +284,41 @@ function handleExpo(response, invocation) {
   writeJson(response, 200, { data: [] });
 }
 
+/**
+ * Optional secret store. When a secretsFile is provided, Dapr secret lookups
+ * are answered from it (keys not present still 404) so flows/manual runs that
+ * need provider credentials - e.g. artist images, which come from Discogs -
+ * can resolve them. Without the option, every lookup 404s as before.
+ */
+function handleDaprSecret(response, secretRequest, secrets) {
+  const value = secrets?.[secretRequest.key];
+
+  if (typeof value !== 'string' || value.length === 0) {
+    writeJson(response, 404, { error: `No secret fixture for ${secretRequest.key}` });
+    return;
+  }
+
+  writeJson(response, 200, { [secretRequest.key]: value });
+}
+
+function loadSecretsFile(secretsFilePath) {
+  if (!secretsFilePath) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(secretsFilePath, 'utf8'));
+  } catch (error) {
+    console.warn(`[fixture] could not read secrets file ${secretsFilePath}: ${error.message}`);
+    return null;
+  }
+}
+
 function handleOptionalJsonService(response) {
   writeJson(response, 404, { error: 'No fixture' });
 }
 
-function createDaprFixtureHandler() {
+function createDaprFixtureHandler(useRealUpstreams, secrets) {
   return async (request, response) => {
     const stateRequest = decodeDaprStateRequest(request.url || '/');
     if (stateRequest) {
@@ -216,7 +328,7 @@ function createDaprFixtureHandler() {
 
     const secretRequest = decodeDaprSecretRequest(request.url || '/');
     if (secretRequest) {
-      writeJson(response, 404, { error: `No secret fixture for ${secretRequest.key}` });
+      handleDaprSecret(response, secretRequest, secrets);
       return;
     }
 
@@ -224,6 +336,11 @@ function createDaprFixtureHandler() {
 
     if (!invocation) {
       writeJson(response, 404, { error: 'Not a Dapr invoke URL' });
+      return;
+    }
+
+    if (useRealUpstreams && REAL_UPSTREAMS[invocation.endpoint]) {
+      proxyToRealUpstream(request, response, invocation, REAL_UPSTREAMS[invocation.endpoint]);
       return;
     }
 
@@ -250,7 +367,10 @@ function createDaprFixtureHandler() {
 async function startDaprFixtureServer(options = {}) {
   const host = options.host || '127.0.0.1';
   const port = options.port || 0;
-  const handler = createDaprFixtureHandler();
+  const handler = createDaprFixtureHandler(
+    options.useRealUpstreams === true,
+    loadSecretsFile(options.secretsFile),
+  );
   const server = http.createServer((request, response) => {
     handler(request, response).catch((error) => {
       writeJson(response, 500, {

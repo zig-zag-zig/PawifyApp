@@ -16,6 +16,34 @@ const mapToArtistMinimal = (data: any): ArtistMinimal => ({
     name: data.name,
 });
 
+/**
+ * Artist-artist relation types surfaced for discovery. Membership relations
+ * ('member of band', 'subgroup') already render in the members section; this
+ * set covers the creative/personal links that answer "who else should I
+ * follow": collaborators, remixers, producers, supporting/session roles,
+ * side-projects, and family links.
+ */
+const RELATED_ARTIST_RELATION_TYPES = new Set([
+    'collaboration',
+    'remixer',
+    'producer',
+    'instrumental supporting musician',
+    'vocal supporting musician',
+    'supporting musician',
+    'conductor',
+    'DJ-mix',
+    'samples from artist',
+    'tribute',
+    'is person',
+    'parent',
+    'sibling',
+    'married',
+    'named after',
+    'teacher',
+    'student',
+    'involved with',
+]);
+
 export const mapToArtist = (data: any): Artist => ({
     ...mapToArtistMinimal(data),
     type: data.type,
@@ -33,6 +61,21 @@ export const mapToArtist = (data: any): Artist => ({
                 artistType: rel.artist.type,
                 type: rel.type,
                 direction: rel.direction,
+            })) ?? [],
+    relatedArtists:
+        data.relations
+            ?.filter(
+                (rel: any) =>
+                    RELATED_ARTIST_RELATION_TYPES.has(rel.type) &&
+                    typeof rel.artist?.id === 'string' &&
+                    typeof rel.artist?.name === 'string',
+            )
+            .map((rel: any) => ({
+                id: rel.artist.id,
+                name: rel.artist.name,
+                type: rel.type,
+                direction: rel.direction,
+                artistType: rel.artist.type,
             })) ?? [],
     lifeSpan: {
         begin: data['life-span']?.begin ?? null,
