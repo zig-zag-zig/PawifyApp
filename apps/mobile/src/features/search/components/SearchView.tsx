@@ -20,6 +20,8 @@ interface SearchViewProps {
     isArtistsLoading: boolean;
     canLoadMoreArtists: boolean;
     releaseGroups: ReleaseGroupSearchResultItem[];
+    releaseGroupCovers: Record<string, string | null | undefined>;
+    pendingReleaseGroupCoverIds: string[];
     isReleasesLoading: boolean;
     canLoadMoreReleaseGroups: boolean;
     onQueryChanged: (query: string) => void;
@@ -43,6 +45,8 @@ const SearchView = ({
     isArtistsLoading,
     canLoadMoreArtists,
     releaseGroups,
+    releaseGroupCovers,
+    pendingReleaseGroupCoverIds,
     isReleasesLoading,
     canLoadMoreReleaseGroups,
     onQueryChanged,
@@ -87,6 +91,8 @@ const SearchView = ({
             ) : (
                 <ReleaseGroupSearchResults
                     releaseGroups={releaseGroups}
+                    releaseGroupCovers={releaseGroupCovers}
+                    pendingCoverIds={pendingReleaseGroupCoverIds}
                     isLoading={isReleasesLoading}
                     canLoadMore={canLoadMoreReleaseGroups}
                     onLoadMore={() => void onLoadMoreReleaseGroups()}

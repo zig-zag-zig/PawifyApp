@@ -38,17 +38,17 @@ export const createCacheFirstAssetPlanner = (deps: {
                 : null;
         return { taskId, resolved };
     },
-    planArtistReleaseGroupCovers: async ({ userId, artistId, pageEntries, ttl }) => {
+    planArtistReleaseGroupCovers: async ({ userId, scope, pageEntries, ttl }) => {
         const { resolved, pending } =
             await deps.cacheAssetPartitioner.partitionArtistReleaseGroupCovers(
-                artistId,
+                scope,
                 pageEntries,
             );
         const taskId =
             pending.length > 0
                 ? deps.releaseTaskQueue.queueArtistReleaseGroupCovers(
                       userId,
-                      artistId,
+                      scope,
                       pending,
                       ttl,
                       {

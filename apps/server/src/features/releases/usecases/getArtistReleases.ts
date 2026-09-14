@@ -39,7 +39,7 @@ export const createGetArtistReleasesUseCase =
 
         const plan = await assetPlanner.planArtistReleaseGroupCovers({
             userId,
-            artistId,
+            scope: artistId,
             pageEntries,
             ttl: payload.ttl,
         });

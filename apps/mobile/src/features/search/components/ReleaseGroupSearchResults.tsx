@@ -1,12 +1,15 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { FlatList, ListRenderItem, Pressable, StyleSheet, Text, View } from 'react-native';
 import { InlineLink, Spinner } from '../../../components/ui';
+import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { useContentReady } from '../../../hooks/useContentReady';
 import type { ReleaseGroupSearchResultItem } from '../../../types/apiTypes';
 import { theme } from '../../../styles/theme';
 
 interface ReleaseGroupSearchResultsProps {
     releaseGroups: ReleaseGroupSearchResultItem[];
+    releaseGroupCovers?: Record<string, string | null | undefined>;
+    pendingCoverIds?: string[];
     isLoading: boolean;
     canLoadMore: boolean;
     onLoadMore: () => void;
@@ -19,9 +22,13 @@ type ListItem =
 
 const ReleaseGroupResultItem = memo(({
     releaseGroup,
+    coverUrl,
+    isCoverPending,
     onReleaseGroupPress,
 }: {
     releaseGroup: ReleaseGroupSearchResultItem;
+    coverUrl?: string | null;
+    isCoverPending: boolean;
     onReleaseGroupPress: (releaseGroupId: string) => void;
 }) => {
     const handlePress = useCallback(() => {
@@ -51,15 +58,23 @@ const ReleaseGroupResultItem = memo(({
             accessibilityLabel={`Open release group ${releaseGroup.title}${artistNames ? ` by ${artistNames}` : ''}`}
             style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
         >
-            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-                {releaseGroup.title}
-            </Text>
-            {artistNames.length > 0 && (
-                <Text style={styles.artists} numberOfLines={1} ellipsizeMode="tail">
-                    {artistNames}
+            <CachedImageComponent
+                imageUrl={coverUrl}
+                type="release"
+                showSpinnerWhenNoImage={isCoverPending}
+                style={styles.cover}
+            />
+            <View style={styles.textColumn}>
+                <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                    {releaseGroup.title}
                 </Text>
-            )}
-            {metaLine.length > 0 && <Text style={styles.meta}>{metaLine}</Text>}
+                {artistNames.length > 0 && (
+                    <Text style={styles.artists} numberOfLines={1} ellipsizeMode="tail">
+                        {artistNames}
+                    </Text>
+                )}
+                {metaLine.length > 0 && <Text style={styles.meta}>{metaLine}</Text>}
+            </View>
         </Pressable>
     );
 });
@@ -68,11 +83,17 @@ ReleaseGroupResultItem.displayName = 'ReleaseGroupResultItem';
 
 const ReleaseGroupSearchResults = ({
     releaseGroups,
+    releaseGroupCovers,
+    pendingCoverIds,
     isLoading,
     canLoadMore,
     onLoadMore,
     onReleaseGroupPress,
 }: ReleaseGroupSearchResultsProps) => {
+    const pendingCoverIdSet = useMemo(
+        () => new Set(pendingCoverIds ?? []),
+        [pendingCoverIds],
+    );
     const listData = useMemo<ListItem[]>(() => [
         ...releaseGroups.map((releaseGroup): ListItem => ({ type: 'releaseGroup', releaseGroup })),
         ...(canLoadMore || (isLoading && releaseGroups.length > 0)
@@ -106,10 +127,12 @@ const ReleaseGroupSearchResults = ({
         return (
             <ReleaseGroupResultItem
                 releaseGroup={item.releaseGroup}
+                coverUrl={releaseGroupCovers?.[item.releaseGroup.id]}
+                isCoverPending={pendingCoverIdSet.has(item.releaseGroup.id)}
                 onReleaseGroupPress={onReleaseGroupPress}
             />
         );
-    }, [onReleaseGroupPress, renderLoadMore]);
+    }, [onReleaseGroupPress, pendingCoverIdSet, releaseGroupCovers, renderLoadMore]);
 
     return (
         <View style={styles.results}>
@@ -118,7 +141,7 @@ const ReleaseGroupSearchResults = ({
                 keyExtractor={(item) =>
                     item.type === 'footer' ? 'release-search-load-more-footer' : item.releaseGroup.id
                 }
-                extraData={{ isLoading, canLoadMore }}
+                extraData={{ isLoading, canLoadMore, releaseGroupCovers, pendingCoverIds }}
                 style={styles.list}
                 contentContainerStyle={[
                     styles.contentContainer,
@@ -152,13 +175,24 @@ const styles = StyleSheet.create({
         flexGrow: 1,
     },
     item: {
-        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 10,
         paddingHorizontal: 4,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     },
     itemPressed: {
         opacity: 0.7,
+    },
+    cover: {
+        width: 56,
+        height: 56,
+        borderRadius: 6,
+    },
+    textColumn: {
+        flex: 1,
     },
     title: {
         color: theme.colors.text,

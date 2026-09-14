@@ -81,6 +81,8 @@ const SearchPage = () => {
             isArtistsLoading={searchPage.state.isLoading}
             canLoadMoreArtists={searchPage.state.canLoadMore}
             releaseGroups={releaseGroupSearch.state.releaseGroups}
+            releaseGroupCovers={releaseGroupSearch.state.releaseGroupCovers}
+            pendingReleaseGroupCoverIds={releaseGroupSearch.state.pendingCoverIds}
             isReleasesLoading={releaseGroupSearch.state.isLoading}
             canLoadMoreReleaseGroups={releaseGroupSearch.canLoadMore}
             onQueryChanged={searchPage.onQueryChanged}

@@ -32,6 +32,8 @@ export interface ReleaseGroupSearchResultItem {
 export interface SearchReleaseGroupsResponse {
   releaseGroups: ReleaseGroupSearchResultItem[];
   count: number;
+  releaseGroupCoverTaskId?: string | null;
+  releaseGroupCovers?: Record<string, string | null>;
 }
 
 export interface SearchArtistsResponse {

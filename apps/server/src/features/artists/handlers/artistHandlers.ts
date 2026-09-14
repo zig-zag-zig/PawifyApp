@@ -38,6 +38,7 @@ export const artistPresentersV1: ArtistWirePresenters = {
     searchReleaseGroups: (result) => ({
         releaseGroups: result.releaseGroups,
         count: result.count,
+        releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
     }),
 };
 

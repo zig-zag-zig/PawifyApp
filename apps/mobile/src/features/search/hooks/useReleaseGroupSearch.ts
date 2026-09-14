@@ -6,11 +6,20 @@ import type { ReleaseGroupSearchResultItem } from '../../../types/apiTypes';
 import { useSearchApi } from '../api/searchApi';
 import type { ReleaseGroupNavigationProp } from '../../../types/navigation';
 import { addSearchHistoryEntry } from '../../../services/searchHistoryStorage';
+import {
+    mergeNullableStringMaps,
+    normalizeNullableStringMap,
+    type NullableStringMap,
+} from '../../../utils/nullableMaps';
+import { extractReleaseGroupCovers } from '../../../utils/taskResultMaps';
+import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 
 const PAGE_SIZE = 10;
 
 type ReleaseGroupSearchState = {
     releaseGroups: ReleaseGroupSearchResultItem[];
+    releaseGroupCovers: NullableStringMap;
+    pendingCoverIds: string[];
     isLoading: boolean;
     allResultsFetched: boolean;
     offset: number;
@@ -19,12 +28,15 @@ type ReleaseGroupSearchState = {
 
 type ReleaseGroupSearchAction =
     | { type: 'searchStarted'; query: string }
-    | { type: 'searchSucceeded'; releaseGroups: ReleaseGroupSearchResultItem[]; nextOffset: number; allResultsFetched: boolean; isAppending: boolean }
+    | { type: 'searchSucceeded'; releaseGroups: ReleaseGroupSearchResultItem[]; releaseGroupCovers: NullableStringMap; pendingCoverIds: string[]; nextOffset: number; allResultsFetched: boolean; isAppending: boolean }
+    | { type: 'coversResolved'; releaseGroupCovers: NullableStringMap; resolvedIds: string[] }
     | { type: 'searchFailed' }
     | { type: 'cleared' };
 
 const createInitialState = (): ReleaseGroupSearchState => ({
     releaseGroups: [],
+    releaseGroupCovers: {},
+    pendingCoverIds: [],
     isLoading: false,
     allResultsFetched: false,
     offset: 0,
@@ -42,6 +54,8 @@ const reducer = (
                 isLoading: true,
                 submittedQuery: action.query,
                 releaseGroups: [],
+                releaseGroupCovers: {},
+                pendingCoverIds: [],
                 offset: 0,
                 allResultsFetched: false,
             };
@@ -53,10 +67,28 @@ const reducer = (
                 ...state,
                 isLoading: false,
                 releaseGroups,
+                releaseGroupCovers: mergeNullableStringMaps(
+                    state.releaseGroupCovers,
+                    action.releaseGroupCovers,
+                ),
+                pendingCoverIds: action.isAppending
+                    ? [...state.pendingCoverIds, ...action.pendingCoverIds]
+                    : action.pendingCoverIds,
                 offset: action.nextOffset,
                 allResultsFetched: action.allResultsFetched,
             };
         }
+        case 'coversResolved':
+            return {
+                ...state,
+                releaseGroupCovers: mergeNullableStringMaps(
+                    state.releaseGroupCovers,
+                    action.releaseGroupCovers,
+                ),
+                pendingCoverIds: state.pendingCoverIds.filter(
+                    (releaseGroupId) => !action.resolvedIds.includes(releaseGroupId),
+                ),
+            };
         case 'searchFailed':
             return { ...state, isLoading: false };
         case 'cleared':
@@ -74,15 +106,35 @@ export interface ReleaseGroupSearchController {
 }
 
 /**
- * Release-group search is deliberately simpler than the artist search path:
- * no profile-image tasks, no replay — just paged MusicBrainz results.
+ * Release-group search mirrors artist search's asset handling: results render
+ * immediately with whatever covers are already cached, and the remainder are
+ * filled in as the background cover task resolves. The search itself is never
+ * blocked on cover fetching.
  */
 export function useReleaseGroupSearch(): ReleaseGroupSearchController {
     const navigation = useNavigation<ReleaseGroupNavigationProp>();
-    const { searchReleaseGroups } = useSearchApi();
+    const { searchReleaseGroups, waitForTaskResultById } = useSearchApi();
     const { showToast } = useToast();
     const [state, dispatch] = useReducer(reducer, undefined, createInitialState);
     const inFlightRef = useRef(false);
+
+    const resolveCoverTask = useCallback(
+        async (taskId: string, expectedIds: string[]) => {
+            await resolveNullableTaskMap({
+                taskId,
+                expectedIds,
+                waitForTaskResult: waitForTaskResultById,
+                extractMap: extractReleaseGroupCovers,
+                onResolvedValues: (covers, resolvedIds) => {
+                    dispatch({ type: 'coversResolved', releaseGroupCovers: covers, resolvedIds });
+                },
+                onError: (error) => {
+                    console.error('release-group-search: resolve cover task failed', error);
+                },
+            });
+        },
+        [waitForTaskResultById],
+    );
 
     const runSearch = useCallback(
         async (isAppending: boolean, rawQuery: string) => {
@@ -102,6 +154,8 @@ export function useReleaseGroupSearch(): ReleaseGroupSearchController {
                     isAppending ? state.releaseGroups.map((group) => group.id) : [],
                 );
                 const releaseGroups: ReleaseGroupSearchResultItem[] = [];
+                const resolvedCovers: NullableStringMap = {};
+                const coverTasks: Array<{ taskId: string; releaseGroupIds: string[] }> = [];
                 let nextOffset = searchOffset;
                 let allResultsFetched = false;
 
@@ -112,6 +166,20 @@ export function useReleaseGroupSearch(): ReleaseGroupSearchController {
                     );
                     fresh.forEach((group) => seenIds.add(group.id));
                     releaseGroups.push(...fresh);
+                    Object.assign(resolvedCovers, normalizeNullableStringMap(result.releaseGroupCovers));
+
+                    if (result.releaseGroupCoverTaskId && fresh.length > 0) {
+                        const pendingIds = fresh
+                            .map((group) => group.id)
+                            .filter((releaseGroupId) => resolvedCovers[releaseGroupId] === undefined);
+                        if (pendingIds.length > 0) {
+                            coverTasks.push({
+                                taskId: result.releaseGroupCoverTaskId,
+                                releaseGroupIds: pendingIds,
+                            });
+                        }
+                    }
+
                     const fetchedCount = result.releaseGroups.length;
                     nextOffset += fetchedCount;
 
@@ -128,10 +196,17 @@ export function useReleaseGroupSearch(): ReleaseGroupSearchController {
                 dispatch({
                     type: 'searchSucceeded',
                     releaseGroups,
+                    releaseGroupCovers: resolvedCovers,
+                    pendingCoverIds: coverTasks.flatMap((task) => task.releaseGroupIds),
                     nextOffset,
                     allResultsFetched,
                     isAppending,
                 });
+
+                // Covers stream in after the results are already on screen.
+                void Promise.all(
+                    coverTasks.map((task) => resolveCoverTask(task.taskId, task.releaseGroupIds)),
+                );
 
                 if (!isAppending) {
                     void addSearchHistoryEntry(query, 'releases');
@@ -147,7 +222,7 @@ export function useReleaseGroupSearch(): ReleaseGroupSearchController {
                 inFlightRef.current = false;
             }
         },
-        [searchReleaseGroups, showToast, state.offset, state.releaseGroups],
+        [resolveCoverTask, searchReleaseGroups, showToast, state.offset, state.releaseGroups],
     );
 
     const onSubmitSearch = useCallback(

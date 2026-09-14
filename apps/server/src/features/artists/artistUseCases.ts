@@ -1,6 +1,5 @@
 import { createLogger } from '../../common/logging/logger.js';
 import { withOperationLogging } from '../../common/logging/operationLogger.js';
-import type { ArtistProfileImagesPlanner } from '../../services/backgroundAssets/plannerTypes.js';
 import { artistDependencies } from './infrastructure/artistDependencies.js';
 import { createFollowArtistUseCase } from './usecases/followArtist.js';
 import { createGetArtistDetailsUseCase } from './usecases/getArtistDetails.js';
@@ -9,10 +8,16 @@ import { createSearchArtistsUseCase } from './usecases/searchArtists.js';
 import { createSearchReleaseGroupsUseCase } from './usecases/searchReleaseGroups.js';
 import { createUnfollowArtistsUseCase } from './usecases/unfollowArtists.js';
 import type { ArtistUseCaseDependencies } from './ports.js';
+import type {
+    ArtistProfileImagesPlanner,
+    ArtistReleaseGroupCoversPlanner,
+} from '../../services/backgroundAssets/plannerTypes.js';
 
 const logger = createLogger('features.artists');
 
-export const createArtistUseCases = (assetPlanner: ArtistProfileImagesPlanner) => {
+export const createArtistUseCases = (
+    assetPlanner: ArtistProfileImagesPlanner & ArtistReleaseGroupCoversPlanner,
+) => {
     const dependencies: ArtistUseCaseDependencies = {
         ...artistDependencies,
         assetPlanner,

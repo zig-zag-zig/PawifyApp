@@ -28,7 +28,12 @@ export type ArtistProfileImagePlanInput = {
 
 export type ArtistReleaseGroupCoversPlanInput = {
     userId: string;
-    artistId: string;
+    /**
+     * Cache namespace for this batch. The artist page passes the artist id;
+     * search passes its query scope, mirroring planArtistProfileImages. It is
+     * only ever used as a cache key prefix.
+     */
+    scope: string;
     pageEntries: ReleaseGroupPageEntry[];
     ttl: number | undefined;
 };

@@ -11,8 +11,8 @@ export const createDefaultAssetPlanner = (
         taskId: lookups.length > 0 ? `task:${scope}` : null,
         resolved: {},
     }),
-    planArtistReleaseGroupCovers: async ({ artistId }) => ({
-        taskId: `task:rg:${artistId}`,
+    planArtistReleaseGroupCovers: async ({ scope }) => ({
+        taskId: `task:rg:${scope}`,
         resolved: {},
     }),
     planReleaseGroupReleaseCovers: async ({ releaseGroupId }) => ({
