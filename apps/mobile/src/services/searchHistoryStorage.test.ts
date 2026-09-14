@@ -3,6 +3,7 @@ import {
     addSearchHistoryEntry,
     clearSearchHistory,
     loadSearchHistory,
+    removeSearchHistoryEntry,
 } from './searchHistoryStorage';
 
 const storage = vi.hoisted(() => {
@@ -63,5 +64,44 @@ describe('searchHistoryStorage', () => {
         ]));
 
         expect(await loadSearchHistory()).toEqual([{ query: 'valid', scope: 'artists' }]);
+    });
+
+    describe('removeSearchHistoryEntry', () => {
+        it('removes only the matching entry', async () => {
+            await addSearchHistoryEntry('radiohead', 'artists');
+            await addSearchHistoryEntry('nirvana', 'artists');
+            await addSearchHistoryEntry('ok computer', 'releases');
+
+            const remaining = await removeSearchHistoryEntry('radiohead', 'artists');
+
+            expect(remaining).toEqual([
+                { query: 'ok computer', scope: 'releases' },
+                { query: 'nirvana', scope: 'artists' },
+            ]);
+            expect(await loadSearchHistory()).toEqual(remaining);
+        });
+
+        it('matches case-insensitively and trims the input', async () => {
+            await addSearchHistoryEntry('Radiohead', 'artists');
+
+            expect(await removeSearchHistoryEntry('  radiohead  ', 'artists')).toEqual([]);
+        });
+
+        it('leaves the same query in the other scope alone', async () => {
+            await addSearchHistoryEntry('radiohead', 'artists');
+            await addSearchHistoryEntry('radiohead', 'releases');
+
+            expect(await removeSearchHistoryEntry('radiohead', 'artists')).toEqual([
+                { query: 'radiohead', scope: 'releases' },
+            ]);
+        });
+
+        it('is a no-op for an unknown entry', async () => {
+            await addSearchHistoryEntry('radiohead', 'artists');
+
+            expect(await removeSearchHistoryEntry('missing', 'artists')).toEqual([
+                { query: 'radiohead', scope: 'artists' },
+            ]);
+        });
     });
 });

@@ -8,6 +8,7 @@ import SearchInput from './SearchInput';
 import SearchResults from './SearchResults';
 import SearchTabs from './SearchTabs';
 import SearchHistoryList from './SearchHistoryList';
+import SearchEmptyState from './SearchEmptyState';
 import ReleaseGroupSearchResults from './ReleaseGroupSearchResults';
 
 interface SearchViewProps {
@@ -32,6 +33,7 @@ interface SearchViewProps {
     onArtistPressed: (artistId: string) => void;
     onReleaseGroupPressed: (releaseGroupId: string) => void;
     onHistoryEntryPressed: (entry: SearchHistoryEntry) => void;
+    onHistoryEntryRemoved: (entry: SearchHistoryEntry) => void;
     onClearHistory: () => void;
 }
 
@@ -57,27 +59,39 @@ const SearchView = ({
     onArtistPressed,
     onReleaseGroupPressed,
     onHistoryEntryPressed,
+    onHistoryEntryRemoved,
     onClearHistory,
 }: SearchViewProps) => {
     const showHistory = query.trim().length === 0;
+    const hasScopedHistory = history.some((entry) => entry.scope === scope);
 
     return (
         <ScreenContainer>
             <View style={styles.searchInputContainer}>
                 <SearchInput
                     query={query}
+                    scope={scope}
                     onChangeText={onQueryChanged}
                     onSubmitEditing={(submittedQuery) => void onSubmitSearch(submittedQuery)}
                 />
             </View>
             <SearchTabs scope={scope} onScopeChange={onScopeChanged} />
             {showHistory ? (
-                <SearchHistoryList
-                    entries={history}
-                    scope={scope}
-                    onEntryPress={onHistoryEntryPressed}
-                    onClear={onClearHistory}
-                />
+                <View style={styles.emptyQueryArea}>
+                    {/* Recent searches are the actionable content, so they come
+                        first; the empty-query hint trails below them. */}
+                    {hasScopedHistory ? (
+                        <SearchHistoryList
+                            entries={history}
+                            scope={scope}
+                            onEntryPress={onHistoryEntryPressed}
+                            onEntryRemove={onHistoryEntryRemoved}
+                            onClear={onClearHistory}
+                            fill={!hasScopedHistory}
+                        />
+                    ) : null}
+                    <SearchEmptyState scope={scope} compact={hasScopedHistory} />
+                </View>
             ) : scope === 'artists' ? (
                 <SearchResults
                     artists={artists}
@@ -104,6 +118,9 @@ const SearchView = ({
 };
 
 const styles = StyleSheet.create({
+    emptyQueryArea: {
+        flex: 1,
+    },
     searchInputContainer: {
         marginHorizontal: -10,
         marginBottom: 10,

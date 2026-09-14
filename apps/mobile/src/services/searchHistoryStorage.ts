@@ -86,3 +86,31 @@ export const clearSearchHistory = async (scope?: SearchScope): Promise<void> => 
         console.warn('search-history: failed to clear', error);
     }
 };
+
+/**
+ * Removes a single entry, matching the same case-insensitive rule the add path
+ * dedupes with. Returns the remaining entries.
+ */
+export const removeSearchHistoryEntry = async (
+    query: string,
+    scope: SearchScope,
+): Promise<SearchHistoryEntry[]> => {
+    const existing = await loadSearchHistory();
+    const normalizedQuery = query.trim().toLowerCase();
+    const remaining = existing.filter(
+        (entry) =>
+            !(entry.scope === scope && entry.query.toLowerCase() === normalizedQuery),
+    );
+
+    if (remaining.length === existing.length) {
+        return existing;
+    }
+
+    try {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+    } catch (error) {
+        console.warn('search-history: failed to remove entry', error);
+    }
+
+    return remaining;
+};

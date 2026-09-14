@@ -35,7 +35,7 @@ appId: vip.chi_chi.pawify
 - assertVisible: "Artists"
 - assertVisible: "Releases"
 - tapOn: "Releases"
-- tapOn: "Search artists"          # same field; placeholder is unchanged
+- tapOn: "Search releases"        # placeholder follows the active tab
 - inputText: "midnight"
 - pressKey: Enter
 - extendedWaitUntil:
@@ -53,6 +53,7 @@ appId: vip.chi_chi.pawify
     timeout: 30000
 - assertVisible: "Midnight Signals"  # lazy-fetched release row rendered
 - pressKey: Back
+# Back returns to the Releases tab, whose placeholder names that tab.
 - extendedWaitUntil:
-    visible: "Search artists"
+    visible: "Search releases"
     timeout: 15000

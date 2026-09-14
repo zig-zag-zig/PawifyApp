@@ -6,6 +6,7 @@ import { useReleaseGroupSearch } from '../hooks/useReleaseGroupSearch';
 import {
     clearSearchHistory,
     loadSearchHistory,
+    removeSearchHistoryEntry,
     type SearchHistoryEntry,
     type SearchScope,
 } from '../../../services/searchHistoryStorage';
@@ -76,6 +77,15 @@ const SearchPage = () => {
         [onQueryChanged, releaseGroupSearch, searchPage],
     );
 
+    const onHistoryEntryRemoved = useCallback(
+        (entry: SearchHistoryEntry) => {
+            void removeSearchHistoryEntry(entry.query, entry.scope).then(() =>
+                refreshHistory()
+            );
+        },
+        [refreshHistory],
+    );
+
     const onClearHistory = useCallback(() => {
         void clearSearchHistory(scope).then(refreshHistory);
     }, [refreshHistory, scope]);
@@ -103,6 +113,7 @@ const SearchPage = () => {
             onArtistPressed={searchPage.onArtistPressed}
             onReleaseGroupPressed={releaseGroupSearch.onReleaseGroupPressed}
             onHistoryEntryPressed={onHistoryEntryPressed}
+            onHistoryEntryRemoved={onHistoryEntryRemoved}
             onClearHistory={onClearHistory}
         />
     );

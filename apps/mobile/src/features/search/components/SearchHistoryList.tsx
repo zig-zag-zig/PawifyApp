@@ -8,14 +8,23 @@ interface SearchHistoryListProps {
     entries: SearchHistoryEntry[];
     scope: SearchScope;
     onEntryPress: (entry: SearchHistoryEntry) => void;
+    onEntryRemove: (entry: SearchHistoryEntry) => void;
     onClear: () => void;
+    fill?: boolean;
 }
 
+/**
+ * The chip is a row of two press targets rather than a pressable chip with a
+ * pressable child, so the label (search again) and the close affordance
+ * (remove just this entry) never fight over the same touch.
+ */
 const SearchHistoryList = ({
     entries,
     scope,
     onEntryPress,
+    onEntryRemove,
     onClear,
+    fill = true,
 }: SearchHistoryListProps) => {
     const scopedEntries = entries.filter((entry) => entry.scope === scope);
 
@@ -24,7 +33,7 @@ const SearchHistoryList = ({
     }
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, !fill && styles.compactContainer]}>
             <View style={styles.headerRow}>
                 <Text style={styles.header}>Recent searches</Text>
                 <Pressable
@@ -36,21 +45,53 @@ const SearchHistoryList = ({
                     <Text style={styles.clear}>Clear</Text>
                 </Pressable>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                {scopedEntries.map((entry) => (
-                    <Pressable
-                        key={`${entry.scope}:${entry.query}`}
-                        onPress={() => onEntryPress(entry)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Search again for ${entry.query}`}
-                        style={({ pressed }) => [styles.entry, pressed && styles.entryPressed]}
-                    >
-                        <MaterialIcons name="history" size={16} color={theme.colors.textMuted} />
-                        <Text style={styles.entryText} numberOfLines={1} ellipsizeMode="tail">
-                            {entry.query}
-                        </Text>
-                    </Pressable>
-                ))}
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.chipScrollContent}
+            >
+                <View style={styles.chipRow}>
+                    {scopedEntries.map((entry) => (
+                        <View
+                            key={`${entry.scope}:${entry.query}`}
+                            style={styles.chip}
+                        >
+                            <Pressable
+                                onPress={() => onEntryPress(entry)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Search again for ${entry.query}`}
+                                style={({ pressed }) => [
+                                    styles.chipLabel,
+                                    pressed && styles.chipPressed,
+                                ]}
+                            >
+                                <Text
+                                    style={styles.chipText}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                >
+                                    {entry.query}
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={() => onEntryRemove(entry)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Remove ${entry.query} from recent searches`}
+                                hitSlop={10}
+                                style={({ pressed }) => [
+                                    styles.chipRemove,
+                                    pressed && styles.chipPressed,
+                                ]}
+                            >
+                                <MaterialIcons
+                                    name="close"
+                                    size={16}
+                                    color={theme.colors.iconMuted}
+                                />
+                            </Pressable>
+                        </View>
+                    ))}
+                </View>
             </ScrollView>
         </View>
     );
@@ -60,6 +101,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         paddingTop: 4,
+    },
+    compactContainer: {
+        flex: 0,
     },
     headerRow: {
         flexDirection: 'row',
@@ -79,19 +123,40 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
     },
-    entry: {
+    chipScrollContent: {
+        paddingBottom: 4,
+    },
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    chip: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-        paddingVertical: 10,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        paddingLeft: 12,
+        paddingRight: 2,
     },
-    entryPressed: {
-        opacity: 0.7,
+    chipLabel: {
+        paddingVertical: 7,
     },
-    entryText: {
+    chipRemove: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    chipPressed: {
+        opacity: 0.6,
+    },
+    chipText: {
         color: theme.colors.textSoft,
-        fontSize: 15,
-        flex: 1,
+        fontSize: 14,
+        maxWidth: 180,
     },
 });
 
