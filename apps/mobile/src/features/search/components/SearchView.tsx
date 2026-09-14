@@ -8,6 +8,7 @@ import SearchInput from './SearchInput';
 import SearchResults from './SearchResults';
 import SearchTabs from './SearchTabs';
 import SearchHistoryList from './SearchHistoryList';
+import SearchEmptyState from './SearchEmptyState';
 import ReleaseGroupSearchResults from './ReleaseGroupSearchResults';
 
 interface SearchViewProps {
@@ -60,18 +61,22 @@ const SearchView = ({
     onClearHistory,
 }: SearchViewProps) => {
     const showHistory = query.trim().length === 0;
+    const hasScopedHistory = history.some((entry) => entry.scope === scope);
 
     return (
         <ScreenContainer>
             <View style={styles.searchInputContainer}>
                 <SearchInput
                     query={query}
+                    scope={scope}
                     onChangeText={onQueryChanged}
                     onSubmitEditing={(submittedQuery) => void onSubmitSearch(submittedQuery)}
                 />
             </View>
             <SearchTabs scope={scope} onScopeChange={onScopeChanged} />
-            {showHistory ? (
+            {showHistory && !hasScopedHistory ? (
+                <SearchEmptyState scope={scope} />
+            ) : showHistory ? (
                 <SearchHistoryList
                     entries={history}
                     scope={scope}

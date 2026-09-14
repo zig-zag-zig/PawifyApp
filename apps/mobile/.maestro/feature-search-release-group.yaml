@@ -35,7 +35,7 @@ appId: vip.chi_chi.pawify
 - assertVisible: "Artists"
 - assertVisible: "Releases"
 - tapOn: "Releases"
-- tapOn: "Search artists"          # same field; placeholder is unchanged
+- tapOn: "Search releases"        # placeholder follows the active tab
 - inputText: "midnight"
 - pressKey: Enter
 - extendedWaitUntil:

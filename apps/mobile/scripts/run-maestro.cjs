@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const ports = [10001, 9199];
 const appId = process.env.MAESTRO_APP_ID?.trim() || 'vip.chi_chi.pawify';
@@ -299,6 +299,7 @@ function runMaestro(deviceId, maestroArgs, flowTargets) {
       setAutofillService(deviceId, originalAutofillService);
     }
     restoreDeviceAfterMaestro(deviceId, deviceState);
+    stopAdbReverseKeeper();
     removeAdbReversePorts(deviceId);
   };
 
@@ -316,6 +317,9 @@ function runMaestro(deviceId, maestroArgs, flowTargets) {
     for (const flowTarget of flowTargets) {
       const name = flowName(flowTarget);
       console.log(`\n[e2e] Running flow: ${name}`);
+      // A restart of the ADB server between flows would otherwise drop the
+      // tunnels and make this flow fail at sign-in.
+      ensureAdbReversePorts(deviceId);
       const result = spawnSync(maestroBinary, [...maestroArgs, flowTarget], {
         stdio: 'inherit',
         env: process.env,
@@ -348,12 +352,100 @@ resetAdbServerForMaestro();
 const deviceId = resolveDeviceId();
 console.log(`[e2e] device=${deviceId}`);
 
-if (process.env.MAESTRO_SKIP_ADB_REVERSE !== 'true') {
-  for (const port of ports) {
+function listReversedPorts(deviceId) {
+  const result = spawnSync('adb', ['-s', deviceId, 'reverse', '--list'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+
+  return String(result.stdout ?? '')
+    .split('\n')
+    .map(line => line.trim().match(/^tcp:(\d+)\s+tcp:(\d+)$/))
+    .filter(Boolean)
+    .map(match => match[1]);
+}
+
+/**
+ * (Re)establishes the reverse tunnels the app needs to reach the local API and
+ * auth emulator.
+ *
+ * These are set up once before Maestro starts, but anything that restarts the
+ * ADB server mid-run (another project's e2e runner doing `adb kill-server`, a
+ * driver reinstall reconnecting) silently drops them. The app then cannot reach
+ * the auth emulator and flows fail at sign-in with a misleading timeout, so
+ * they are re-asserted before every flow.
+ */
+function ensureAdbReversePorts(deviceId) {
+  if (process.env.MAESTRO_SKIP_ADB_REVERSE === 'true') {
+    return;
+  }
+
+  const existing = listReversedPorts(deviceId);
+  const missing = existing === null ? ports : ports.filter(port => !existing.includes(port));
+
+  if (missing.length === 0) {
+    return;
+  }
+
+  if (reversedPorts.length > 0) {
+    console.log(`[e2e] adb reverse tunnels were lost; restoring ${missing.join(', ')}`);
+  }
+
+  for (const port of missing) {
     run('adb', ['-s', deviceId, 'reverse', `tcp:${port}`, `tcp:${port}`]);
-    reversedPorts.push(port);
+    if (!reversedPorts.includes(port)) {
+      reversedPorts.push(port);
+    }
   }
 }
+
+let adbReverseKeeper = null;
+
+/**
+ * Runs scripts/adb-reverse-keeper.cjs for the lifetime of the Maestro session.
+ *
+ * The tunnels are also asserted once before the flows, but Maestro's per-flow
+ * driver setup reconnects the device and drops the `adb reverse` mappings. The
+ * flows are spawned synchronously, so the parent cannot re-assert them while a
+ * flow runs; the keeper does it from a separate process.
+ */
+function startAdbReverseKeeper(deviceId) {
+  if (process.env.MAESTRO_SKIP_ADB_REVERSE === 'true' || adbReverseKeeper) {
+    return;
+  }
+
+  adbReverseKeeper = spawn(
+    process.execPath,
+    [
+      path.join(__dirname, 'adb-reverse-keeper.cjs'),
+      '--serial', deviceId,
+      '--ports', ports.join(','),
+      '--parent-pid', String(process.pid),
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  );
+
+  adbReverseKeeper.on('error', (error) => {
+    console.warn(`[e2e] adb reverse keeper failed to start: ${error.message}`);
+  });
+  adbReverseKeeper.unref();
+}
+
+function stopAdbReverseKeeper() {
+  if (!adbReverseKeeper) {
+    return;
+  }
+
+  adbReverseKeeper.kill('SIGTERM');
+  adbReverseKeeper = null;
+}
+
+ensureAdbReversePorts(deviceId);
+startAdbReverseKeeper(deviceId);
 
 function removeAdbReversePorts(deviceId) {
   if (process.env.MAESTRO_SKIP_ADB_REVERSE === 'true') {
