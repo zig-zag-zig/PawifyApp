@@ -53,6 +53,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -Eeuo pipefail
+          git fetch --tags origin --force >/dev/null 2>&1 || true
           if [[ "$GITHUB_REF_NAME" != "main" ]]; then
             echo "Pawify releases run from main only." >&2
             exit 2
