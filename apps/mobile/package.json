@@ -1,7 +1,7 @@
 {
   "name": "pawify",
   "license": "0BSD",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "main": "index.ts",
   "scripts": {
     "start": "node scripts/with-env.cjs development -- npx expo start",
