@@ -17,7 +17,9 @@ const newReleaseNotificationUserConcurrency = 4;
 /**
  * Visible pushes are sent one-per-release up to this count; when a scan finds
  * more new releases than this, the remainder are collapsed into a single
- * digest push so a busy drop day cannot spam the device.
+ * digest push so a busy drop day cannot spam the device. A single leftover
+ * release is still pushed on its own so its tap opens that release (see
+ * splitReleaseNotifications).
  */
 const maxIndividualReleaseNotifications = cacheConfig.maxIndividualReleaseNotifications;
 

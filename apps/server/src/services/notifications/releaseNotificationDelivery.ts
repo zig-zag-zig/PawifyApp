@@ -13,6 +13,11 @@ import {
  * one-per-release visible pushes, a single visible digest for the overflow, and
  * a data-only push so the app can refresh.
  *
+ * A lone overflow release is delivered as a per-release push instead of a
+ * digest (see `splitReleaseNotifications`), so every per-release push deep-links
+ * to its release and the digest, when it exists, always covers two or more and
+ * lands on the Releases tab.
+ *
  * Delivery is injected so the cap/digest decision is testable without Firebase,
  * MusicBrainz or the Expo push API.
  */

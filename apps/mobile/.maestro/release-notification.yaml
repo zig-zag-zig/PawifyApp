@@ -99,14 +99,14 @@ appId: vip.chi_chi.pawify
 - extendedWaitUntil:
     visible: "No favorite artists"
     timeout: 15000
-- openLink: "pawify://e2e/release-notification?title=3%20more%20new%20releases%20from%20your%20artists;body=Midnight%20Signals%20%E2%80%94%20Aurora%20Test%20Ensemble"
+- openLink: "pawify://e2e/release-notification?title=3%20more%20new%20releases;body=Midnight%20Signals%20%E2%80%94%20Aurora%20Test%20Ensemble"
 - swipe:
     start: "50%,1%"
     end: "50%,50%"
 - extendedWaitUntil:
-    visible: "3 more new releases from your artists"
+    visible: "3 more new releases"
     timeout: 10000
-- tapOn: "3 more new releases from your artists"
+- tapOn: "3 more new releases"
 - extendedWaitUntil:
     visible: "No new releases"
     timeout: 30000

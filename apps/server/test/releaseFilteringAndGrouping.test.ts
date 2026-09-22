@@ -121,6 +121,43 @@ describe('release notification filtering', () => {
 });
 
 describe('release grouping helpers', () => {
+    it('dedupes releases whose tracklists match ignoring order and case', () => {
+        const tracks = (titles: string[]) => ({
+            'track-count': titles.length,
+            tracks: titles.map((title, index) => ({
+                id: `t-${index}`,
+                title,
+                'artist-credit': [],
+                length: null,
+            })),
+        });
+
+        const original = release({
+            id: 'original',
+            title: 'Album',
+            media: [tracks(['Intro', 'Encore'])],
+        });
+        // Same two tracks, reversed and cased/padded differently.
+        const reordered = release({
+            id: 'reordered',
+            title: 'Album',
+            media: [tracks([' encore ', 'INTRO'])],
+        });
+        // Different track count: not a duplicate.
+        const differentCount = release({
+            id: 'different-count',
+            title: 'Album',
+            media: [tracks(['Intro'])],
+        });
+
+        const grouped = groupByReleaseGroup([original, reordered, differentCount]);
+
+        assert.deepEqual(
+            grouped.get('group-1')?.map((item) => item.id),
+            ['original', 'different-count'],
+        );
+    });
+
     it('dedupes equivalent releases by normalized title and track list', () => {
         const original = release({ id: 'original', title: ' Album ' });
         const duplicate = release({ id: 'duplicate', title: 'album' });

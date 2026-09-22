@@ -22,14 +22,26 @@ const logger = createLogger('services.musicbrainz.artistReleaseScanCache');
  * the browse path) because the notification diff operates on individual release
  * ids, dates, and release-group ids.
  *
- * `inc=release-groups+artist-credits` (recordings excluded) is sufficient for
- * the diff and is cheaper than the recordings-inclusive fetch.
+ * `inc=recordings` IS requested here, unlike the browse path. The diff collapses
+ * the releases of a release group that are duplicates, and that comparison is
+ * tracklist-based (see `isDuplicateRelease`). Without track data every release
+ * arrives with an empty track list, the comparison has nothing to work with, and
+ * one album with several MusicBrainz releases (digital + CD + vinyl + a regional
+ * pressing) becomes one "new release" each.
+ *
+ * The extra bytes do not cost extra MusicBrainz requests: pagination is driven by
+ * `release-count`, so it is the same number of pages, just larger ones. The cache
+ * below is also global per artist, so that cost is paid once per artist per TTL
+ * rather than once per user.
  */
 export const getArtistReleaseScan = async (
     artistId: string,
     ttl: number | undefined = cacheConfig.releaseScanTtlHours,
 ): Promise<Release[]> => {
-    const cacheKey = getCacheKey(artistId, 'artistReleaseScan');
+    // Key carries the fetch shape: entries cached before recordings were
+    // requested hold no track data and would silently disable the dedupe for the
+    // rest of their TTL.
+    const cacheKey = getCacheKey(artistId, 'artistReleaseScanWithRecordings');
 
     try {
         const cached = await getCachedData<Release[]>(cacheKey);
@@ -50,7 +62,7 @@ export const getArtistReleaseScan = async (
         });
     }
 
-    const releases = await fetchAllReleasesForArtist(artistId, false);
+    const releases = await fetchAllReleasesForArtist(artistId, true);
     logger.debug('artist release scan fetched from MusicBrainz', {
         artistId,
         releaseCount: releases.length,
@@ -71,5 +83,5 @@ export const getArtistReleaseScan = async (
 };
 
 export const invalidateArtistReleaseScan = async (artistId: string): Promise<void> => {
-    await deleteCachedData(getCacheKey(artistId, 'artistReleaseScan'));
+    await deleteCachedData(getCacheKey(artistId, 'artistReleaseScanWithRecordings'));
 };
