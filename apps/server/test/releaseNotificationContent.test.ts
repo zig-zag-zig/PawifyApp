@@ -98,17 +98,26 @@ describe('splitReleaseNotifications', () => {
         assert.equal(digest.length, 0);
     });
 
-    it('collapses the overflow into a digest past the cap', () => {
+    it('promotes a lone overflow release instead of sending a digest of one', () => {
         const notifications = buildReleaseNotifications(releases(4));
+        const { individual, digest } = splitReleaseNotifications(notifications, 3);
+
+        assert.equal(digest.length, 0);
+        assert.deepEqual(
+            individual.map((notification) => notification.data.payload.releaseId),
+            ['release-1', 'release-2', 'release-3', 'release-4'],
+        );
+    });
+
+    it('collapses two or more overflow releases into a digest past the cap', () => {
+        const notifications = buildReleaseNotifications(releases(5));
         const { individual, digest } = splitReleaseNotifications(notifications, 3);
 
         assert.equal(individual.length, 3);
         assert.deepEqual(
-            individual.map((notification) => notification.data.payload.releaseId),
-            ['release-1', 'release-2', 'release-3'],
+            digest.map((notification) => notification.data.payload.releaseId),
+            ['release-4', 'release-5'],
         );
-        assert.equal(digest.length, 1);
-        assert.equal(digest[0].data.payload.releaseId, 'release-4');
     });
 
     it('keeps the digest notifications in order after the cap', () => {
@@ -182,8 +191,9 @@ describe('buildDigestNotificationBody', () => {
 });
 
 describe('buildDigestNotificationTitle', () => {
-    it('counts the collapsed notifications', () => {
-        assert.equal(buildDigestNotificationTitle(1), '1 more new releases from your artists');
-        assert.equal(buildDigestNotificationTitle(9), '9 more new releases from your artists');
+    it('counts the collapsed notifications with correct pluralization', () => {
+        assert.equal(buildDigestNotificationTitle(1), '1 more new release');
+        assert.equal(buildDigestNotificationTitle(2), '2 more new releases');
+        assert.equal(buildDigestNotificationTitle(9), '9 more new releases');
     });
 });

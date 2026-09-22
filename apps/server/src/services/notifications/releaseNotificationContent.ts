@@ -92,22 +92,39 @@ export const buildDigestNotificationBody = (
         : shownTitles.join('\n');
 };
 
+/**
+ * Title for the notifications that overflowed the per-release cap. "more" is
+ * deliberate: the user has already been pushed the first `maxIndividual`
+ * releases, so a bare count reads as the total and understates what is new.
+ * Only ever plural in practice (a lone overflow release is promoted to its own
+ * notification in `splitReleaseNotifications`), but the singular branch keeps
+ * the helper safe to call on its own.
+ */
 export const buildDigestNotificationTitle = (overflowCount: number): string =>
-    `${overflowCount} more new releases from your artists`;
+    `${overflowCount} more new release${overflowCount === 1 ? '' : 's'}`;
 
 /**
  * Applies the per-release cap: the first `maxIndividual` notifications are sent
  * one-per-release, and everything past the cap is collapsed into a single
  * digest.
+ *
+ * A lone overflow release is promoted back to a per-release notification: a
+ * "digest" of one only repeats the count, and a per-release push can deep-link
+ * to that release while a digest can only open the Releases tab. So the digest
+ * always carries two or more releases and a single extra release still opens
+ * its own release page when tapped.
  */
 export const splitReleaseNotifications = (
     notifications: BuiltReleaseNotification[],
     maxIndividual: number,
 ): { individual: BuiltReleaseNotification[]; digest: BuiltReleaseNotification[] } => {
     const cap = Math.max(0, Math.floor(maxIndividual));
+    const individual = notifications.slice(0, cap);
+    const overflow = notifications.slice(cap);
 
-    return {
-        individual: notifications.slice(0, cap),
-        digest: notifications.slice(cap),
-    };
+    if (overflow.length === 1) {
+        return { individual: [...individual, ...overflow], digest: [] };
+    }
+
+    return { individual, digest: overflow };
 };

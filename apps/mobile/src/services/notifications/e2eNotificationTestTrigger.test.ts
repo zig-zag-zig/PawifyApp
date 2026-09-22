@@ -128,14 +128,14 @@ describe('postE2eReleaseNotification', () => {
   it('schedules the digest shape (no release id) for the overflow digest', async () => {
     await expect(
       postE2eReleaseNotification({
-        title: '3 more new releases from your artists',
+        title: '3 more new releases',
         body: 'Midnight Signals — Aurora Test Ensemble',
       }),
     ).resolves.toBe(true);
 
     expect(scheduleMock).toHaveBeenCalledWith({
       content: {
-        title: '3 more new releases from your artists',
+        title: '3 more new releases',
         body: 'Midnight Signals — Aurora Test Ensemble',
         // No payload: the digest tap must fall back to the Releases tab.
         data: { eventName: 'releases' },

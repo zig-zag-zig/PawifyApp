@@ -93,7 +93,7 @@ describe('deliverReleaseNotifications', () => {
         assert.equal(visible().length, 4);
 
         const digest = visible()[3].options;
-        assert.equal(digest.title, '2 more new releases from your artists');
+        assert.equal(digest.title, '2 more new releases');
         assert.equal(
             digest.body,
             'Release 4 — Aurora Test Ensemble\nRelease 5 — Aurora Test Ensemble',
@@ -155,6 +155,30 @@ describe('deliverReleaseNotifications', () => {
 
         assert.equal(result.visibleNotificationsSent, 1);
         assert.equal(visible().length, 1);
-        assert.equal(visible()[0].options.title, '2 more new releases from your artists');
+        assert.equal(visible()[0].options.title, '2 more new releases');
+    });
+
+    it('promotes a lone overflow release to a deep-linking per-release push', async () => {
+        const { send, visible, data } = recorder();
+
+        const result = await deliverReleaseNotifications(notificationsFor(4), {
+            maxIndividual: 3,
+            hasPushTokens: true,
+            send,
+        });
+
+        // No digest: the 4th release is pushed on its own so its tap opens that release.
+        assert.equal(result.visibleNotificationsSent, 4);
+        assert.equal(visible().length, 4);
+        assert.deepEqual(
+            visible().map((entry) => entry.options.data?.payload),
+            [
+                { releaseId: 'release-1' },
+                { releaseId: 'release-2' },
+                { releaseId: 'release-3' },
+                { releaseId: 'release-4' },
+            ],
+        );
+        assert.equal(data().length, 1);
     });
 });

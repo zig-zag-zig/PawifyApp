@@ -118,10 +118,24 @@ const isDuplicateRelease = (release1: Release, release2: Release): boolean => {
         return false;
     }
 
-    return (
-        tracks1.length === tracks2.length &&
-        tracks1.every((track, index) => track === tracks2[index])
-    );
+    return areSameTracklists(tracks1, tracks2);
+};
+
+/**
+ * Two releases have the same tracklist when they have the same number of
+ * tracks and the same track names. Names are compared trimmed and
+ * case-insensitively (see getAllTrackTitlesOfRelease) and ordering is ignored,
+ * so a reordered or differently-cased pressing still counts as a duplicate.
+ */
+const areSameTracklists = (tracks1: string[], tracks2: string[]): boolean => {
+    if (tracks1.length !== tracks2.length) {
+        return false;
+    }
+
+    const sorted1 = [...tracks1].sort();
+    const sorted2 = [...tracks2].sort();
+
+    return sorted1.every((track, index) => track === sorted2[index]);
 };
 
 const getAllTrackTitlesOfRelease = (release: Release): string[] => {
