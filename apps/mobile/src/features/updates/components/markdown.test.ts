@@ -47,6 +47,44 @@ describe('parseMarkdownBlocks', () => {
         ]);
     });
 
+    it('joins indented continuation lines into the current bullet', () => {
+        const blocks = parseMarkdownBlocks(
+            [
+                '### Fixes',
+                '',
+                '- **One album no longer arrives as several notifications.** The new-release scan',
+                '  fetched artist catalogs without track data, which silently disabled the',
+                '  duplicate check entirely. An album with several MusicBrainz pressings (digital,',
+                '  CD, vinyl, a regional issue) was reported as that many separate new releases.',
+                '- **Correct header wording.**',
+                '',
+                'Done.',
+            ].join('\n'),
+        );
+
+        expect(blocks).toEqual([
+            { type: 'heading', level: 3, text: 'Fixes' },
+            {
+                type: 'bullet',
+                marker: '•',
+                text:
+                    '**One album no longer arrives as several notifications.** The new-release scan' +
+                    ' fetched artist catalogs without track data, which silently disabled the' +
+                    ' duplicate check entirely. An album with several MusicBrainz pressings (digital,' +
+                    ' CD, vinyl, a regional issue) was reported as that many separate new releases.',
+            },
+            { type: 'bullet', marker: '•', text: '**Correct header wording.**' },
+            { type: 'paragraph', text: 'Done.' },
+        ]);
+    });
+
+    it('does not treat indented text as a bullet continuation after a blank line', () => {
+        expect(parseMarkdownBlocks('- one\n\n  still a paragraph')).toEqual([
+            { type: 'bullet', marker: '•', text: 'one' },
+            { type: 'paragraph', text: 'still a paragraph' },
+        ]);
+    });
+
     it('joins consecutive lines into one paragraph', () => {
         expect(parseMarkdownBlocks('line one\nline two')).toEqual([
             { type: 'paragraph', text: 'line one\nline two' },
