@@ -39,12 +39,16 @@ export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
         paragraph.length = 0;
     };
 
+    let previousBlockWasBullet = false;
+
     let index = 0;
     while (index < lines.length) {
-        const line = lines[index].trim();
+        const rawLine = lines[index];
+        const line = rawLine.trim();
 
         if (line.length === 0) {
             flushParagraph();
+            previousBlockWasBullet = false;
             index += 1;
             continue;
         }
@@ -59,6 +63,7 @@ export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
             }
             index += 1; // consume the closing fence (or end of input)
             blocks.push({ type: 'codeBlock', lines: codeLines });
+            previousBlockWasBullet = false;
             continue;
         }
 
@@ -70,6 +75,7 @@ export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
             if (text.length > 0) {
                 blocks.push({ type: 'heading', level, text });
             }
+            previousBlockWasBullet = false;
             index += 1;
             continue;
         }
@@ -77,6 +83,7 @@ export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
         if (RULE_PATTERN.test(line)) {
             flushParagraph();
             blocks.push({ type: 'rule' });
+            previousBlockWasBullet = false;
             index += 1;
             continue;
         }
@@ -85,6 +92,7 @@ export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
         if (bullet) {
             flushParagraph();
             blocks.push({ type: 'bullet', marker: '•', text: bullet[1].trim() });
+            previousBlockWasBullet = true;
             index += 1;
             continue;
         }
@@ -93,11 +101,27 @@ export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
         if (ordered) {
             flushParagraph();
             blocks.push({ type: 'bullet', marker: `${ordered[1]}.`, text: ordered[2].trim() });
+            previousBlockWasBullet = true;
             index += 1;
             continue;
         }
 
+        // Indented continuation of the current list item (e.g. the body lines
+        // under a `- **Bold lead.**` bullet in GitHub release notes). Joining
+        // with a space matches markdown's soft-wrap semantics; joining with a
+        // newline would keep the source line break and break the hanging
+        // indent under the bullet marker.
+        if (previousBlockWasBullet && /^\s/.test(rawLine)) {
+            const previousBlock = blocks[blocks.length - 1];
+            if (previousBlock?.type === 'bullet') {
+                previousBlock.text = `${previousBlock.text} ${line}`;
+                index += 1;
+                continue;
+            }
+        }
+
         paragraph.push(line);
+        previousBlockWasBullet = false;
         index += 1;
     }
 
