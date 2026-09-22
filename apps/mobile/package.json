@@ -72,7 +72,6 @@
     "@types/react": "~19.2.14",
     "babel-preset-expo": "~57.0.7",
     "dotenv": "^16.6.1",
-    "firebase-tools": "^13.35.1",
     "jsdom": "^29.1.1",
     "react-dom": "19.2.3",
     "typescript": "~6.0.3",
