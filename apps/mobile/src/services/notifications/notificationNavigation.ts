@@ -7,6 +7,46 @@ import {
   getDeepLinkPathForEvent,
 } from './notificationEventParsing';
 
+type PendingNavigationListener = () => void;
+
+let pendingReleaseNavigation = false;
+const pendingNavigationListeners = new Set<PendingNavigationListener>();
+
+const setPendingReleaseNavigation = (isPending: boolean): void => {
+  if (pendingReleaseNavigation === isPending) {
+    return;
+  }
+
+  pendingReleaseNavigation = isPending;
+  pendingNavigationListeners.forEach(listener => listener());
+};
+
+export const getPendingReleaseNavigation = (): boolean => pendingReleaseNavigation;
+
+export const subscribeToPendingReleaseNavigation = (
+  listener: PendingNavigationListener,
+): (() => void) => {
+  pendingNavigationListeners.add(listener);
+  return () => {
+    pendingNavigationListeners.delete(listener);
+  };
+};
+
+/**
+ * Marks a notification-triggered release navigation as pending before the
+ * actual navigate call. Cold-start taps defer navigation until the navigator
+ * mounts, so this keeps the app spinner covering the default tab during that
+ * gap instead of briefly flashing the search screen.
+ */
+export const prepareReleaseNotificationNavigation = (
+  eventName: string,
+  payload: EventPayload | undefined,
+): void => {
+  if (eventName === 'releases' && extractReleaseIdFromEventPayload(payload)) {
+    setPendingReleaseNavigation(true);
+  }
+};
+
 /**
  * Opens the release page for a notification-tapped release. The Releases tab
  * is selected first so hardware/gesture back from the release page lands on
@@ -14,6 +54,8 @@ import {
  * (or exiting the app after a cold start).
  */
 export const navigateToReleaseFromNotification = (releaseId: string): void => {
+  setPendingReleaseNavigation(true);
+
   runWhenNavigationReady(() => {
     try {
       navigationRef.navigate('Home', { screen: 'Releases' });
@@ -21,6 +63,10 @@ export const navigateToReleaseFromNotification = (releaseId: string): void => {
     } catch (error) {
       console.error('fcm: navigate to release failed', { releaseId, error });
       captureAppError(error, { scope: 'fcm', action: 'navigate-to-release', releaseId });
+    } finally {
+      // The release page starts its own loading spinner on mount; let it take
+      // over so the shared spinner never drops before content is on screen.
+      setPendingReleaseNavigation(false);
     }
   });
 };

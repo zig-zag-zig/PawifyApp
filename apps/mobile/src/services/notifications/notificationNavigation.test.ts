@@ -22,8 +22,11 @@ vi.mock('expo-linking', () => ({
 }));
 
 import {
+  getPendingReleaseNavigation,
   navigateToReleaseFromNotification,
   openNotificationNavigation,
+  prepareReleaseNotificationNavigation,
+  subscribeToPendingReleaseNavigation,
 } from './notificationNavigation';
 
 describe('navigateToReleaseFromNotification', () => {
@@ -43,19 +46,76 @@ describe('navigateToReleaseFromNotification', () => {
   });
 
   it('defers through runWhenNavigationReady so cold starts wait for the navigator', () => {
-    runWhenReadyMock.mockImplementationOnce(() => undefined);
+    let deferredNavigation: (() => void) | undefined;
+    runWhenReadyMock.mockImplementationOnce((navigate: () => void) => {
+      deferredNavigation = navigate;
+    });
 
     navigateToReleaseFromNotification('release-42');
 
     expect(navigationRefMock.navigate).not.toHaveBeenCalled();
+    expect(getPendingReleaseNavigation()).toBe(true);
+
+    deferredNavigation?.();
+
+    expect(navigationRefMock.navigate.mock.calls).toEqual([
+      ['Home', { screen: 'Releases' }],
+      ['Release', { releaseId: 'release-42' }],
+    ]);
+    expect(getPendingReleaseNavigation()).toBe(false);
   });
 
-  it('does not throw when navigation fails', () => {
+  it('marks the navigation pending as soon as it is requested', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeToPendingReleaseNavigation(listener);
+
+    navigateToReleaseFromNotification('release-42');
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(getPendingReleaseNavigation()).toBe(false);
+
+    unsubscribe();
+  });
+
+  it('clears the pending spinner when navigation fails', () => {
     navigationRefMock.navigate.mockImplementationOnce(() => {
       throw new Error('not handled');
     });
 
     expect(() => navigateToReleaseFromNotification('release-42')).not.toThrow();
+    expect(getPendingReleaseNavigation()).toBe(false);
+  });
+
+  it('pre-marks deferred release events so the default tab never paints', () => {
+    prepareReleaseNotificationNavigation('releases', { releaseId: 'release-42' });
+
+    expect(getPendingReleaseNavigation()).toBe(true);
+
+    // The deferred navigation clears the pending state once it runs.
+    navigateToReleaseFromNotification('release-42');
+    expect(getPendingReleaseNavigation()).toBe(false);
+  });
+
+  it('does not pre-mark digest or non-release notifications', () => {
+    prepareReleaseNotificationNavigation('releases', undefined);
+    prepareReleaseNotificationNavigation('following', { releaseId: 'release-42' });
+
+    expect(getPendingReleaseNavigation()).toBe(false);
+  });
+
+  it('only emits pending changes once per state transition', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeToPendingReleaseNavigation(listener);
+
+    prepareReleaseNotificationNavigation('releases', { releaseId: 'release-42' });
+    prepareReleaseNotificationNavigation('releases', { releaseId: 'release-42' });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    navigateToReleaseFromNotification('release-42');
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
   });
 });
 

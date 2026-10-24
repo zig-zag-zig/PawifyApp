@@ -9,7 +9,10 @@ import {
   extractNotificationEventData,
   registerNotificationEvent,
 } from '../services/notifications/notificationEvents';
-import { openNotificationNavigation } from '../services/notifications/notificationNavigation';
+import {
+  openNotificationNavigation,
+  prepareReleaseNotificationNavigation,
+} from '../services/notifications/notificationNavigation';
 import {
   BACKGROUND_NOTIFICATION_TASK,
   defineBackgroundNotificationTask,
@@ -132,8 +135,17 @@ export const useNotificationService = ({ enabled }: { enabled: boolean }) => {
       const response = Notifications.getLastNotificationResponse();
       const { title, body, data } = response?.notification.request.content ?? {};
       if (title || body) {
+        const eventData = extractNotificationEventData(data);
+
+        // Navigation is deferred below until the navigator has mounted. Start
+        // the spinner now so the startup reveal never paints the default tab
+        // for those few hundred milliseconds before the release page opens.
+        if (eventData) {
+          prepareReleaseNotificationNavigation(eventData.eventName, eventData.payload);
+        }
+
         setTimeout(() => {
-          void openNavigationForEvent(extractNotificationEventData(data));
+          void openNavigationForEvent(eventData);
         }, Device.osName === 'iOS' ? 300 : 500);
       }
     };
