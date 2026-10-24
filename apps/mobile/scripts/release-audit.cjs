@@ -37,7 +37,17 @@ const projectRoot = path.resolve(__dirname, '..');
 // accepted while no upstream fix existed; the expo SDK-57 patch alignment
 // (2026-08-30) brought fixed image-size versions, so the exemptions were
 // removed per the self-expiring allowlist policy.
+// node-forge <=1.4.0 (the latest release) has an RSA PKCS#1 v1.5
+// signature-verification advisory (GHSA-86w9-cpqp-85rv) with no patched
+// version published and no merged upstream fix yet. It is pulled in only by
+// @expo/code-signing-certificates through expo-updates/@expo/cli; Pawify has
+// no expo-updates codeSigningCertificate configured, so the affected
+// verification path is not used. Remove when node-forge ships a fix.
 const KNOWN_ACCEPTED_ADVISORIES = new Map([
+  [
+    'GHSA-86w9-cpqp-85rv',
+    'node-forge <=1.4.0 (latest) has no patched release; expo code-signing verification is unused (no codeSigningCertificate configured).',
+  ],
 ]);
 
 function collectAdvisoryIds(packageName, vulnerabilities, seen = new Set()) {
