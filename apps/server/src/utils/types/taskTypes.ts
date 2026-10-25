@@ -42,6 +42,8 @@ export type ArtistProfileImageLookup = {
     artistId: string;
     artistName?: string;
     discogsUrls?: string[];
+    deezerUrls?: string[];
+    tidalUrls?: string[];
 };
 
 /**

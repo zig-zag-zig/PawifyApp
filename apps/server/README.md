@@ -83,6 +83,7 @@ Create `secrets/local/dapr-secrets.json`:
   "gmail-email": "your-gmail@gmail.com",
   "gmail-password": "your-gmail-app-password",
   "discogs-token": "",
+  "tidal-token": "",
   "genius-access-token": ""
 }
 ```
@@ -123,6 +124,33 @@ adb reverse tcp:10000 tcp:10000
 ```
 
 Then the app can call http://127.0.0.1:10000 through the reverse proxy.
+
+`adb reverse` survives app restarts but not device reconnects; re-run it after unplugging or reconnecting wireless debugging. List active tunnels with `adb reverse --list`. `apps/mobile/.env.development` already points `EXPO_PUBLIC_API_BASE_URL` at `http://127.0.0.1:10000/`, so a development build reaches the local Docker stack with no further configuration.
+
+### Verifying Shared Rate Limiting
+
+MusicBrainz, Discogs and Deezer are limited through token buckets stored in Dapr state, so the budget is shared by every server instance. Unit tests stub HTTP and therefore cannot prove the compare-and-set round-trip; this script exercises the real sidecar and Redis:
+
+```bash
+docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml \
+  exec pawify npm run verify:rate-limit
+```
+
+It resets the MusicBrainz bucket, then checks that a burst of 5 is not serialized, dispatches are spaced by `RATE_LIMIT_MUSICBRAINZ_STAGGER_MS`, the refill paces the next request, a backoff published by one instance is honored by a fresh one, and a stale ETag write is rejected. It exits non-zero on failure, so it also works as a smoke test after changing the limiter.
+
+Bucket state is stored per Dapr app id. Inspect it directly:
+
+```bash
+docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml \
+  exec redis sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning HGETALL "pawify-api||rate_limit:musicbrainz"'
+```
+
+Delete a bucket to reset it (for example after tuning limits):
+
+```bash
+docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml \
+  exec redis sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning DEL "pawify-api||rate_limit:musicbrainz"'
+```
 
 Local Redis persistence is disabled by default through `PAWIFY_REDIS_PERSISTENCE=false`. That keeps local cache/lock behavior realistic without local AOF/RDB files mattering. To stop local Docker:
 
@@ -166,7 +194,9 @@ Production-like runs need values for:
 - `GOOGLE_APPLICATION_CREDENTIALS` or `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `NOTIFY_API_KEY`
 - `REDIS_PASSWORD` in the environment file
-- a Dapr file secret store containing `gmail-email`, `gmail-password`, `discogs-token`, and `genius-access-token`
+- a Dapr file secret store containing `gmail-email`, `gmail-password`, `discogs-token`, `tidal-token`, and `genius-access-token`
+
+`discogs-token`, `tidal-token` and `genius-access-token` are all optional. `tidal-token` may be left empty: the server falls back to a shared public community token so Tidal artist images still resolve.
 
 Common optional values:
 

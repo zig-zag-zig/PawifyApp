@@ -12,6 +12,9 @@ spec:
             discogsTimeout: 30s
             geniusTimeout: 30s
             expoTimeout: 30s
+            deezerTimeout: 15s
+            tidalTimeout: 15s
+            tidalImagesTimeout: 10s
             smtpTimeout: 30s
             redisStateTimeout: 10s
             redisLockTimeout: 10s
@@ -41,20 +44,24 @@ spec:
                 matching:
                     httpStatusCodes: '429,500-599'
         circuitBreakers:
-            musicbrainzCircuitBreaker:
-                maxRequests: 1
-                timeout: 30s
-                trip: consecutiveFailures >= 5
+            # MusicBrainz deliberately has no circuit breaker. Its 503s are global
+            # load shedding (`x-ratelimit-who: global`, `retry-after: 0`), so a
+            # breaker turned a ~300ms blip into a 30s batch-wide blackout. Requests
+            # are paced by the shared token bucket and failures surface as transient
+            # misses that retry on the next pass.
             genericProviderCircuitBreaker:
                 maxRequests: 5
                 timeout: 30s
                 trip: consecutiveFailures >= 10
     targets:
         apps:
+            # No sidecar retry for MusicBrainz: retries fire immediately, bypass the
+            # shared token bucket, and turned one 503 into four requests, which tripped
+            # the circuit breaker below and blacked out MusicBrainz for 30s. The
+            # app-level limiter paces every attempt and backs off on 429/503 instead.
             musicbrainz:
                 retry: externalHttpRetry
                 timeout: musicbrainzTimeout
-                circuitBreaker: musicbrainzCircuitBreaker
             coverartarchive:
                 retry: noRetry
                 timeout: coverartTimeout
@@ -69,6 +76,21 @@ spec:
             expo:
                 retry: expoRetry
                 timeout: expoTimeout
+                circuitBreaker: genericProviderCircuitBreaker
+            # Artist-image providers fast-fail on 429/5xx instead of retrying: the
+            # worker walks a Deezer -> Tidal -> Discogs chain, so a sidecar retry
+            # would only delay the fallback that is already the recovery path.
+            deezer:
+                retry: noRetry
+                timeout: deezerTimeout
+                circuitBreaker: genericProviderCircuitBreaker
+            tidal:
+                retry: noRetry
+                timeout: tidalTimeout
+                circuitBreaker: genericProviderCircuitBreaker
+            tidalimages:
+                retry: noRetry
+                timeout: tidalImagesTimeout
                 circuitBreaker: genericProviderCircuitBreaker
         components:
             pawify-state:

@@ -9,8 +9,12 @@ type ArtistSummaryWithOptionalDiscogsUrls = {
     discogsUrls?: string[];
 };
 
-const getDiscogsUrlsFromExternalLinks = (externalLinks: ExternalLink[] | undefined): string[] => {
-    return getExternalLinkUrlsByService(externalLinks, 'discogs');
+const getUrlsFromExternalLinks = (
+    externalLinks: ExternalLink[] | undefined,
+    service: 'discogs' | 'deezer' | 'tidal',
+): string[] | undefined => {
+    const urls = getExternalLinkUrlsByService(externalLinks, service);
+    return urls.length > 0 ? urls : undefined;
 };
 
 export const mapArtistSummaryToProfileImageLookup = (
@@ -31,5 +35,7 @@ export const mapArtistToProfileImageLookup = (
 ): ArtistProfileImageLookup => ({
     artistId,
     artistName: artist.name,
-    discogsUrls: getDiscogsUrlsFromExternalLinks(artist.externalLinks),
+    discogsUrls: getUrlsFromExternalLinks(artist.externalLinks, 'discogs'),
+    deezerUrls: getUrlsFromExternalLinks(artist.externalLinks, 'deezer'),
+    tidalUrls: getUrlsFromExternalLinks(artist.externalLinks, 'tidal'),
 });

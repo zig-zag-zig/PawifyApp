@@ -135,7 +135,12 @@ describe('Dapr provider HTTP migration', () => {
 
         assert.match(resiliency, /httpStatusCodes: ["']429,500-599["']/);
         assert.match(resiliency, /coverartarchive:\n\s+retry: noRetry/);
+        // MusicBrainz keeps the sidecar retry: it absorbs the brief 503
+        // load-shedding bursts that would otherwise surface to the app as errors.
+        // The circuit breaker stays off, so retries cannot escalate into a
+        // batch-wide blackout.
         assert.match(resiliency, /musicbrainz:\n\s+retry: externalHttpRetry/);
+        assert.doesNotMatch(resiliency, /musicbrainzCircuitBreaker/);
         assert.match(resiliency, /musicbrainzTimeout: 30s/);
         assert.match(resiliency, /pawify-state:\n\s+outbound:\n\s+retry: redisRetry/);
     });

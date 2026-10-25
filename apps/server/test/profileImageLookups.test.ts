@@ -1,10 +1,31 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { ExternalLink, ExternalLinkCategory, ExternalLinkService } from '@pawify/shared';
+
 import {
     mapArtistSummaryToProfileImageLookup,
     mapArtistToProfileImageLookup,
 } from '../src/features/artists/domain/profileImageLookups.js';
+
+const externalLink = (
+    service: ExternalLinkService,
+    url: string,
+    category: ExternalLinkCategory = 'streaming',
+): ExternalLink => ({ service, label: service, url, icon: service, category });
+
+const makeArtist = (externalLinks: ExternalLink[]) =>
+    ({
+        id: 'artist-1',
+        name: 'Artist One',
+        type: 'Group',
+        disambiguation: null,
+        aliases: [],
+        members: [],
+        externalLinks,
+        lifeSpan: { begin: null, end: null, ended: false },
+        beginArea: { name: null },
+    }) as any;
 
 describe('mapArtistSummaryToProfileImageLookup', () => {
     it('maps summary with valid discogsUrls', () => {
@@ -56,41 +77,56 @@ describe('mapArtistSummaryToProfileImageLookup', () => {
 });
 
 describe('mapArtistToProfileImageLookup', () => {
-    it('maps artist with discogs external links', () => {
-        const result = mapArtistToProfileImageLookup('artist-1', {
-            id: 'artist-1',
-            name: 'Artist One',
-            type: 'Group',
-            disambiguation: null,
-            aliases: [],
-            members: [],
-            externalLinks: [
-                { url: 'https://www.discogs.com/artist/123', type: 'discogs' },
-                { url: 'https://musicbrainz.org/artist/abc', type: 'musicbrainz' },
-            ],
-            lifeSpan: { begin: null, end: null, ended: false },
-            beginArea: { name: null },
-        } as any);
+    it('maps discogs, deezer and tidal external links', () => {
+        const result = mapArtistToProfileImageLookup(
+            'artist-1',
+            makeArtist([
+                externalLink('discogs', 'https://www.discogs.com/artist/45467', 'database'),
+                externalLink('deezer', 'https://www.deezer.com/artist/860'),
+                externalLink('tidal', 'https://tidal.com/artist/9706'),
+                externalLink('spotify', 'https://open.spotify.com/artist/0k17h0D3J5VfsdmQ1iZtE9'),
+            ]),
+        );
 
         assert.equal(result.artistId, 'artist-1');
         assert.equal(result.artistName, 'Artist One');
-        assert.ok(Array.isArray(result.discogsUrls));
+        assert.deepEqual(result.discogsUrls, ['https://www.discogs.com/artist/45467']);
+        assert.deepEqual(result.deezerUrls, ['https://www.deezer.com/artist/860']);
+        assert.deepEqual(result.tidalUrls, ['https://tidal.com/artist/9706']);
     });
 
-    it('returns empty array when no discogs links', () => {
-        const result = mapArtistToProfileImageLookup('artist-1', {
-            id: 'artist-1',
-            name: 'Artist One',
-            type: 'Group',
-            disambiguation: null,
-            aliases: [],
-            members: [],
-            externalLinks: [],
-            lifeSpan: { begin: null, end: null, ended: false },
-            beginArea: { name: null },
-        } as any);
+    it('leaves a provider undefined when the artist has no link for it', () => {
+        const result = mapArtistToProfileImageLookup(
+            'artist-1',
+            makeArtist([externalLink('deezer', 'https://www.deezer.com/artist/860')]),
+        );
+
+        assert.deepEqual(result.deezerUrls, ['https://www.deezer.com/artist/860']);
+        assert.equal(result.discogsUrls, undefined);
+        assert.equal(result.tidalUrls, undefined);
+    });
+
+    it('leaves every provider undefined when there are no external links', () => {
+        const result = mapArtistToProfileImageLookup('artist-1', makeArtist([]));
 
         assert.equal(result.artistId, 'artist-1');
-        assert.deepEqual(result.discogsUrls, []);
+        assert.equal(result.discogsUrls, undefined);
+        assert.equal(result.deezerUrls, undefined);
+        assert.equal(result.tidalUrls, undefined);
+    });
+
+    it('collects every url when a provider is linked more than once', () => {
+        const result = mapArtistToProfileImageLookup(
+            'artist-1',
+            makeArtist([
+                externalLink('deezer', 'https://www.deezer.com/artist/860'),
+                externalLink('deezer', 'https://www.deezer.com/fr/artist/861'),
+            ]),
+        );
+
+        assert.deepEqual(result.deezerUrls, [
+            'https://www.deezer.com/artist/860',
+            'https://www.deezer.com/fr/artist/861',
+        ]);
     });
 });

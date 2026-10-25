@@ -69,7 +69,9 @@ export const fetchDaprProvider = async (
             isForegroundPending = true;
         }
 
-        release = await rateLimiter.acquire();
+        // The shared bucket acquires against Dapr state, so it accepts the
+        // request's AbortSignal and stops waiting when the task is cancelled.
+        release = await rateLimiter.acquire(signal);
         if (useForegroundTracking) {
             if (isForegroundPending) {
                 pendingForegroundMusicBrainzRequests = Math.max(

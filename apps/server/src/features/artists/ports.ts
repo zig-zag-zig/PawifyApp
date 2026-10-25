@@ -53,7 +53,13 @@ interface ArtistProfileImageQueue {
     queueArtistProfileImagesWithLookups(
         userId: string,
         scope: string,
-        artistLookups: { artistId: string; artistName?: string; discogsUrls?: string[] }[],
+        artistLookups: {
+            artistId: string;
+            artistName?: string;
+            discogsUrls?: string[];
+            deezerUrls?: string[];
+            tidalUrls?: string[];
+        }[],
         ttl: number | undefined,
         options?: ArtistProfileImageQueueOptions,
     ): string;

@@ -32,3 +32,27 @@ metadata:
     name: expo
 spec:
     baseUrl: https://exp.host
+---
+apiVersion: dapr.io/v1alpha1
+kind: HTTPEndpoint
+metadata:
+    name: deezer
+spec:
+    baseUrl: https://api.deezer.com
+---
+apiVersion: dapr.io/v1alpha1
+kind: HTTPEndpoint
+metadata:
+    name: tidal
+spec:
+    baseUrl: https://api.tidal.com
+---
+# Tidal serves artwork from a different host than its API, and one HTTPEndpoint
+# maps to exactly one baseUrl, so the CDN needs its own endpoint. Used for HEAD
+# probes that discover which image sizes actually exist for an artist.
+apiVersion: dapr.io/v1alpha1
+kind: HTTPEndpoint
+metadata:
+    name: tidalimages
+spec:
+    baseUrl: https://resources.tidal.com

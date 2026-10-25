@@ -70,11 +70,10 @@ export const cacheConfig = {
 
 export const musicApiConfig = {
     musicBrainzUserAgent: optionalEnv('MUSICBRAINZ_USER_AGENT') ?? 'MusicReleaseNotifier/1.0',
-    musicBrainzDelayMs: parsePositiveIntEnv(process.env.MUSICBRAINZ_DELAY_MS, 650),
-    musicBrainzBackgroundDelayMs: parsePositiveIntEnv(
-        process.env.MUSICBRAINZ_BACKGROUND_DELAY_MS,
-        1250,
-    ),
+    // MusicBrainz sends no Retry-After, so this is the floor applied when it
+    // answers 429/503: long enough to clear a momentary blip, short enough that a
+    // single 503 does not stall foreground lookups. Sustained throttling is
+    // handled by the Dapr circuit breaker rather than by a long pause here.
     musicBrainzMinRateLimitWaitMs: parsePositiveIntEnv(
         process.env.MUSICBRAINZ_MIN_RATE_LIMIT_WAIT_MS,
         1500,
@@ -83,6 +82,60 @@ export const musicApiConfig = {
         process.env.MUSICBRAINZ_RETRY_AFTER_BUFFER_MS,
         1000,
     ),
+    // Tidal artist lookups need a token and a country. Both are overridable here;
+    // see credentials.getTidalToken for the full precedence order.
+    tidalApiToken: optionalEnv('TIDAL_API_TOKEN'),
+    tidalCountryCode: optionalEnv('TIDAL_COUNTRY_CODE') ?? 'US',
+    // Retained for the in-memory fallback limiter only. The MusicBrainz request
+    // budget itself is governed by rateLimitConfig's token bucket below.
+    musicBrainzDelayMs: parsePositiveIntEnv(process.env.MUSICBRAINZ_DELAY_MS, 650),
+};
+
+/**
+ * Shared (Dapr state) token-bucket limits for providers whose quota is per IP or
+ * per token, so the budget is enforced across every server instance.
+ *
+ * Defaults are set below the provider's documented limit to leave headroom:
+ * - musicbrainz: documented and enforced at 1 req/sec average per IP. Bursting was
+ *   measured to be unreliable: the same 5-request burst returned 200 on one run and
+ *   503 on another, and MusicBrainz then declines every request until the average
+ *   drops back to 1/sec. Each 503 also costs a ~10s pause, which stalled whole
+ *   batches and left artists without images. Burst therefore defaults to 1 (strict
+ *   1/sec, matching the published policy). Raise RATE_LIMIT_MUSICBRAINZ_BURST via
+ *   env to experiment; no code change needed.
+ * - discogs: 60 req/min authenticated (verified from x-discogs-ratelimit).
+ * - deezer: 50 req/5s per IP (verified; exceeding it returns HTTP 200 with
+ *   error code 4). 8/sec runs at ~80% of the documented budget.
+ */
+export const rateLimitConfig = {
+    musicbrainzBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_MUSICBRAINZ_BURST, 1),
+    musicbrainzRefillPerSecond: parsePositiveIntEnv(
+        process.env.RATE_LIMIT_MUSICBRAINZ_REFILL_PER_SECOND,
+        1,
+    ),
+    musicbrainzStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_MUSICBRAINZ_STAGGER_MS, 50),
+
+    discogsBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_DISCOGS_BURST, 5),
+    discogsRefillPerSecond: parsePositiveIntEnv(
+        process.env.RATE_LIMIT_DISCOGS_REFILL_PER_SECOND,
+        1,
+    ),
+    discogsStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_DISCOGS_STAGGER_MS, 50),
+
+    deezerBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_BURST, 40),
+    deezerRefillPerSecond: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_REFILL_PER_SECOND, 8),
+    deezerStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_STAGGER_MS, 0),
+
+    // Longest provider-requested pause we are willing to sit through. This has to
+    // cover Discogs' documented 60s window, so anything beyond a minute is treated
+    // as "not worth waiting" and fails fast as transient instead of blocking the
+    // shared bucket. Minutes-long resets used to stall whole batches.
+    maxBackoffWaitMs: parsePositiveIntEnv(process.env.RATE_LIMIT_MAX_BACKOFF_WAIT_MS, 60_000),
+    // Bucket state lives in Dapr state; when it cannot be reached the limiter
+    // falls back to per-process limits instead of failing the request.
+    stateStoreName: optionalEnv('RATE_LIMIT_STATE_STORE') ?? 'pawify-state',
+    fallbackMaxConcurrent: parsePositiveIntEnv(process.env.RATE_LIMIT_FALLBACK_MAX_CONCURRENT, 1),
+    fallbackDelayMs: parsePositiveIntEnv(process.env.RATE_LIMIT_FALLBACK_DELAY_MS, 1000),
 };
 
 export const notificationConfig = {
