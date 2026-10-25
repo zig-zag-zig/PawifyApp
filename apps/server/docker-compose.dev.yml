@@ -11,6 +11,7 @@ services:
             - ./package.json:/repo/apps/server/package.json
             - ./tsconfig.json:/repo/apps/server/tsconfig.json
             - ./tsconfig.test.json:/repo/apps/server/tsconfig.test.json
+            - ./scripts:/repo/apps/server/scripts
             - ../../packages/shared/src:/repo/packages/shared/src
             - ../../packages/shared/index.ts:/repo/packages/shared/index.ts
             - ${PAWIFY_SECRETS_DIR:-./secrets/local}:/var/pawify/secrets:ro

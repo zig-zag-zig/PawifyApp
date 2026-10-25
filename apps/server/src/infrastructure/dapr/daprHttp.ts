@@ -1,6 +1,14 @@
 import { daprFetch } from './daprClient.js';
 
-export type DaprEndpointName = 'musicbrainz' | 'coverartarchive' | 'discogs' | 'genius' | 'expo';
+export type DaprEndpointName =
+    | 'musicbrainz'
+    | 'coverartarchive'
+    | 'discogs'
+    | 'genius'
+    | 'expo'
+    | 'deezer'
+    | 'tidal'
+    | 'tidalimages';
 
 export const invokeHttpEndpoint = async (
     endpoint: DaprEndpointName,

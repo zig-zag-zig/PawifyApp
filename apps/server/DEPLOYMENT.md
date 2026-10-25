@@ -59,9 +59,16 @@ secrets/prod/firebase-service-account.json
   "gmail-email": "your-gmail@gmail.com",
   "gmail-password": "your-gmail-app-password",
   "discogs-token": "optional-discogs-token",
+  "tidal-token": "optional-tidal-token",
   "genius-access-token": "optional-genius-token"
 }
 ```
+
+`tidal-token` may be omitted or left empty. The server then falls back to
+`TIDAL_API_TOKEN` and finally to a built-in shared public community token, so
+Tidal artist-image lookups work without any configuration. If Tidal ever revokes
+that token the API returns HTTP 401 and Tidal is skipped in favour of Discogs;
+set `tidal-token` here to a working value to restore it.
 
 `REDIS_PASSWORD` lives only in the environment file. Redis uses it when starting, and the Dapr sidecar reads the same env var through `dapr/components/env-secrets.yaml` for the Redis state and lock components.
 

@@ -78,6 +78,8 @@ const queueArtistProfileImagesInternal = (
                     artistId: lookup.artistId,
                     artistName: lookup.artistName ?? existing?.artistName,
                     discogsUrls: lookup.discogsUrls ?? existing?.discogsUrls,
+                    deezerUrls: lookup.deezerUrls ?? existing?.deezerUrls,
+                    tidalUrls: lookup.tidalUrls ?? existing?.tidalUrls,
                 });
                 return map;
             }, new Map<string, ArtistProfileImageLookup>())
