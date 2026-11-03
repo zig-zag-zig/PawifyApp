@@ -1,9 +1,5 @@
-import {
-    createArtistReleaseGroupCoverCacheContext,
-    flushArtistReleaseGroupCoverCacheContext,
-    getReleaseCover,
-    getReleaseGroupCover,
-} from '../../coverArtService.js';
+import { getReleaseCover, getReleaseGroupCover } from '../../coverArtService.js';
+import { aggregateProviderUrls, getReleaseProviderUrls } from '../../coverArt/coverArtLookup.js';
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import { dedupeStrings } from '../../../common/utils/array.js';
@@ -34,8 +30,17 @@ export const fetchAndUpsertReleaseGroupReleaseCovers = async (
         ttlHours: ttl ?? null,
     });
 
+    // One SQLite read for the whole page instead of one per release.
+    const providerUrlsByRelease = getReleaseProviderUrls(uniqueReleaseIds);
+
     await mapWithConcurrency(uniqueReleaseIds, COVER_ART_REQUEST_CONCURRENCY, async (releaseId) => {
-        const cover = await getReleaseCover(releaseId, releaseGroupId, ttl, signal);
+        const cover = await getReleaseCover(
+            releaseId,
+            releaseGroupId,
+            ttl,
+            signal,
+            providerUrlsByRelease.get(releaseId),
+        );
         resultMap[releaseId] = cover.state.url;
     });
 
@@ -58,9 +63,15 @@ export const fetchAndUpsertArtistReleaseGroupCovers = async (
     signal?: AbortSignal,
 ): Promise<ReleaseGroupCoverTaskResult> => {
     const resultMap: { [releaseGroupId: string]: string | null | undefined } = {};
-    const artistCoverCacheContext = await createArtistReleaseGroupCoverCacheContext(artistId);
     const startedAt = Date.now();
     let firstError: unknown;
+
+    // Provider relations for every release on the page, read in one pass. The
+    // group's cover then resolves through Deezer → Tidal → CAA without touching
+    // SQLite per group.
+    const providerUrlsByRelease = getReleaseProviderUrls(
+        pageEntries.flatMap((entry) => entry.releaseIds),
+    );
 
     logger.debug('release-group cover batch started', {
         artistId,
@@ -68,27 +79,31 @@ export const fetchAndUpsertArtistReleaseGroupCovers = async (
         ttlHours: ttl ?? null,
     });
 
-    try {
-        await mapWithConcurrency(pageEntries, COVER_ART_REQUEST_CONCURRENCY, async (entry) => {
-            try {
-                const cover = await getReleaseGroupCover(
-                    artistId,
-                    entry.releaseGroupId,
-                    entry.releaseIds,
-                    ttl,
-                    signal,
-                    artistCoverCacheContext,
-                );
-                resultMap[entry.releaseGroupId] = cover.state.url;
-            } catch (error) {
-                if (!firstError) {
-                    firstError = error;
-                }
+    await mapWithConcurrency(pageEntries, COVER_ART_REQUEST_CONCURRENCY, async (entry) => {
+        try {
+            const cover = await getReleaseGroupCover(
+                artistId,
+                entry.releaseGroupId,
+                entry.releaseIds,
+                ttl,
+                signal,
+                undefined,
+                aggregateProviderUrls(
+                    new Map(
+                        entry.releaseIds.flatMap((releaseId) => {
+                            const urls = providerUrlsByRelease.get(releaseId);
+                            return urls ? [[releaseId, urls] as const] : [];
+                        }),
+                    ),
+                ),
+            );
+            resultMap[entry.releaseGroupId] = cover.state.url;
+        } catch (error) {
+            if (!firstError) {
+                firstError = error;
             }
-        });
-    } finally {
-        await flushArtistReleaseGroupCoverCacheContext(artistId, artistCoverCacheContext, ttl);
-    }
+        }
+    });
 
     if (firstError) {
         logger.warn('release-group cover batch completed with errors', {

@@ -1,13 +1,19 @@
 import { NotFoundError } from '../../../common/http/errors.js';
 import { authenticatedHandler } from '../../../infrastructure/http/authenticatedHandler.js';
 import {
+    optionalIntegerInRange,
     optionalString,
     requireString,
     requireStringArray,
 } from '../../../common/http/validation.js';
 import type { ReleaseUseCases } from '../releaseUseCases.js';
 
+const DEFAULT_ARTIST_RELEASES_PAGE_SIZE = 60;
+const MAX_ARTIST_RELEASES_PAGE_SIZE = 200;
+
 export type ReleaseWirePresenters = {
+    /** v2 accepts PATCHED paging params on getArtistReleases; v1 ignores them. */
+    supportsArtistReleasesPaging?: boolean;
     getNewReleases: (result: Awaited<ReturnType<ReleaseUseCases['getNewReleases']>>) => unknown;
     getArtistReleases: (
         result: Awaited<ReturnType<ReleaseUseCases['getArtistReleases']>>,
@@ -43,6 +49,7 @@ export const releasePresentersV1: ReleaseWirePresenters = {
 
 /** v2: full cache-first response with immediate maps and nullable task ids. */
 export const releasePresentersV2: ReleaseWirePresenters = {
+    supportsArtistReleasesPaging: true,
     getNewReleases: (result) => result,
     getArtistReleases: (result) => result,
     getReleaseGroupReleases: (result) => result,
@@ -78,10 +85,28 @@ export const createReleaseHandlers = (
         async ({ req, res, userId }) => {
             const artistId = requireString(req.body, 'artistId');
 
+            if (!presenters.supportsArtistReleasesPaging) {
+                res.status(200).send(
+                    presenters.getArtistReleases(
+                        await releaseUseCases.getArtistReleases(userId, artistId),
+                    ),
+                );
+                return;
+            }
+
+            // Optional paging: omitting both fields keeps the old "give me
+            // everything" behaviour, so an older client build is unaffected.
+            const limit = optionalIntegerInRange(
+                req.body,
+                'limit',
+                DEFAULT_ARTIST_RELEASES_PAGE_SIZE,
+                1,
+                MAX_ARTIST_RELEASES_PAGE_SIZE,
+            );
+            const cursor = optionalString(req.body, 'cursor') ?? null;
+
             res.status(200).send(
-                presenters.getArtistReleases(
-                    await releaseUseCases.getArtistReleases(userId, artistId),
-                ),
+                await releaseUseCases.getArtistReleasesPage(userId, artistId, { limit, cursor }),
             );
         },
     );

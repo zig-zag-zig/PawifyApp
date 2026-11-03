@@ -23,8 +23,26 @@ type NewReleasesSnapshot = {
     coverPageEntries: ReleaseGroupReleasesPageEntry[];
 };
 
+export type ArtistReleasesPage = {
+    limit: number;
+    /** Opaque cursor from a previous page; null starts at the newest group. */
+    cursor: string | null;
+};
+
+export type ArtistReleasesPageResult = {
+    releaseGroups: CachedArtistReleases;
+    nextCursor: string | null;
+    hasMore: boolean;
+};
+
 export interface ReleaseCatalogGateway {
     getArtistReleases(artistId: string, ttl: number | undefined): Promise<CachedArtistReleases>;
+    /** Paged variant, used by the v2 contract. */
+    getArtistReleasesPage(
+        artistId: string,
+        ttl: number | undefined,
+        page: ArtistReleasesPage,
+    ): Promise<ArtistReleasesPageResult>;
     getReleaseGroupReleases(
         releaseGroupId: string,
         ttl: number | undefined,

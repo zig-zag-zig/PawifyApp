@@ -12,6 +12,7 @@ const candidate = (overrides: Partial<ReleaseGroupCandidate> = {}): ReleaseGroup
     primaryType: 'Album',
     releaseIds: ['release-1', 'release-2'],
     newestReleaseId: 'release-2',
+    newestReleaseDate: '2003-04-29',
     ...overrides,
 });
 

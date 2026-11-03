@@ -28,7 +28,7 @@ interface ArtistFollowingRepository {
     saveFollowedArtist(
         userId: string,
         artistId: string,
-        releaseIds: string[],
+        groupIds: string[],
         artistSummary?: FollowedArtistSummary,
     ): Promise<void>;
     saveFollowingArtistSummaries(
@@ -39,7 +39,7 @@ interface ArtistFollowingRepository {
 }
 
 interface ArtistReleaseCatalogGateway {
-    getArtistReleaseIds(artistId: string, ttl: number | undefined): Promise<string[]>;
+    getArtistReleaseGroupIds(artistId: string, ttl: number | undefined): Promise<string[]>;
 }
 
 interface ArtistProfileImageQueue {

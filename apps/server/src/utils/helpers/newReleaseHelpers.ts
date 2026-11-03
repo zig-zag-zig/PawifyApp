@@ -12,7 +12,7 @@ import {
 } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { toStoredNewRelease } from '../../features/releases/domain/newReleaseEntry.js';
 import {
-    getCurrentReleases,
+    getCurrentReleaseGroupState,
     removePrunedNewReleaseGroups,
 } from '../../services/firebase/newReleaseMaintenance.js';
 import { getReleaseGroupCreditsFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
@@ -63,25 +63,30 @@ export const processArtistReleases = async (
     userId: string,
     artistId: string,
     getCatalog: (artistId: string) => Promise<ArtistReleaseGroupCatalog>,
-    currentReleasesByArtist?: { [artistId: string]: string[] },
+    currentReleaseGroupStateByArtist?: { [artistId: string]: { [groupId: string]: string } },
     releaseNotificationSettings: ReleaseNotificationSettings = DEFAULT_RELEASE_NOTIFICATION_SETTINGS,
 ): Promise<ProcessArtistResult> => {
     const catalog = await getCatalog(artistId);
 
-    const knownIds =
-        currentReleasesByArtist?.[artistId] ?? (await getCurrentReleases(userId, artistId));
+    const storedState =
+        currentReleaseGroupStateByArtist?.[artistId] ??
+        (await getCurrentReleaseGroupState(userId, artistId));
 
     // Plan first (pure, tested): this is where the user's release-id history is
-    // migrated to release-group ids, so a group already known through one of its
-    // pressings stays silent instead of notifying again. Credits are resolved only
-    // for whatever turned out to be new.
-    const plan = planArtistScan(knownIds, catalog.groups, releaseNotificationSettings);
+    // migrated to release-group ids and where the 45-day event window decides
+    // whether a pressing is the same event or a genuinely new one. Credits are
+    // resolved only for whatever turned out to be new.
+    const plan = planArtistScan(
+        new Map(Object.entries(storedState)),
+        catalog.groups,
+        releaseNotificationSettings,
+    );
     const creditsByGroupId =
-        plan.newGroups.length === 0
+        plan.newEvents.length === 0
             ? catalog.creditsByGroupId
-            : resolveCredits(catalog, plan.newGroups);
+            : resolveCredits(catalog, plan.newEvents);
 
-    const mappedNewReleases: StoredNewRelease[] = plan.newGroups.map((group) =>
+    const mappedNewReleases: StoredNewRelease[] = plan.newEvents.map((group) =>
         toStoredNewRelease(group, creditsByGroupId.get(group.id) ?? []),
     );
 
@@ -89,8 +94,8 @@ export const processArtistReleases = async (
         await handleGroupChanges({
             userId,
             artistId,
-            groupIdsToSave: plan.groupIdsToSave,
-            newGroups: plan.newGroups,
+            groupState: plan.groupState,
+            newEvents: plan.newEvents,
             storedNewReleases: mappedNewReleases,
         });
     }
@@ -103,29 +108,29 @@ export const processArtistReleases = async (
 type HandleGroupChangesOptions = {
     userId: string;
     artistId: string;
-    groupIdsToSave: string[];
-    newGroups: ReleaseGroupCandidate[];
+    groupState: Map<string, string>;
+    newEvents: ReleaseGroupCandidate[];
     storedNewReleases: StoredNewRelease[];
 };
 
 const handleGroupChanges = async ({
     userId,
     artistId,
-    groupIdsToSave,
-    newGroups,
+    groupState,
+    newEvents,
     storedNewReleases,
 }: HandleGroupChangesOptions): Promise<void> => {
-    // Built from the group changes: everything the feed shows for this artist comes
-    // from the catalog, so the cached artist listing is stale as soon as a group is
-    // added or removed. Dropping it is cheaper and safer than patching it per release.
+    // Everything the feed shows for this artist comes from the catalog, so the
+    // cached artist listing is stale as soon as a group is added or removed.
+    // Dropping it is cheaper and safer than patching it per release.
     await deleteCachedData(getCacheKey(artistId, 'artistReleases'));
 
-    await cacheNewReleaseCovers(newGroups);
+    await cacheNewReleaseCovers(newEvents);
 
     await saveArtistAndKnownReleasesToDb(
         userId,
         artistId,
-        groupIdsToSave,
+        groupState,
         storedNewReleases,
         undefined,
     );

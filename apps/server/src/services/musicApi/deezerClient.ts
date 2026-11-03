@@ -8,6 +8,174 @@ import type { ArtistImageLookupOptions, HttpOptions, ProviderValueState } from '
 const logger = createLogger('services.musicApi.deezer');
 
 const DEEZER_ARTIST_PATH = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?artist\/(\d+)/i;
+const DEEZER_ALBUM_PATH = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?album\/(\d+)/i;
+
+/**
+ * Deezer cover paths for a release/album.
+ *
+ * DevTools on deezer.com confirmed two forms for an album without artwork:
+ *   /images/cover/d41d8cd98f00b204e9800998ecf8427e/264x264-000000-80-0-0.jpg
+ *   /images/cover//500x500.jpg
+ * The empty hash (MD5 of "") is the same asset the artist placeholder uses, but
+ * under a different path, so the check is path-scoped rather than hash-only.
+ */
+const DEEZER_CDN_COVER_PATH = /\/images\/cover\/([^/]*)\//i;
+const DEEZER_EMPTY_COVER_PATH = /\/images\/cover\/\//i;
+
+export const isDeezerPlaceholderAlbumCover = (url: string): boolean => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+        return true;
+    }
+
+    if (DEEZER_EMPTY_COVER_PATH.test(trimmed)) {
+        return true;
+    }
+
+    const hash = DEEZER_CDN_COVER_PATH.exec(trimmed)?.[1];
+    if (hash === undefined) {
+        return false;
+    }
+
+    return DEEZER_PLACEHOLDER_IMAGE_HASHES.has(hash.trim().toLowerCase());
+};
+
+/** Largest-first; Deezer serves the same asset at every size. */
+const DEEZER_ALBUM_COVER_FIELDS = ['cover_xl', 'cover_big', 'cover_medium', 'cover_small'] as const;
+
+/**
+ * Extracts the numeric Deezer album id from a MusicBrainz url-rel.
+ *
+ * MusicBrainz files Deezer album links under `free streaming`, so the provider is
+ * identified by host, never by relation type. Locale-prefixed paths are accepted.
+ */
+export const extractDeezerAlbumId = (url: string): string | null => {
+    try {
+        const parsed = new URL(url);
+        if (!isDeezerHost(parsed.hostname.toLowerCase())) {
+            return null;
+        }
+
+        return DEEZER_ALBUM_PATH.exec(parsed.pathname)?.[1] ?? null;
+    } catch {
+        return null;
+    }
+};
+
+type DeezerAlbumLookup =
+    | { kind: 'image'; url: string }
+    | { kind: 'miss' }
+    | { kind: 'transient' };
+
+const lookupDeezerAlbumCover = async (
+    deezerUrl: string,
+    signal?: AbortSignal,
+): Promise<DeezerAlbumLookup> => {
+    const albumId = extractDeezerAlbumId(deezerUrl);
+    if (!albumId) {
+        return { kind: 'miss' };
+    }
+
+    let response: unknown;
+    try {
+        response = await fetchDaprProvider(
+            'deezer',
+            `/album/${albumId}`,
+            { method: 'GET', headers: {} },
+            true,
+            true,
+            'status',
+            signal,
+            'background',
+        );
+    } catch (error) {
+        if (isAbortError(error)) {
+            throw error;
+        }
+
+        return { kind: 'transient' };
+    }
+
+    if (isFetchFailureResult(response)) {
+        return isConfirmedMissingFetchFailure(response) ? { kind: 'miss' } : { kind: 'transient' };
+    }
+
+    if (response === null || response === undefined) {
+        return { kind: 'transient' };
+    }
+
+    const data = response as Record<string, unknown>;
+    const errorBody = data.error as { code?: unknown } | undefined;
+    if (errorBody && typeof errorBody === 'object') {
+        if (errorBody.code === DEEZER_NO_DATA_ERROR_CODE) {
+            return { kind: 'miss' };
+        }
+
+        if (errorBody.code === DEEZER_QUOTA_ERROR_CODE) {
+            getRateLimiter('deezer').setBackoff(DEEZER_QUOTA_BACKOFF_MS);
+            logger.warn('deezer quota exhausted; pausing deezer requests', {
+                backoffMs: DEEZER_QUOTA_BACKOFF_MS,
+            });
+            return { kind: 'transient' };
+        }
+
+        logger.warn('deezer album returned an error body', {
+            albumId,
+            code: errorBody.code ?? null,
+        });
+        return { kind: 'transient' };
+    }
+
+    for (const field of DEEZER_ALBUM_COVER_FIELDS) {
+        const value = data[field];
+        if (typeof value !== 'string') {
+            continue;
+        }
+
+        const candidate = value.trim();
+        if (!candidate || isDeezerRedirectImage(candidate)) {
+            continue;
+        }
+
+        if (isDeezerPlaceholderAlbumCover(candidate)) {
+            // Every size points at the same placeholder asset, so stop probing sizes.
+            logger.debug('deezer album has no real cover', { albumId, field });
+            return { kind: 'miss' };
+        }
+
+        return { kind: 'image', url: candidate };
+    }
+
+    return { kind: 'miss' };
+};
+
+/**
+ * Resolves release artwork from Deezer album links.
+ *
+ * Like the artist path this walks every candidate for the same release (duplicate
+ * Deezer albums happen) and returns the first real cover, distinguishing "no cover"
+ * from "lookup failed" so the caller can decide whether to retry.
+ */
+export const getDeezerAlbumImage = async (
+    deezerUrls: string[],
+    signal?: AbortSignal,
+): Promise<ProviderValueState> => {
+    let sawTransientFailure = false;
+
+    for (const deezerUrl of deezerUrls) {
+        const lookup = await lookupDeezerAlbumCover(deezerUrl, signal);
+
+        if (lookup.kind === 'image') {
+            return lookup.url;
+        }
+
+        if (lookup.kind === 'transient') {
+            sawTransientFailure = true;
+        }
+    }
+
+    return sawTransientFailure ? undefined : null;
+};
 
 /**
  * Deezer reports "this artist does not exist" as HTTP 200 with an error body

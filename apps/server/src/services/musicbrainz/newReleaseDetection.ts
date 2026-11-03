@@ -1,7 +1,7 @@
 import type { NewRelease, ReleaseNotificationSettings } from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
 import {
-    getKnownReleasesFromDb,
+    getKnownReleaseGroupStateFromDb,
     mergeKnownArtistReleaseIdsInDb,
 } from '../firebase/knownReleasesStore.js';
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
@@ -22,14 +22,14 @@ const getCatalogForProcessing = async (artistId: string): Promise<ArtistReleaseG
 const processSingleArtist = async (
     userId: string,
     artistId: string,
-    currentReleasesByArtist: { [artistId: string]: string[] },
+    currentReleaseGroupStateByArtist: { [artistId: string]: { [groupId: string]: string } },
     releaseNotificationSettings: ReleaseNotificationSettings,
 ): Promise<ArtistProcessResult> => {
     return await processArtistReleases(
         userId,
         artistId,
         getCatalogForProcessing,
-        currentReleasesByArtist,
+        currentReleaseGroupStateByArtist,
         releaseNotificationSettings,
     );
 };
@@ -70,9 +70,9 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
     try {
         const followingArtists = await getFollowingFromDb(userId);
         const releaseNotificationSettings = await getReleaseNotificationSettingsFromDb(userId);
-        const currentReleasesByArtist = await getKnownReleasesFromDb(userId);
+        const currentReleaseGroupStateByArtist = await getKnownReleaseGroupStateFromDb(userId);
         for (const artistId of followingArtists) {
-            currentReleasesByArtist[artistId] ??= [];
+            currentReleaseGroupStateByArtist[artistId] ??= {};
         }
         const result: NewRelease[] = [];
 
@@ -83,7 +83,7 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
                 await processSingleArtist(
                     userId,
                     artistId,
-                    currentReleasesByArtist,
+                    currentReleaseGroupStateByArtist,
                     releaseNotificationSettings,
                 ),
         );

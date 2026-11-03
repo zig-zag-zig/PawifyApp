@@ -4,7 +4,7 @@ import { readFollowingArtistsMap, writeFollowingArtistsMap } from './followingSt
 import {
     deleteKnownArtistReleasesFromDb,
     getKnownReleasesFromDb,
-    replaceKnownArtistReleaseIdsInDb,
+    replaceKnownArtistReleaseGroupStateInDb,
 } from './knownReleasesStore.js';
 import {
     mergeNewReleasesIntoState,
@@ -52,16 +52,16 @@ const removeUnfollowedArtistNewReleases = async (
 export const saveArtistAndKnownReleasesToDb = async (
     userId: string,
     artistId: string,
-    releaseIds: string[],
+    groupState: ReadonlyMap<string, string>,
     newReleases: StoredNewRelease[],
     artistSummary?: FollowedArtistSummary,
 ): Promise<void> => {
-    if (!artistId || !Array.isArray(releaseIds)) {
-        throw new Error('Invalid input: artistId and releases are required.');
+    if (!artistId || !(groupState instanceof Map)) {
+        throw new Error('Invalid input: artistId and group state are required.');
     }
 
     await getDocumentRefAndSnapshot(userId);
-    await replaceKnownArtistReleaseIdsInDb(userId, artistId, releaseIds);
+    await replaceKnownArtistReleaseGroupStateInDb(userId, artistId, groupState);
 
     const followingArtistsMap = await readFollowingArtistsMap(userId);
     const existingFollowing = followingArtistsMap[artistId];

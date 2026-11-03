@@ -3,6 +3,7 @@ import { withOperationLogging } from '../../common/logging/operationLogger.js';
 import type { BackgroundAssetPlanner } from '../../services/backgroundAssets/plannerTypes.js';
 import { releaseDependencies } from './infrastructure/releaseDependencies.js';
 import { createGetArtistReleasesUseCase } from './usecases/getArtistReleases.js';
+import { createGetArtistReleasesPageUseCase } from './usecases/getArtistReleasesPage.js';
 import { createGetNewReleasesUseCase } from './usecases/getNewReleases.js';
 import { createGetReleaseUseCase } from './usecases/getRelease.js';
 import { createGetReleaseGroupReleasesUseCase } from './usecases/getReleaseGroupReleases.js';
@@ -28,6 +29,22 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
                 getResultMetadata: (result) => ({
                     releaseGroupCount: result.releaseGroups.length,
                     releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
+                }),
+            },
+        ),
+        getArtistReleasesPage: withOperationLogging(
+            logger,
+            'getArtistReleasesPage',
+            createGetArtistReleasesPageUseCase(dependencies),
+            {
+                getMetadata: (_userId, artistId, options) => ({
+                    artistId,
+                    limit: options?.limit,
+                    cursor: options?.cursor ? 'present' : null,
+                }),
+                getResultMetadata: (result) => ({
+                    releaseGroupCount: result.releaseGroups.length,
+                    hasMore: result.hasMore,
                 }),
             },
         ),

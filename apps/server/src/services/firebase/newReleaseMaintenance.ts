@@ -1,8 +1,27 @@
-import { getKnownArtistReleaseIdsFromDb, getKnownReleasesFromDb } from './knownReleasesStore.js';
+import {
+    getKnownArtistReleaseGroupStateFromDb,
+    getKnownArtistReleaseIdsFromDb,
+    getKnownReleasesFromDb,
+    getKnownReleaseGroupStateFromDb,
+} from './knownReleasesStore.js';
 import { getNewReleasesSnapshotFromDb, removeNewReleasesFromDb } from './newReleasesStore.js';
 
 export const getCurrentReleases = async (userId: string, artistId: string): Promise<string[]> => {
     return await getKnownArtistReleaseIdsFromDb(userId, artistId);
+};
+
+/** Known release groups with their last notification event date. */
+export const getCurrentReleaseGroupState = async (
+    userId: string,
+    artistId: string,
+): Promise<{ [groupId: string]: string }> => {
+    return await getKnownArtistReleaseGroupStateFromDb(userId, artistId);
+};
+
+export const getAllKnownReleaseGroupStates = async (
+    userId: string,
+): Promise<{ [artistId: string]: { [groupId: string]: string } }> => {
+    return await getKnownReleaseGroupStateFromDb(userId);
 };
 
 /**
@@ -21,7 +40,7 @@ export const removePrunedNewReleaseGroups = async (
 
     const prunedGroupIds = new Set(releaseGroupIds);
     const { newReleasesMap } = await getNewReleasesSnapshotFromDb(userId);
-    const knownReleasesByArtist = await getKnownReleasesFromDb(userId);
+    const knownStatesByArtist = await getKnownReleaseGroupStateFromDb(userId);
 
     const releaseIdsToRemove = Object.entries(newReleasesMap)
         .filter(([, entry]) => {
@@ -33,10 +52,10 @@ export const removePrunedNewReleaseGroups = async (
         .map(([releaseId]) => releaseId)
         .filter((releaseId) => {
             const groupId = newReleasesMap[releaseId]?.releaseGroupId;
-            return !Object.values(knownReleasesByArtist).some(
-                (knownIds) =>
-                    knownIds.includes(releaseId) ||
-                    (groupId !== null && groupId !== undefined && knownIds.includes(groupId)),
+            return !Object.values(knownStatesByArtist).some(
+                (state) =>
+                    Object.prototype.hasOwnProperty.call(state, releaseId) ||
+                    (groupId !== null && groupId !== undefined && Object.prototype.hasOwnProperty.call(state, groupId)),
             );
         });
 

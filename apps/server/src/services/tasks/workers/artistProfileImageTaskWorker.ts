@@ -27,6 +27,7 @@ import {
     shouldRefetchArtistImageState,
 } from '../backgroundTaskMappers.js';
 import { syncArtistDetailsDiscogsUrls } from './artistProfileImageCacheSync.js';
+import { getArtistImageProviderLinksFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 
 const logger = createLogger('services.backgroundTasks.artistImages');
 
@@ -337,6 +338,51 @@ export const preferActiveRelations = (urls: string[], relations: any[] | undefin
     );
 };
 
+/**
+ * Mirror-backed replacement for the MusicBrainz url-rels fetch.
+ *
+ * Returns null when the mirror cannot answer, so the caller falls back to the API
+ * exactly as before.
+ */
+const resolveViaMirror = async (
+    context: ArtistImageResolutionContext,
+): Promise<MusicBrainzResolution | null> => {
+    const startedAt = Date.now();
+    const fromMirror = getArtistImageProviderLinksFromMirror(context.artistId);
+    context.musicBrainzDurationMs = (context.musicBrainzDurationMs ?? 0) + (Date.now() - startedAt);
+
+    if (!fromMirror) {
+        return null;
+    }
+
+    context.musicBrainzDiscogsUrlCount = fromMirror.discogsUrls.length;
+    context.musicBrainzDeezerUrlCount = fromMirror.deezerUrls.length;
+    context.musicBrainzTidalUrlCount = fromMirror.tidalUrls.length;
+    context.artistDetailsDiscogsSyncUpdated = await syncArtistDetailsDiscogsUrls(
+        context.artistId,
+        fromMirror.discogsUrls,
+        context.cachedArtistDetailsForSync,
+        context.ttl,
+    );
+
+    if (!fromMirror.artistName) {
+        return {
+            kind: 'name_missing',
+            state: mapArtistImageToState(null),
+            deezerUrls: fromMirror.deezerUrls,
+            tidalUrls: fromMirror.tidalUrls,
+        };
+    }
+
+    return {
+        kind: 'artist_found',
+        artistName: fromMirror.artistName,
+        discogsUrls: fromMirror.discogsUrls,
+        deezerUrls: fromMirror.deezerUrls,
+        tidalUrls: fromMirror.tidalUrls,
+    };
+};
+
 const resolveViaMusicBrainz = async (
     context: ArtistImageResolutionContext,
 ): Promise<MusicBrainzResolution> => {
@@ -537,7 +583,10 @@ export const fetchAndUpsertArtistProfileImages = async (
                     lookupBypassMusicBrainzCount += 1;
                 }
 
-                const musicBrainz = await resolveViaMusicBrainz(context);
+                // Mirror first: same relations, no MusicBrainz API request and no
+                // 1 req/s budget. Falls back to the API when the mirror cannot answer.
+                const musicBrainz =
+                    (await resolveViaMirror(context)) ?? (await resolveViaMusicBrainz(context));
                 if (musicBrainz.kind === 'resolved') {
                     source = musicBrainz.source;
                     if (musicBrainz.source === 'musicbrainz_not_found') {

@@ -5,6 +5,7 @@ import {
 import { getRelease as getReleaseFromService } from '../../../services/musicbrainz/releaseLookup.js';
 import { fetchMusicBrainzWithStatus } from '../../../services/musicApi/musicBrainzClient.js';
 import { isConfirmedMissingFetchFailure } from '../../../services/musicApi/types.js';
+import type { CachedArtistReleases } from '../../../utils/types/cacheTypes.js';
 import {
     getArtistReleasesFromMirror,
     getReleaseGroupReleasesFromMirror,
@@ -13,7 +14,15 @@ import {
 import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
 import { isMusicDbEnabled } from '../../../infrastructure/musicDb/musicDbClient.js';
 import { createLogger } from '../../../common/logging/logger.js';
-import type { ReleaseCatalogGateway } from '../ports.js';
+import {
+    cursorForLastGroup,
+    decodeArtistReleasesCursor,
+    encodeArtistReleasesCursor,
+} from '../domain/artistReleasePaging.js';
+import type {
+    ArtistReleasesPageResult,
+    ReleaseCatalogGateway,
+} from '../ports.js';
 
 const logger = createLogger('features.releases.musicBrainzReleaseCatalog');
 
@@ -67,6 +76,58 @@ export const musicBrainzReleaseCatalog: ReleaseCatalogGateway = {
                 () => getArtistReleasesFromMirror(artistId),
                 async () => await getArtistReleasesFromService(artistId, ttl),
             )) ?? []
+        );
+    },
+    getArtistReleasesPage: async (artistId, ttl, page) => {
+        const cursor = page.cursor ? decodeArtistReleasesCursor(page.cursor) : null;
+
+        const buildPage = (
+            groups: CachedArtistReleases,
+            hasMore: boolean,
+        ): ArtistReleasesPageResult => {
+            const last = groups[groups.length - 1];
+            return {
+                releaseGroups: groups,
+                hasMore,
+                nextCursor:
+                    hasMore && last ? encodeArtistReleasesCursor(cursorForLastGroup(last)) : null,
+            };
+        };
+
+        const result = await withMusicDb<ArtistReleasesPageResult>(
+            'getArtistReleasesPage',
+            () => {
+                // One extra row tells us whether another page exists without a
+                // separate count query.
+                const rows = getArtistReleasesFromMirror(artistId, page.limit + 1, 0, cursor);
+                if (rows === null) {
+                    return null;
+                }
+
+                const hasMore = rows.length > page.limit;
+                return buildPage(hasMore ? rows.slice(0, page.limit) : rows, hasMore);
+            },
+            // The API path has no keyset; it fetches the catalog and slices it, which
+            // keeps pagination working when the mirror is unavailable.
+            async () => {
+                const all = await getArtistReleasesFromService(artistId, ttl);
+                const start = cursor
+                    ? all.findIndex(
+                          (group) =>
+                              group.date === cursor.sortDate && group.id === cursor.releaseGroupId,
+                      ) + 1
+                    : 0;
+                const releaseGroups = all.slice(start, start + page.limit);
+                return buildPage(releaseGroups, start + releaseGroups.length < all.length);
+            },
+        );
+
+        return (
+            result ?? {
+                releaseGroups: [],
+                hasMore: false,
+                nextCursor: null,
+            }
         );
     },
     getReleaseGroupReleases: async (releaseGroupId, ttl, onReleaseIdsPage) => {

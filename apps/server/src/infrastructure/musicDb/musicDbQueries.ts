@@ -191,6 +191,20 @@ export type ArtistReleaseGroupRow = {
     disambiguation: string | null;
     first_release_date: string | null;
     release_ids: string;
+    newest_release_date: string | null;
+};
+
+/**
+ * Keyset cursor for artist release-group paging.
+ *
+ * `OFFSET` re-walks every skipped group, which is why the previous contract could
+ * only ever return "everything". The cursor carries the last seen sort key: the
+ * group's first release date and its id as the tie-break, so pages cannot overlap or
+ * skip groups while the catalog changes underneath.
+ */
+export type ArtistReleaseGroupCursor = {
+    sortDate: string | null;
+    releaseGroupId: string;
 };
 
 export const readArtistReleaseGroups = (
@@ -198,14 +212,22 @@ export const readArtistReleaseGroups = (
     artistId: string,
     limit: number | null,
     offset: number,
+    cursor?: ArtistReleaseGroupCursor | null,
 ): ArtistReleaseGroupRow[] => {
     // EVERY release of each group is aggregated, not just the page's rows: the
     // client taps a group and needs all of its pressings.
     //
     // Ordering is by the group's own first release date — the same key the API path
     // sorts by — not by the newest pressing, so the list order does not change when
-    // a reissue lands. The page is chosen with the same key and a mbid tie-break, so
-    // pages cannot overlap or skip groups.
+    // a reissue lands. Groups without a date sort last.
+    const cursorClause = cursor
+        ? cursor.sortDate === null
+            ? 'AND rg2.first_release_date IS NULL AND rg2.mbid > ?'
+            : `AND (rg2.first_release_date IS NULL
+                    OR rg2.first_release_date < ?
+                    OR (rg2.first_release_date = ? AND rg2.mbid > ?))`
+        : '';
+
     const sql = `
         WITH paged AS (
             SELECT DISTINCT r2.release_group_mbid AS gid, rg2.first_release_date AS sort_date
@@ -213,6 +235,7 @@ export const readArtistReleaseGroups = (
             JOIN release_artists ra2 ON ra2.release_mbid = r2.mbid
             JOIN release_groups rg2 ON rg2.mbid = r2.release_group_mbid
             WHERE ra2.artist_mbid = ? AND r2.release_group_mbid IS NOT NULL
+            ${cursorClause}
             ORDER BY sort_date IS NULL, sort_date DESC, gid ASC
             LIMIT ? OFFSET ?
         )
@@ -221,14 +244,25 @@ export const readArtistReleaseGroups = (
                rg.primary_type,
                rg.disambiguation,
                rg.first_release_date,
-               group_concat(r.mbid, ' ' ORDER BY r.date IS NULL, r.date DESC, r.mbid ASC) AS release_ids
+               group_concat(r.mbid, ' ' ORDER BY r.date IS NULL, r.date DESC, r.mbid ASC) AS release_ids,
+               MAX(r.date) AS newest_release_date
         FROM paged p
         JOIN release_groups rg ON rg.mbid = p.gid
         JOIN releases r ON r.release_group_mbid = rg.mbid
         GROUP BY rg.mbid
         ORDER BY p.sort_date IS NULL, p.sort_date DESC, rg.mbid ASC`;
 
-    return db.prepare(sql).all(artistId, limit ?? -1, offset) as ArtistReleaseGroupRow[];
+    const params: (string | number | null)[] = [artistId];
+    if (cursor) {
+        params.push(cursor.sortDate);
+        if (cursor.sortDate !== null) {
+            params.push(cursor.sortDate);
+        }
+        params.push(cursor.releaseGroupId);
+    }
+    params.push(limit ?? -1, offset);
+
+    return db.prepare(sql).all(...params) as ArtistReleaseGroupRow[];
 };
 
 export const countArtistReleaseGroups = (db: MusicDb, artistId: string): number => {
@@ -242,6 +276,25 @@ export const countArtistReleaseGroups = (db: MusicDb, artistId: string): number 
         .get(artistId) as { total: number } | undefined;
     return row?.total ?? 0;
 };
+
+/**
+ * Release-group ids for an artist, for seeding a newly followed artist's known set.
+ *
+ * Groups, not releases: the known set is group-keyed, and following an artist must
+ * not notify about its back catalogue.
+ */
+export const readArtistReleaseGroupIds = (db: MusicDb, artistId: string): string[] =>
+    (
+        db
+            .prepare(
+                `SELECT DISTINCT r.release_group_mbid AS mbid
+                 FROM releases r
+                 JOIN release_artists ra ON ra.release_mbid = r.mbid
+                 WHERE ra.artist_mbid = ? AND r.release_group_mbid IS NOT NULL
+                 ORDER BY r.release_group_mbid`,
+            )
+            .all(artistId) as { mbid: string }[]
+    ).map((row) => row.mbid);
 
 export const readArtistReleaseIds = (db: MusicDb, artistId: string): string[] =>
     (
@@ -288,6 +341,62 @@ export const readReleaseToGroupIds = (db: MusicDb, releaseIds: readonly string[]
 
     return result;
 };
+
+export type ProviderUrlRow = { entity_mbid: string; url: string };
+
+/**
+ * Deezer/Tidal album links for a batch of releases, in one query.
+ *
+ * The artwork chain needs these for every release in a page, so they are loaded in
+ * bulk instead of one statement per release. Matching is on host, because
+ * MusicBrainz files Deezer under `free streaming` and Tidal under `streaming`
+ * rather than under provider-specific relation types.
+ */
+export const readProviderUrlsForReleases = (
+    db: MusicDb,
+    releaseIds: readonly string[],
+): Map<string, { deezerUrls: string[]; tidalUrls: string[] }> => {
+    const result = new Map<string, { deezerUrls: string[]; tidalUrls: string[] }>();
+    if (releaseIds.length === 0) {
+        return result;
+    }
+
+    const statement = db.prepare(
+        `SELECT entity_mbid, url FROM external_links
+         WHERE entity_type = 'release' AND entity_mbid = ?
+           AND (url LIKE '%deezer.com/%' OR url LIKE '%tidal.com/%')`,
+    );
+
+    for (const releaseId of releaseIds) {
+        const rows = statement.all(releaseId) as ProviderUrlRow[];
+        if (rows.length === 0) {
+            continue;
+        }
+
+        const deezerUrls: string[] = [];
+        const tidalUrls: string[] = [];
+        for (const row of rows) {
+            const url = row.url;
+            if (url.includes('deezer.com/')) {
+                deezerUrls.push(url);
+            } else {
+                tidalUrls.push(url);
+            }
+        }
+
+        result.set(releaseId, { deezerUrls, tidalUrls });
+    }
+
+    return result;
+};
+
+/** Release ids that belong to a release group, for deriving group provider links. */
+export const readReleaseIdsForGroup = (db: MusicDb, releaseGroupId: string): string[] =>
+    (
+        db
+            .prepare('SELECT mbid FROM releases WHERE release_group_mbid = ? ORDER BY mbid')
+            .all(releaseGroupId) as { mbid: string }[]
+    ).map((row) => row.mbid);
 
 export const readReleaseGroupExists = (db: MusicDb, releaseGroupId: string): boolean =>
     db.prepare('SELECT 1 FROM release_groups WHERE mbid = ?').get(releaseGroupId) !== undefined;
@@ -393,6 +502,41 @@ export const readReleaseGroupArtists = (db: MusicDb, releaseGroupId: string): Ar
 
 export type SearchRow = { mbid: string; title: string };
 
+/**
+ * How many matches a search is allowed to rank and count.
+ *
+ * Ranked search costs time proportional to the number of matches: `"the"*` finds
+ * ~176k artists and scoring them all with bm25 took ~1.2 s, `"a"*` ~600k and ~3.2 s,
+ * all of it blocking the event loop. Narrow queries are unaffected because they never
+ * reach the budget.
+ */
+export const SEARCH_MAX_MATCHES = 10_000;
+const SEARCH_COUNT_PROBE = SEARCH_MAX_MATCHES + 1;
+
+/**
+ * Counts matches, but stops counting once the budget is exceeded.
+ *
+ * The uncapped `count(*)` walks every match; the capped form returns as soon as it
+ * has enough to answer "more than the budget", which is all the caller needs.
+ */
+export const countSearchResultsUpTo = (
+    db: MusicDb,
+    entityType: 'artist' | 'release_group',
+    matchQuery: string,
+    cap: number,
+): number => {
+    const row = db
+        .prepare(
+            `SELECT COUNT(*) AS total FROM (
+                 SELECT 1 FROM search_fts
+                 WHERE entity_type = ? AND search_fts MATCH ?
+                 LIMIT ?
+             )`,
+        )
+        .get(entityType, matchQuery, cap) as { total: number } | undefined;
+    return row?.total ?? 0;
+};
+
 export const searchEntities = (
     db: MusicDb,
     entityType: 'artist' | 'release_group',
@@ -410,16 +554,60 @@ export const searchEntities = (
         )
         .all(entityType, matchQuery, limit, offset) as SearchRow[];
 
-export const countSearchResults = (
+export type SearchBudgetResult = {
+    rows: SearchRow[];
+    /** Exact for narrow queries, the cap for broad ones. */
+    count: number;
+    /** True when the match set exceeded the budget and results are bounded. */
+    capped: boolean;
+};
+
+/**
+ * Runs a search with a bounded amount of work.
+ *
+ * Two modes, chosen by how many rows match:
+ * - narrow: bm25 ranking and an exact count, which is what a user typing an artist
+ *   name expects;
+ * - broad: a capped count and no ranking. Ranking ~600k rows is the expensive part,
+ *   and for a query like `a` relevance is meaningless anyway. Rows come back in FTS5's
+ *   natural (rowid) order, which is deterministic for an unchanged index, so
+ *   pagination stays consistent.
+ */
+export const searchEntitiesWithBudget = (
     db: MusicDb,
     entityType: 'artist' | 'release_group',
     matchQuery: string,
-): number => {
-    const row = db
+    limit: number,
+    offset: number,
+): SearchBudgetResult => {
+    const probed = countSearchResultsUpTo(db, entityType, matchQuery, SEARCH_COUNT_PROBE);
+
+    if (probed < SEARCH_COUNT_PROBE) {
+        return {
+            rows: searchEntities(db, entityType, matchQuery, limit, offset),
+            count: probed,
+            capped: false,
+        };
+    }
+
+    // Broad query: never rank, and do not let the client walk past the budget.
+    if (offset >= SEARCH_MAX_MATCHES) {
+        return { rows: [], count: SEARCH_MAX_MATCHES, capped: true };
+    }
+
+    const rows = db
         .prepare(
-            `SELECT COUNT(*) AS total FROM search_fts
-             WHERE entity_type = ? AND search_fts MATCH ?`,
+            `SELECT entity_mbid AS mbid, heading AS title
+             FROM search_fts
+             WHERE entity_type = ? AND search_fts MATCH ?
+             LIMIT ? OFFSET ?`,
         )
-        .get(entityType, matchQuery) as { total: number } | undefined;
-    return row?.total ?? 0;
+        .all(
+            entityType,
+            matchQuery,
+            Math.min(limit, SEARCH_MAX_MATCHES - offset),
+            offset,
+        ) as SearchRow[];
+
+    return { rows, count: SEARCH_MAX_MATCHES, capped: true };
 };

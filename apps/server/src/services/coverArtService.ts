@@ -1,210 +1,150 @@
 import { mapCoverState } from '../utils/helpers/remoteStateHelpers.js';
+import { TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS } from '../utils/helpers/remoteStateHelpers.js';
+import type { RemoteValueState } from '@pawify/shared';
+import type { CoverState } from '../utils/types/cacheTypes.js';
+import { isRemoteValueState } from '../common/utils/objectGuards.js';
 import {
-    createArtistReleaseGroupCoverCacheContext,
-    flushArtistReleaseGroupCoverCacheContext,
-    readArtistReleaseGroupCoverCache,
-    readReleaseCoverCache,
-    upsertArtistReleaseGroupCoverState,
-    writeReleaseCoverCache,
-    type ArtistReleaseGroupCoverCacheContext,
+    readGroupCoverState,
+    readReleaseCoverState,
+    writeGroupCoverState,
+    writeReleaseCoverState,
 } from './coverArt/coverArtCache.js';
-import {
-    fetchReleaseCoverFromCaa,
-    fetchReleaseGroupCoverFromCaa,
-    getFallbackReleaseCover,
-    hasUnseenFallbackReleaseIds,
-    hasUsableUrl,
-    mapResolvedCoverState,
-    pickAnyCachedReleaseCover,
-    pickCachedPeerReleaseCover,
-    pickCachedReleaseCoverFromIds,
-    resolveMiss,
-    shouldUseCachedState,
-    type CoverLookupResult,
-} from './coverArt/coverArtLookup.js';
+import { readAssetStates, assetKeys } from './cache/assetCache.js';
+import { fetchReleaseCover, fetchReleaseGroupCover } from './coverArt/coverArtLookup.js';
+import { dedupeStrings } from '../common/utils/array.js';
 
-export { createArtistReleaseGroupCoverCacheContext, flushArtistReleaseGroupCoverCacheContext };
+export type CoverLookupResult = {
+    state: CoverState;
+    isFallback: boolean;
+};
 
+const hasUsableUrl = (state: CoverState | null | undefined): boolean =>
+    typeof state?.url === 'string' && state.url.trim().length > 0;
+
+/**
+ * A fallback cover that was found while the primary lookup failed transiently keeps a
+ * retry window, so the better image is picked up later instead of being pinned for a
+ * month.
+ */
+const fallbackCoverState = (url: string, primaryWasTransient: boolean): CoverState =>
+    primaryWasTransient
+        ? { url, nextRefetchAt: Date.now() + TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS }
+        : mapCoverState(url);
+
+const cachedReleaseCoverFromIds = async (
+    releaseIds: readonly string[],
+): Promise<CoverState | null> => {
+    const keys = dedupeStrings([...releaseIds]).map((releaseId) =>
+        assetKeys.releaseCover(releaseId),
+    );
+    if (keys.length === 0) {
+        return null;
+    }
+
+    const states = await readAssetStates<CoverState>(keys);
+    for (const state of states.values()) {
+        if (hasUsableUrl(state)) {
+            return state;
+        }
+    }
+
+    return null;
+};
+
+/**
+ * Release-group cover.
+ *
+ * One cache entry per group (`asset:group-cover:{id}`) rather than a map per artist.
+ * The provider chain is Deezer → Tidal → Cover Art Archive, so the slow archive.org
+ * redirect is only paid when neither streaming provider has the album.
+ */
 export const getReleaseGroupCover = async (
-    artistId: string | undefined,
+    _artistId: string | undefined,
     releaseGroupId: string,
     fallbackReleaseIds: string[],
     ttl: number | undefined,
     signal?: AbortSignal,
-    artistCoverCacheContext?: ArtistReleaseGroupCoverCacheContext,
+    _artistCoverCacheContext?: unknown,
+    aggregatedProviderUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<CoverLookupResult> => {
-    const artistCoverCache = artistId
-        ? (artistCoverCacheContext?.cache ?? (await readArtistReleaseGroupCoverCache(artistId)))
-        : undefined;
-    const current = artistCoverCache?.[releaseGroupId];
-    const now = Date.now();
-
-    if (shouldUseCachedState(current, now)) {
-        if (!hasUsableUrl(current.url)) {
-            const releaseCache = await readReleaseCoverCache(releaseGroupId);
-            const cachedFallback =
-                pickCachedReleaseCoverFromIds(releaseCache, fallbackReleaseIds, now) ??
-                pickAnyCachedReleaseCover(releaseCache, now);
-
-            if (cachedFallback) {
-                const upgradedState = mapResolvedCoverState(cachedFallback.url, true, [
-                    current.url,
-                ]);
-                await upsertArtistReleaseGroupCoverState(
-                    artistId,
-                    artistCoverCache,
-                    releaseGroupId,
-                    upgradedState,
-                    ttl,
-                    artistCoverCacheContext,
-                );
-
-                return {
-                    state: upgradedState,
-                    isFallback: true,
-                };
-            }
-
-            if (hasUnseenFallbackReleaseIds(releaseCache, fallbackReleaseIds)) {
-                const fallback = await getFallbackReleaseCover(
-                    releaseGroupId,
-                    fallbackReleaseIds,
-                    ttl,
-                    signal,
-                    [current.url],
-                );
-                const fallbackUrl = fallback.state.url;
-                const upgradedState = mapResolvedCoverState(
-                    fallbackUrl,
-                    hasUsableUrl(fallbackUrl),
-                    [current.url, fallback.state.url],
-                );
-                await upsertArtistReleaseGroupCoverState(
-                    artistId,
-                    artistCoverCache,
-                    releaseGroupId,
-                    upgradedState,
-                    ttl,
-                    artistCoverCacheContext,
-                );
-
-                return {
-                    state: upgradedState,
-                    isFallback: hasUsableUrl(fallbackUrl),
-                };
-            }
-        }
-
-        return {
-            state: current,
-            isFallback: false,
-        };
+    const cached = await readGroupCoverState(releaseGroupId);
+    if (cached && hasUsableUrl(cached)) {
+        return { state: cached, isFallback: false };
     }
 
-    const directGroupCover = await fetchReleaseGroupCoverFromCaa(releaseGroupId, signal);
-    let result: CoverLookupResult;
-
-    if (hasUsableUrl(directGroupCover)) {
-        result = {
-            state: mapCoverState(directGroupCover),
-            isFallback: false,
-        };
-    } else {
-        const fallback = await getFallbackReleaseCover(
-            releaseGroupId,
-            fallbackReleaseIds,
-            ttl,
-            signal,
-            [directGroupCover],
-        );
-        const url = fallback.state.url;
-
-        result = {
-            state: mapResolvedCoverState(url, hasUsableUrl(url), [
-                directGroupCover,
-                fallback.state.url,
-            ]),
-            isFallback: hasUsableUrl(url),
-        };
+    // A release in the same group may already have a real cover; reuse it before
+    // spending provider calls.
+    const peerCover = await cachedReleaseCoverFromIds(fallbackReleaseIds);
+    if (peerCover) {
+        const state = mapCoverState(peerCover.url);
+        await writeGroupCoverState(releaseGroupId, state, ttl);
+        return { state, isFallback: true };
     }
 
-    await upsertArtistReleaseGroupCoverState(
-        artistId,
-        artistCoverCache,
+    const direct = await fetchReleaseGroupCover(
         releaseGroupId,
-        result.state,
-        ttl,
-        artistCoverCacheContext,
+        signal,
+        fallbackReleaseIds,
+        aggregatedProviderUrls,
     );
 
-    return result;
+    if (typeof direct === 'string' && direct.trim().length > 0) {
+        const state = mapCoverState(direct);
+        await writeGroupCoverState(releaseGroupId, state, ttl);
+        return { state, isFallback: false };
+    }
+
+    const state = mapCoverState(direct);
+    await writeGroupCoverState(releaseGroupId, state, ttl);
+    return { state, isFallback: false };
 };
 
+/**
+ * Release cover.
+ *
+ * A release's own cover wins; a sibling/group cover is an acceptable fallback so the
+ * UI does not show an empty tile for a pressing that simply has no artwork uploaded.
+ */
 export const getReleaseCover = async (
     releaseId: string,
     releaseGroupId: string | null,
     ttl: number | undefined,
     signal?: AbortSignal,
+    providerUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<CoverLookupResult> => {
-    if (!releaseGroupId) {
-        const directReleaseCover = await fetchReleaseCoverFromCaa(releaseId, signal);
-        return {
-            state: mapCoverState(directReleaseCover),
-            isFallback: false,
-        };
+    const cached = await readReleaseCoverState(releaseId);
+    if (cached && hasUsableUrl(cached)) {
+        return { state: cached, isFallback: false };
     }
 
-    const cache = await readReleaseCoverCache(releaseGroupId);
-    const current = cache[releaseId];
-    const now = Date.now();
+    const direct = await fetchReleaseCover(releaseId, releaseGroupId, signal, providerUrls);
 
-    if (shouldUseCachedState(current, now)) {
-        return {
-            state: current,
-            isFallback: false,
-        };
+    if (typeof direct === 'string' && direct.trim().length > 0) {
+        const state = mapCoverState(direct);
+        await writeReleaseCoverState(releaseId, state, ttl);
+        if (releaseGroupId) {
+            // A real release cover is also a valid group cover; recording it saves the
+            // group lookup a provider call.
+            await writeGroupCoverState(releaseGroupId, state, ttl);
+        }
+        return { state, isFallback: false };
     }
 
-    const directReleaseCover = await fetchReleaseCoverFromCaa(releaseId, signal);
-
-    if (hasUsableUrl(directReleaseCover)) {
-        const state = mapCoverState(directReleaseCover);
-        cache[releaseId] = state;
-        await writeReleaseCoverCache(releaseGroupId, cache, ttl);
-
-        return {
-            state,
-            isFallback: false,
-        };
+    if (releaseGroupId) {
+        const groupCover = await readGroupCoverState(releaseGroupId);
+        if (groupCover && hasUsableUrl(groupCover)) {
+            const state = fallbackCoverState(
+                groupCover.url as string,
+                isRemoteValueState(direct) && direct === undefined,
+            );
+            await writeReleaseCoverState(releaseId, state, ttl);
+            return { state, isFallback: true };
+        }
     }
 
-    const directReleaseState = mapCoverState(directReleaseCover);
-    const cachedPeerCover = pickCachedPeerReleaseCover(cache, releaseId, now);
-    if (cachedPeerCover) {
-        const state = mapResolvedCoverState(cachedPeerCover.url, true, [directReleaseState.url]);
-        cache[releaseId] = state;
-        await writeReleaseCoverCache(releaseGroupId, cache, ttl);
-
-        return {
-            state,
-            isFallback: true,
-        };
-    }
-
-    const directGroupCover = await fetchReleaseGroupCoverFromCaa(releaseGroupId, signal);
-    const url = hasUsableUrl(directGroupCover)
-        ? directGroupCover
-        : resolveMiss([directReleaseState.url, directGroupCover]);
-    const state = mapResolvedCoverState(url, hasUsableUrl(url), [
-        directReleaseState.url,
-        directGroupCover,
-    ]);
-
-    cache[releaseId] = state;
-    await writeReleaseCoverCache(releaseGroupId, cache, ttl);
-
-    return {
-        state,
-        isFallback: hasUsableUrl(url),
-    };
+    const state = mapCoverState(direct);
+    await writeReleaseCoverState(releaseId, state, ttl);
+    return { state, isFallback: false };
 };
+
+export type { RemoteValueState };

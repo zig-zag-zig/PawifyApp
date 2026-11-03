@@ -47,6 +47,15 @@ export type ArtistImageProvider = 'deezer' | 'tidal' | 'discogs';
  */
 export type ProviderValueState = string | null | undefined;
 
+/**
+ * Providers consulted for release artwork, in resolution order.
+ *
+ * Cover Art Archive is last: it answers with a 307 to Internet Archive storage,
+ * and that second hop is the slow/unreliable part, so it is only paid when the
+ * streaming providers have nothing.
+ */
+export type ReleaseImageProvider = 'deezer' | 'tidal' | 'coverartarchive';
+
 export type ArtistImageLookupOptions = {
     /** MusicBrainz's artist name, used to prefer the matching provider profile. */
     artistName?: string;

@@ -1,12 +1,7 @@
 import { createLogger } from '../../common/logging/logger.js';
 import { getCacheKey } from '../../utils/helpers/cacheHelpers.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
-import type {
-    CachedArtistImage,
-    CachedArtistReleaseGroupCovers,
-    CachedReleaseGroupReleaseCovers,
-    CachedReleaseLyricsByRelease,
-} from '../../utils/types/cacheTypes.js';
+import type { CachedArtistImage, CoverState, LyricsState } from '../../utils/types/cacheTypes.js';
 import type {
     ArtistProfileImageLookup,
     ReleaseGroupPageEntry,
@@ -14,6 +9,7 @@ import type {
     TrackLyricsRequest,
 } from '../../utils/types/taskTypes.js';
 import { getCachedData } from '../cacheService.js';
+import { assetKeys } from './assetCache.js';
 import { shouldUseCachedState } from '../coverArt/coverArtLookup.js';
 import {
     shouldRefetchArtistImageState,
@@ -23,6 +19,38 @@ import {
 const logger = createLogger('services.cache.partitionAssets');
 
 const PRE_RESOLVE_CONCURRENCY = 8;
+
+/**
+ * Reads several asset keys through the injectable reader with bounded concurrency.
+ *
+ * Kept here rather than in assetCache so tests can substitute the reader and the
+ * freshness rules stay identical to the worker's.
+ */
+const readStates = async <T extends CoverState | LyricsState>(
+    keys: readonly string[],
+    readCache: CacheReader,
+): Promise<Map<string, T>> => {
+    const result = new Map<string, T>();
+    const queue = [...keys];
+    const workers = Array.from(
+        { length: Math.min(PRE_RESOLVE_CONCURRENCY, queue.length) },
+        async () => {
+            for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
+                try {
+                    const state = await readCache<T>(key);
+                    if (state) {
+                        result.set(key, state);
+                    }
+                } catch (error) {
+                    logger.debug('asset cache read failed; treating as pending', { key, error });
+                }
+            }
+        },
+    );
+
+    await Promise.all(workers);
+    return result;
+};
 
 export type CachedAssetPartition<TPending> = {
     /** Items already resolvable from cache: URL strings or confirmed nulls. */
@@ -113,8 +141,10 @@ export const partitionArtistProfileImages = async (
 };
 
 /**
- * Splits track lyrics requests into cached and pending sets using the same
- * freshness rules as the lyrics background worker.
+ * Splits track lyrics requests into cached and pending sets.
+ *
+ * Lyrics are cached per track (`asset:lyrics:{releaseId}:{trackId}`), so one track
+ * resolving does not rewrite the whole release's map.
  */
 export const partitionTrackLyrics = async (
     releaseId: string,
@@ -125,20 +155,11 @@ export const partitionTrackLyrics = async (
     const resolved: Record<string, string | null> = {};
     const pending: TrackLyricsRequest[] = [];
 
-    let cached: CachedReleaseLyricsByRelease | null = null;
-    try {
-        cached = await readCache<CachedReleaseLyricsByRelease>(
-            getCacheKey(releaseId, 'releaseLyrics'),
-        );
-    } catch (error) {
-        logger.debug('lyrics cache read failed; treating all tracks as pending', {
-            releaseId,
-            error,
-        });
-    }
+    const keys = tracks.map((track) => assetKeys.trackLyrics(releaseId, track.trackId));
+    const states = await readStates<LyricsState>(keys, readCache);
 
     for (const track of tracks) {
-        const state = cached?.[track.trackId];
+        const state = states.get(assetKeys.trackLyrics(releaseId, track.trackId));
 
         if (state && !shouldRefetchState(state)) {
             const value = toResolvedValue(state.url);
@@ -156,8 +177,11 @@ export const partitionTrackLyrics = async (
 };
 
 /**
- * Splits release-group release cover page entries into cached and pending
- * sets. Pending entries keep only the unresolved release ids.
+ * Splits release-group release cover page entries into cached and pending sets.
+ *
+ * Covers are cached per release (`asset:release-cover:{id}`), so the page reads one
+ * key per release instead of a group-sized map. Reads are batched to keep the Dapr
+ * round trips bounded.
  */
 export const partitionReleaseGroupReleaseCovers = async (
     pageEntries: ReleaseGroupReleasesPageEntry[],
@@ -166,26 +190,16 @@ export const partitionReleaseGroupReleaseCovers = async (
     const startedAt = Date.now();
     const resolved: Record<string, string | null> = {};
     const pending: ReleaseGroupReleasesPageEntry[] = [];
+    const allReleaseIds = pageEntries.flatMap((entry) => entry.releaseIds);
+    const keys = allReleaseIds.map((releaseId) => assetKeys.releaseCover(releaseId));
 
-    await mapWithConcurrency(pageEntries, PRE_RESOLVE_CONCURRENCY, async (entry) => {
-        let cache: CachedReleaseGroupReleaseCovers = {};
-        try {
-            cache =
-                (await readCache<CachedReleaseGroupReleaseCovers>(
-                    getCacheKey(entry.releaseGroupId, 'releaseGroupReleaseCovers'),
-                )) ?? {};
-        } catch (error) {
-            logger.debug('release cover cache read failed; treating entry as pending', {
-                releaseGroupId: entry.releaseGroupId,
-                error,
-            });
-        }
+    const states = await readStates<CoverState>(keys, readCache);
 
+    for (const entry of pageEntries) {
         const unresolvedReleaseIds: string[] = [];
 
         for (const releaseId of entry.releaseIds) {
-            const state = cache[releaseId];
-
+            const state = states.get(assetKeys.releaseCover(releaseId));
             if (state && shouldUseCachedState(state)) {
                 const value = toResolvedValue(state.url);
                 if (value !== undefined) {
@@ -203,12 +217,11 @@ export const partitionReleaseGroupReleaseCovers = async (
                 releaseIds: unresolvedReleaseIds,
             });
         }
-    });
+    }
 
-    const totalCount = pageEntries.reduce((sum, entry) => sum + entry.releaseIds.length, 0);
     logPreResolved(
         'release_group_release_covers',
-        totalCount,
+        allReleaseIds.length,
         Object.keys(resolved).length,
         startedAt,
     );
@@ -216,8 +229,10 @@ export const partitionReleaseGroupReleaseCovers = async (
 };
 
 /**
- * Splits artist release-group cover entries into cached and pending sets
- * using the artist-level cover cache.
+ * Splits artist release-group cover entries into cached and pending sets.
+ *
+ * One key per release group (`asset:group-cover:{id}`), not one map per artist, so a
+ * resolved group never rewrites the whole artist's covers.
  */
 export const partitionArtistReleaseGroupCovers = async (
     artistId: string,
@@ -228,22 +243,11 @@ export const partitionArtistReleaseGroupCovers = async (
     const resolved: Record<string, string | null> = {};
     const pending: ReleaseGroupPageEntry[] = [];
 
-    let cache: CachedArtistReleaseGroupCovers = {};
-    try {
-        cache =
-            (await readCache<CachedArtistReleaseGroupCovers>(
-                getCacheKey(artistId, 'artistReleaseGroupCovers'),
-            )) ?? {};
-    } catch (error) {
-        logger.debug(
-            'artist release-group cover cache read failed; treating all entries as pending',
-            { artistId, error },
-        );
-    }
+    const keys = pageEntries.map((entry) => assetKeys.groupCover(entry.releaseGroupId));
+    const states = await readStates<CoverState>(keys, readCache);
 
     for (const entry of pageEntries) {
-        const state = cache[entry.releaseGroupId];
-
+        const state = states.get(assetKeys.groupCover(entry.releaseGroupId));
         if (state && shouldUseCachedState(state)) {
             const value = toResolvedValue(state.url);
             if (value !== undefined) {

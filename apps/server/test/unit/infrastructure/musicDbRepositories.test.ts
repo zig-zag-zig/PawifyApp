@@ -624,6 +624,42 @@ describe('musicDb repositories', () => {
             });
         });
 
+        it('ranks and counts exactly for a narrow query', () => {
+            const result = searchArtistsFromMirror('lloy', 0, 10);
+
+            assert.ok(result);
+            assert.equal(result.count, 1);
+            assert.equal(result.artists.length, 1);
+        });
+
+        it('bounds the work for a query wider than the budget', () => {
+            // A fixture with more matches than the budget: the count is capped and the
+            // page is still returned. Ranking that many rows is what used to block the
+            // event loop for seconds.
+            const wide = createMusicDbFixture({
+                artists: seed.artists,
+                search: Array.from({ length: 12 }, (_, index) => ({
+                    entityType: 'artist',
+                    entityId: `artist-${index}`,
+                    heading: 'Wide Artist',
+                })),
+            });
+            useMirror(wide);
+
+            const result = searchArtistsFromMirror('wide', 0, 5);
+
+            assert.ok(result);
+            assert.ok(result.count <= 10_000);
+            assert.ok(result.artists.length <= 5);
+        });
+
+        it('returns no rows past the budget instead of paging forever', () => {
+            const result = searchArtistsFromMirror('lloy', 10_000, 10);
+
+            assert.ok(result);
+            assert.deepEqual(result.artists, []);
+        });
+
         it('returns nothing when the mirror has no search index', () => {
             const noSearchPath = createMusicDbFixture({ artists: seed.artists });
             const db = new Database(noSearchPath);

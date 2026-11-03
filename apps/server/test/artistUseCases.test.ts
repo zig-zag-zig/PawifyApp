@@ -72,7 +72,7 @@ describe('artist use cases', () => {
                 },
             },
             artistReleaseCatalogGateway: {
-                async getArtistReleaseIds(_artistId, ttl) {
+                async getArtistReleaseGroupIds(_artistId, ttl) {
                     assert.equal(ttl, artistCacheTtlHours);
                     return ['release-1', 'release-2'];
                 },
