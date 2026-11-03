@@ -1,8 +1,4 @@
-import type {
-    NewRelease,
-    Release,
-    ReleaseNotificationSettings,
-} from '@pawify/shared';
+import type { NewRelease, ReleaseNotificationSettings } from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
 import {
     getKnownReleasesFromDb,
@@ -11,16 +7,17 @@ import {
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
-import { getArtistReleaseScan } from './artistReleaseScanCache.js';
+import {
+    getArtistReleaseGroupCatalog,
+    type ArtistReleaseGroupCatalog,
+} from './artistReleaseGroupCatalog.js';
 
 type ArtistProcessResult = {
-    deletedReleaseIds: string[];
     newReleases: NewRelease[];
 };
 
-const getArtistReleasesForProcessing = async (artistId: string): Promise<Release[]> => {
-    return await getArtistReleaseScan(artistId);
-};
+const getCatalogForProcessing = async (artistId: string): Promise<ArtistReleaseGroupCatalog> =>
+    await getArtistReleaseGroupCatalog(artistId);
 
 const processSingleArtist = async (
     userId: string,
@@ -31,7 +28,7 @@ const processSingleArtist = async (
     return await processArtistReleases(
         userId,
         artistId,
-        getArtistReleasesForProcessing,
+        getCatalogForProcessing,
         currentReleasesByArtist,
         releaseNotificationSettings,
     );
@@ -51,9 +48,12 @@ const mergeKnownReleasesForFollowedReleaseArtists = async (
                 continue;
             }
 
-            const releaseIds = releaseIdsByFollowedArtist.get(artistId) ?? new Set<string>();
-            releaseIds.add(release.id);
-            releaseIdsByFollowedArtist.set(artistId, releaseIds);
+            // Group id, because a known set is a set of release groups now: a
+            // co-credited follow must be silenced for the whole album, not just the
+            // one pressing this artist happened to be listed on.
+            const groupIds = releaseIdsByFollowedArtist.get(artistId) ?? new Set<string>();
+            groupIds.add(release.releaseGroupId ?? release.id);
+            releaseIdsByFollowedArtist.set(artistId, groupIds);
         }
     }
 

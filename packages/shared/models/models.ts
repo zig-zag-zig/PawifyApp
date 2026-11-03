@@ -67,6 +67,7 @@ export interface ReleaseGroup extends ReleaseBase {
 }
 
 export interface NewRelease {
+  /** Release id. For a release-group entry this is the group's newest release. */
   id: string;
   title: string;
   date: string | null;
@@ -74,6 +75,14 @@ export interface NewRelease {
   artists: { [artistId: string]: string };
   date_for_display: string;
   "primary-type": string | null;
+  /**
+   * Release-group identity. New-release detection and notifications are keyed by
+   * this, not by release id: one album can exist as several MusicBrainz releases
+   * (digital, CD, vinyl, regional pressings) and each used to notify separately.
+   */
+  releaseGroupId?: string | null;
+  /** How many releases the group holds; 1 means the tap goes straight to `id`. */
+  releaseCount?: number;
 }
 
 export interface ArtistReleaseGroup extends ReleaseGroup {

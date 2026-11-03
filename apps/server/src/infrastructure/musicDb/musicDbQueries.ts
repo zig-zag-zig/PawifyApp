@@ -255,6 +255,40 @@ export const readArtistReleaseIds = (db: MusicDb, artistId: string): string[] =>
             .all(artistId) as { mbid: string }[]
     ).map((row) => row.mbid);
 
+/**
+ * Maps release ids to their release-group ids.
+ *
+ * Used to carry a user's known-release state across the switch to group identity.
+ * Unknown ids are simply absent from the result, which is what makes the
+ * translation idempotent: a group id is not a release, so it misses and is kept.
+ */
+export const readReleaseToGroupIds = (db: MusicDb, releaseIds: readonly string[]): Map<string, string> => {
+    const result = new Map<string, string>();
+    if (releaseIds.length === 0) {
+        return result;
+    }
+
+    // Chunked because a single statement has a bound-parameter limit (999 by
+    // default), and a user can follow an artist with thousands of releases.
+    const CHUNK_SIZE = 500;
+    const statement = db.prepare(
+        'SELECT mbid, release_group_mbid FROM releases WHERE mbid = ? AND release_group_mbid IS NOT NULL',
+    );
+
+    for (let index = 0; index < releaseIds.length; index += CHUNK_SIZE) {
+        for (const releaseId of releaseIds.slice(index, index + CHUNK_SIZE)) {
+            const row = statement.get(releaseId) as
+                | { mbid: string; release_group_mbid: string }
+                | undefined;
+            if (row) {
+                result.set(row.mbid, row.release_group_mbid);
+            }
+        }
+    }
+
+    return result;
+};
+
 export const readReleaseGroupExists = (db: MusicDb, releaseGroupId: string): boolean =>
     db.prepare('SELECT 1 FROM release_groups WHERE mbid = ?').get(releaseGroupId) !== undefined;
 

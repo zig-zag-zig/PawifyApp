@@ -34,6 +34,7 @@ import {
     readReleaseGroupExists,
     readReleaseGroupReleases,
     readReleaseGroupRow,
+    readReleaseToGroupIds,
     readReleaseRow,
     searchEntities,
     toFtsQuery,
@@ -239,6 +240,34 @@ export const getReleaseGroupReleaseIdsFromMirror = (releaseGroupId: string): str
     const rows = readReleaseGroupReleases(db, releaseGroupId);
     if (rows.length === 0 && !readReleaseGroupExists(db, releaseGroupId)) return null;
     return rows.map((row) => row.mbid);
+};
+
+/**
+ * Release id -> release-group id, for migrating known-release state.
+ *
+ * Returns null when the mirror is unavailable so the caller can keep the ids as
+ * they are instead of silently dropping a user's history.
+ */
+export const getReleaseToGroupIdMapFromMirror = (
+    releaseIds: readonly string[],
+): Map<string, string> | null => {
+    const db = getMusicDb();
+    if (!db) return null;
+    return readReleaseToGroupIds(db, releaseIds);
+};
+
+/** Artist credits for release groups, keyed by group id. */
+export const getReleaseGroupCreditsFromMirror = (
+    releaseGroupIds: readonly string[],
+): Map<string, ArtistCredit[]> => {
+    const result = new Map<string, ArtistCredit[]>();
+    const db = getMusicDb();
+    if (!db) return result;
+
+    for (const groupId of releaseGroupIds) {
+        result.set(groupId, readReleaseGroupArtists(db, groupId));
+    }
+    return result;
 };
 
 export const releaseExistsInMirror = (releaseId: string): boolean | null => {

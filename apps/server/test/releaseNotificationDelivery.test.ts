@@ -24,6 +24,10 @@ const notificationsFor = (count: number) =>
 
 type SentPush = { options: PushNotificationOptions; mode: string | undefined };
 
+/** The payload type is opaque on the wire; tests read the id that clients route on. */
+const releaseIdOf = (entry: SentPush): string | undefined =>
+    (entry.options.data?.payload as { releaseId?: string } | undefined)?.releaseId;
+
 const recorder = () => {
     const sent: SentPush[] = [];
     const send: SendReleaseNotification = async (options, mode) => {
@@ -125,8 +129,8 @@ describe('deliverReleaseNotifications', () => {
         });
 
         assert.deepEqual(
-            visible().map((entry) => entry.options.data?.payload),
-            [{ releaseId: 'release-1' }, { releaseId: 'release-2' }, { releaseId: 'release-3' }],
+            visible().map((entry) => releaseIdOf(entry)),
+            ['release-1', 'release-2', 'release-3'],
         );
     });
 
@@ -171,13 +175,8 @@ describe('deliverReleaseNotifications', () => {
         assert.equal(result.visibleNotificationsSent, 4);
         assert.equal(visible().length, 4);
         assert.deepEqual(
-            visible().map((entry) => entry.options.data?.payload),
-            [
-                { releaseId: 'release-1' },
-                { releaseId: 'release-2' },
-                { releaseId: 'release-3' },
-                { releaseId: 'release-4' },
-            ],
+            visible().map((entry) => releaseIdOf(entry)),
+            ['release-1', 'release-2', 'release-3', 'release-4'],
         );
         assert.equal(data().length, 1);
     });

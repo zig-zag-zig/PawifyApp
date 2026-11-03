@@ -17,6 +17,7 @@ export type NewReleasesById = {
     [releaseId: string]: NewRelease;
 };
 
+
 type NewReleasesSnapshot = {
     newReleasesMap: NewReleasesById;
     coverPageEntries: ReleaseGroupReleasesPageEntry[];
