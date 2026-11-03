@@ -6,7 +6,6 @@ import type { Release } from '@pawify/shared';
 import { getReleaseCover } from '../coverArtService.js';
 import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 import { getReleaseMetadataFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
-import { musicDbConfig } from '../../config/runtimeConfig.js';
 import { createLogger } from '../../common/logging/logger.js';
 
 const logger = createLogger('services.musicbrainz.releaseLookup');
@@ -71,22 +70,14 @@ const withCover = async (release: Release): Promise<Release> => {
  * exactly as before the migration — the difference is that the metadata is now
  * local, and the call is only made for the screen that genuinely needs it.
  *
- * When the mirror is disabled this is a single API call, the original behaviour.
+ * With no mirror available this is the original single API call.
  */
 export const getRelease = async (releaseId: string): Promise<Release | null> => {
     try {
-        if (!musicDbConfig.enabled) {
-            const fromApi = await fetchTracklistFromApi(releaseId);
-            return fromApi ? await withCover(fromApi) : null;
-        }
-
         let metadata: Omit<Release, 'media' | 'cover_url'> | null = null;
         try {
             metadata = getReleaseMetadataFromMirror(releaseId);
         } catch (error) {
-            if (!musicDbConfig.fallbackToApi) {
-                throw error;
-            }
             logger.warn('mirror release metadata failed; using MusicBrainz API', {
                 releaseId,
                 error: error instanceof Error ? error.message : String(error),

@@ -35,10 +35,9 @@ services:
             # The mirror's directory, not just mb.db: the database is in WAL mode
             # and SQLite needs the -wal/-shm side files next to it. Read-only is
             # enough (measured against the live 13.7 GB mirror).
-            # MUSIC_DB_MODE / MUSIC_DB_PATH / MUSIC_DB_FALLBACK_TO_API are read
-            # from the app env file, NOT declared under `environment:` above —
-            # anything declared there would shadow the env file with a default and
-            # silently keep mirror mode off.
+            # MUSIC_DB_PATH is read from the app env file, NOT declared under
+            # `environment:` above — anything declared there would shadow the env
+            # file with a default.
             - ${PAWIFY_MUSIC_DB_DIR:-./music}:/var/pawify/music:ro
         healthcheck:
             test:

@@ -222,37 +222,26 @@ export const firebaseAdminConfig = {
 /**
  * Local MusicBrainz mirror (SQLite), produced by zig-zag-zig/pawify_mb_sqlite.
  *
- * `mode` decides the metadata source:
- *   - `api`    : MusicBrainz API only (previous behaviour)
- *   - `sqlite` : local mirror, falling back to the API when the mirror is
- *                missing or a query fails (unless fallback is disabled)
+ * The mirror is the source of truth for artist and release metadata; there is no
+ * "use the API instead" switch, because running both paths is a cost with no user
+ * benefit. The API stays as a *failure* path only: if the file is missing or cannot
+ * be opened, requests are served from the API and an error is logged, so a broken
+ * sync job degrades the app instead of taking it down. Tracklists always come from
+ * the API because the mirror stores none.
  */
-// Resolved on access rather than at module load: the mirror client is a lazily
-// opened singleton, and tests point a process at a fixture mirror without having
-// to control import order.
-const musicDbMode = (): string => (optionalEnv('MUSIC_DB_MODE') ?? 'api').toLowerCase();
-
 export const musicDbConfig = {
-    get mode(): 'sqlite' | 'api' {
-        return musicDbMode() === 'sqlite' ? 'sqlite' : 'api';
-    },
-    get enabled(): boolean {
-        return musicDbMode() === 'sqlite';
-    },
+    // Resolved on access: the mirror client is a lazily opened singleton and tests
+    // point a process at a fixture without controlling import order.
     get path(): string | undefined {
         return optionalEnv('MUSIC_DB_PATH');
-    },
-    /** Fall back to the API when the mirror cannot answer a request. */
-    get fallbackToApi(): boolean {
-        return parseBooleanEnv(process.env.MUSIC_DB_FALLBACK_TO_API, true);
     },
     /**
      * Hard upper bound on release groups returned for one artist.
      *
-     * The mirror makes "every release group of this artist" cheap to query, but not
-     * free: Various Artists has 297k groups / 336k releases and building that page
-     * killed the process with a JavaScript heap OOM (measured). The endpoint has no
-     * pagination contract yet, so the bound lives here; 0 disables it.
+     * "Every release group of this artist" is cheap to query but not free: Various
+     * Artists has 297k groups / 336k releases and building that page killed the
+     * process with a JavaScript heap OOM (measured). The endpoint has no pagination
+     * contract yet, so the bound lives here; 0 disables it.
      */
     get maxArtistReleaseGroups(): number {
         return parseNonNegativeIntEnv(process.env.MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS, 1000);

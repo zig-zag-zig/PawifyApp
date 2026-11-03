@@ -8,13 +8,9 @@ import { cleanupMusicDbFixtures, createMusicDbFixture } from '../../helpers/musi
 const RELEASE_ID = 'a8fd37b7-8e43-9c82-e454-5d907f8d5f06';
 
 describe('resolveReleaseExistence', () => {
-    const originalMode = process.env.MUSIC_DB_MODE;
-    const originalFallback = process.env.MUSIC_DB_FALLBACK_TO_API;
     const originalPath = process.env.MUSIC_DB_PATH;
 
     beforeEach(() => {
-        process.env.MUSIC_DB_MODE = 'sqlite';
-        process.env.MUSIC_DB_FALLBACK_TO_API = 'true';
         process.env.MUSIC_DB_PATH = createMusicDbFixture();
         closeMusicDb();
     });
@@ -22,10 +18,6 @@ describe('resolveReleaseExistence', () => {
     afterEach(() => {
         closeMusicDb();
         cleanupMusicDbFixtures();
-        if (originalMode === undefined) delete process.env.MUSIC_DB_MODE;
-        else process.env.MUSIC_DB_MODE = originalMode;
-        if (originalFallback === undefined) delete process.env.MUSIC_DB_FALLBACK_TO_API;
-        else process.env.MUSIC_DB_FALLBACK_TO_API = originalFallback;
         if (originalPath === undefined) delete process.env.MUSIC_DB_PATH;
         else process.env.MUSIC_DB_PATH = originalPath;
     });
@@ -83,25 +75,9 @@ describe('resolveReleaseExistence', () => {
         assert.equal(exists, true);
     });
 
-    it('propagates a mirror failure when fallback is disabled', async () => {
-        process.env.MUSIC_DB_FALLBACK_TO_API = 'false';
-
-        await assert.rejects(
-            () =>
-                resolveReleaseExistence(
-                    RELEASE_ID,
-                    () => {
-                        throw new Error('disk is gone');
-                    },
-                    async () => true,
-                ),
-            /disk is gone/,
-        );
-    });
-
-    it('goes straight to the API when mirror mode is off', async () => {
+    it('goes straight to the API when no mirror is configured', async () => {
         closeMusicDb();
-        process.env.MUSIC_DB_MODE = 'api';
+        delete process.env.MUSIC_DB_PATH;
         let mirrorCalls = 0;
 
         const exists = await resolveReleaseExistence(

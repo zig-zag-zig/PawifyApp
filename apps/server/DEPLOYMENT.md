@@ -189,11 +189,13 @@ docker compose --env-file .env.prod exec pawify-dapr wget -qO- http://localhost:
 
 ## Local MusicBrainz Mirror (optional)
 
-`MUSIC_DB_MODE=sqlite` serves artist details, artist search, release-group
-search, artist release-group listings, release-group releases and release
-metadata from a local SQLite mirror instead of the MusicBrainz API. Tracklists
-are still fetched from the API when a release screen is opened, because the
-mirror deliberately does not store tracks.
+Artist details, artist search, release-group search, artist release-group
+listings, release-group releases and release metadata are served from a local
+SQLite mirror. Tracklists still come from the API when a release screen is
+opened, because the mirror deliberately does not store tracks.
+
+There is no "use the API instead" switch: running both paths as a choice doubles
+the code and the tests for no user benefit. The API is the *failure* path only.
 
 The mirror itself is built off-box by
 [zig-zag-zig/pawify_mb_sqlite](https://github.com/zig-zag-zig/pawify_mb_sqlite)
@@ -217,16 +219,13 @@ container user (`uid 999`), which can read it without write permission.
 In the secret env file (`PAWIFY_ENV_FILE_B64`):
 
 ```dotenv
-MUSIC_DB_MODE=sqlite
 MUSIC_DB_PATH=/var/pawify/music/mb.db
 PAWIFY_MUSIC_DB_DIR=/home/deploy/pawify-mb
-MUSIC_DB_FALLBACK_TO_API=true
 MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS=1000
 ```
 
 `PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source; the deploy
-script defaults it to `./music` when unset. Leaving `MUSIC_DB_MODE=api` keeps the
-previous API-only behaviour, so a host without a mirror needs no extra setup.
+script defaults it to `./music` when unset.
 
 ### Behaviour and failure modes
 
@@ -235,8 +234,8 @@ previous API-only behaviour, so a host without a mirror needs no extra setup.
   startup with the exact missing column instead of a per-request error.
 - A mirror miss (unknown id, no search index, mode off) quietly uses the API.
 - A mirror *failure* (corrupt file, permission problem) is logged as a warning
-  and then falls back to the API. Set `MUSIC_DB_FALLBACK_TO_API=false` to fail
-  the request instead, which is what a canary rollout should use.
+  and then falls back to the API. This is not configurable: it exists so a broken
+  sync job degrades the app instead of taking it down.
 - `releaseExists` only trusts a *positive* answer from the mirror. A negative
   answer is re-checked against the API, because that endpoint deletes user state
   and the mirror can be up to an hour behind.

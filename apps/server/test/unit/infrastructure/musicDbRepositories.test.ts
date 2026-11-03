@@ -189,9 +189,7 @@ const seed = {
 
 const useMirror = (filePath: string): void => {
     closeMusicDb();
-    process.env.MUSIC_DB_MODE = 'sqlite';
     process.env.MUSIC_DB_PATH = filePath;
-    process.env.MUSIC_DB_FALLBACK_TO_API = 'true';
 };
 
 let fixturePath: string;
@@ -205,9 +203,7 @@ describe('musicDb repositories', () => {
     afterEach(() => {
         closeMusicDb();
         cleanupMusicDbFixtures();
-        delete process.env.MUSIC_DB_MODE;
         delete process.env.MUSIC_DB_PATH;
-        delete process.env.MUSIC_DB_FALLBACK_TO_API;
     });
 
     describe('client', () => {
@@ -236,9 +232,9 @@ describe('musicDb repositories', () => {
             assert.notEqual(getMusicDb(), null);
         });
 
-        it('returns null when mirror mode is off', () => {
+        it('returns null when no mirror is configured', () => {
             closeMusicDb();
-            process.env.MUSIC_DB_MODE = 'api';
+            delete process.env.MUSIC_DB_PATH;
             assert.equal(getMusicDb(), null);
         });
 

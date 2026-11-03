@@ -12,7 +12,6 @@ import {
 } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
 import { isMusicDbEnabled } from '../../../infrastructure/musicDb/musicDbClient.js';
-import { musicDbConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import type { ReleaseCatalogGateway } from '../ports.js';
 
@@ -50,9 +49,6 @@ export const resolveReleaseExistence = async (
                 return true;
             }
         } catch (error) {
-            if (!musicDbConfig.fallbackToApi) {
-                throw error;
-            }
             logger.warn('mirror release-existence check failed; verifying with MusicBrainz', {
                 releaseId,
                 error: error instanceof Error ? error.message : String(error),
@@ -90,9 +86,6 @@ export const musicBrainzReleaseCatalog: ReleaseCatalogGateway = {
                     return fromMirror;
                 }
             } catch (error) {
-                if (!musicDbConfig.fallbackToApi) {
-                    throw error;
-                }
                 logger.warn('mirror release-group releases failed; using MusicBrainz API', {
                     releaseGroupId,
                     error: error instanceof Error ? error.message : String(error),

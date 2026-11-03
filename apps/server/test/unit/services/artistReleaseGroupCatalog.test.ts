@@ -87,14 +87,12 @@ const seed = {
 describe('getArtistReleaseGroupCatalog', () => {
     beforeEach(() => {
         closeMusicDb();
-        process.env.MUSIC_DB_MODE = 'sqlite';
         process.env.MUSIC_DB_PATH = createMusicDbFixture(seed);
     });
 
     afterEach(() => {
         closeMusicDb();
         cleanupMusicDbFixtures();
-        delete process.env.MUSIC_DB_MODE;
         delete process.env.MUSIC_DB_PATH;
     });
 
