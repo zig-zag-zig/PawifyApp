@@ -13,3 +13,7 @@ coverage
 **/dist
 .DS_Store
 apps/mobile
+**/music/*.db
+**/music/*.db-wal
+**/music/*.db-shm
+**/music/*.db-journal

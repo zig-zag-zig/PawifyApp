@@ -213,3 +213,32 @@ export const firebaseAdminConfig = {
     credentialsFilePath: optionalEnv('GOOGLE_APPLICATION_CREDENTIALS'),
     databaseURL: optionalEnv('FIREBASE_DATABASE_URL'),
 };
+
+/**
+ * Local MusicBrainz mirror (SQLite), produced by zig-zag-zig/pawify_mb_sqlite.
+ *
+ * `mode` decides the metadata source:
+ *   - `api`    : MusicBrainz API only (previous behaviour)
+ *   - `sqlite` : local mirror, falling back to the API when the mirror is
+ *                missing or a query fails (unless fallback is disabled)
+ */
+// Resolved on access rather than at module load: the mirror client is a lazily
+// opened singleton, and tests point a process at a fixture mirror without having
+// to control import order.
+const musicDbMode = (): string => (optionalEnv('MUSIC_DB_MODE') ?? 'api').toLowerCase();
+
+export const musicDbConfig = {
+    get mode(): 'sqlite' | 'api' {
+        return musicDbMode() === 'sqlite' ? 'sqlite' : 'api';
+    },
+    get enabled(): boolean {
+        return musicDbMode() === 'sqlite';
+    },
+    get path(): string | undefined {
+        return optionalEnv('MUSIC_DB_PATH');
+    },
+    /** Fall back to the API when the mirror cannot answer a request. */
+    get fallbackToApi(): boolean {
+        return parseBooleanEnv(process.env.MUSIC_DB_FALLBACK_TO_API, true);
+    },
+};

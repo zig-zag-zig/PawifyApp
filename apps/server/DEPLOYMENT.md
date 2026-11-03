@@ -187,6 +187,77 @@ docker compose --env-file .env.prod exec redis redis-cli -a "$(grep '^REDIS_PASS
 docker compose --env-file .env.prod exec pawify-dapr wget -qO- http://localhost:3500/v1.0/metadata
 ```
 
+## Local MusicBrainz Mirror (optional)
+
+`MUSIC_DB_MODE=sqlite` serves artist details, artist search, release-group
+search, artist release-group listings, release-group releases and release
+metadata from a local SQLite mirror instead of the MusicBrainz API. Tracklists
+are still fetched from the API when a release screen is opened, because the
+mirror deliberately does not store tracks.
+
+The mirror itself is built off-box by
+[zig-zag-zig/pawify_mb_sqlite](https://github.com/zig-zag-zig/pawify_mb_sqlite)
+and synced hourly on the host; this repository only reads it.
+
+### Host layout
+
+```bash
+/home/deploy/pawify-mb/mb.db          # ~13.7 GB, written hourly by sync.sh
+/home/deploy/pawify-mb/mb.db-wal      # WAL side files: must stay next to mb.db
+/home/deploy/pawify-mb/mb.db-shm
+```
+
+The directory is mounted read-only at `/var/pawify/music`. The whole directory is
+mounted, not just `mb.db`: the mirror is in WAL mode and SQLite needs the side
+files present. Access was verified against the live mirror from inside the
+container user (`uid 999`), which can read it without write permission.
+
+### Enabling it
+
+In the secret env file (`PAWIFY_ENV_FILE_B64`):
+
+```dotenv
+MUSIC_DB_MODE=sqlite
+MUSIC_DB_PATH=/var/pawify/music/mb.db
+PAWIFY_MUSIC_DB_DIR=/home/deploy/pawify-mb
+MUSIC_DB_FALLBACK_TO_API=true
+```
+
+`PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source; the deploy
+script defaults it to `./music` when unset. Leaving `MUSIC_DB_MODE=api` keeps the
+previous API-only behaviour, so a host without a mirror needs no extra setup.
+
+### Behaviour and failure modes
+
+- The mirror is opened lazily on first use, read-only, with the reader contract
+  (`tables`, `columns`) asserted. A mirror from a different schema fails at
+  startup with the exact missing column instead of a per-request error.
+- A mirror miss (unknown id, no search index, mode off) quietly uses the API.
+- A mirror *failure* (corrupt file, permission problem) is logged as a warning
+  and then falls back to the API. Set `MUSIC_DB_FALLBACK_TO_API=false` to fail
+  the request instead, which is what a canary rollout should use.
+- `releaseExists` only trusts a *positive* answer from the mirror. A negative
+  answer is re-checked against the API, because that endpoint deletes user state
+  and the mirror can be up to an hour behind.
+- Search needs the mirror's `search_fts` index (`mbforge search-index`). Without
+  it search falls back to the API; nothing else is affected.
+
+### Verifying on a running host
+
+```bash
+cd /srv/pawify-prod/apps/server
+docker compose --env-file .env.prod exec pawify node -e "
+const D=require('better-sqlite3');
+const db=new D(process.env.MUSIC_DB_PATH,{readonly:true,fileMustExist:true});
+console.log(db.prepare('select count(*) c from artists').get());
+"
+docker compose --env-file .env.prod logs pawify | grep 'MusicBrainz mirror'
+```
+
+The startup log line reports the path, whether the search index was found, and
+the mirror's `_meta` (`replication_sequence`, `entities`, ...), which is what the
+sync job advances.
+
 ## Redis Backup
 
 Run a manual Redis backup:

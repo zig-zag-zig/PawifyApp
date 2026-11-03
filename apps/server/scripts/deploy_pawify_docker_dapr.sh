@@ -377,6 +377,13 @@ prepare_runtime_files() {
   replace_or_append_env "$env_path" "PAWIFY_ENV_FILE" "$ENV_FILE"
   replace_or_append_env "$env_path" "PAWIFY_IMAGE" "$IMAGE_NAME"
   replace_or_append_env "$env_path" "PAWIFY_SECRETS_DIR" "./secrets/$SECRETS_SUBDIR"
+  # Host directory holding the local MusicBrainz mirror. Only the volume source
+  # lives here; MUSIC_DB_MODE/MUSIC_DB_PATH come from the secret env file and are
+  # passed through docker-compose.yml. A deploy without a mirror keeps the
+  # API-only default, so a fresh host needs no extra setup.
+  if [[ -z "$(read_env_value "$env_path" "PAWIFY_MUSIC_DB_DIR")" ]]; then
+    replace_or_append_env "$env_path" "PAWIFY_MUSIC_DB_DIR" "./music"
+  fi
   replace_or_append_env "$env_path" "PAWIFY_HOST_BIND_ADDRESS" "127.0.0.1"
   replace_or_append_env "$env_path" "PAWIFY_HOST_PORT" "$HOST_PORT"
   replace_or_append_env "$env_path" "APP_ENV" "$APP_ENV_VALUE"
