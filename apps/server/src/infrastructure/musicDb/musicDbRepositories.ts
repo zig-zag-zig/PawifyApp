@@ -5,14 +5,21 @@ import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch
 import type { ReleaseGroupSearchResult } from '../../services/musicbrainz/releaseGroupSearch.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import {
+    dedupeExternalLinks,
     getExternalLinkUrlsByService,
     mapUrlsToExternalLinks,
 } from '../../utils/helpers/externalLinks.js';
 import { formatDate, nameWithDisambiguation } from '@pawify/shared';
 import { getMusicDb, isMusicDbEnabled, musicDbHasSearchIndex } from './musicDbClient.js';
+import { musicDbConfig } from '../../config/runtimeConfig.js';
+import { createLogger } from '../../common/logging/logger.js';
+
+const logger = createLogger('infrastructure.musicDb.repositories');
 import {
     buildArtist,
     buildReleaseGroup,
+    disambiguationValue,
+    nullIfEmpty,
     countArtistReleaseGroups,
     countSearchResults,
     readArtistAliases,
@@ -33,15 +40,16 @@ import {
     type ExternalLinkRow,
 } from './musicDbQueries.js';
 
+/**
+ * Builds external links from mirror rows.
+ *
+ * The same URL appears once per relation type in the mirror (a store page is both
+ * "purchase for download" and "streaming"), while the API path returns one link
+ * per URL. Mapping each row and then running the API's own dedupe keeps the two
+ * sources identical instead of returning duplicate links.
+ */
 const linksFromRows = (rows: ExternalLinkRow[]) =>
-    mapUrlsToExternalLinks(
-        rows.map((row) => row.url),
-        // Relation type only changes which rule matches; grouping by type then
-        // flattening keeps one call per rel_type without duplicating links.
-        '',
-    ).length === 0
-        ? []
-        : rows.flatMap((row) => mapUrlsToExternalLinks([row.url], row.rel_type));
+    dedupeExternalLinks(rows.flatMap((row) => mapUrlsToExternalLinks([row.url], row.rel_type)));
 
 /**
  * Release groups for an artist.
@@ -58,7 +66,24 @@ export const getArtistReleasesFromMirror = (
     const db = getMusicDb();
     if (!db) return null;
 
-    const rows = readArtistReleaseGroups(db, artistId, limit, offset);
+    // Ask for one extra row than the page size: that is how truncation is detected
+    // without a second (expensive) count query.
+    const configuredCap = musicDbConfig.maxArtistReleaseGroups;
+    const pageSize = limit ?? (configuredCap > 0 ? configuredCap : null);
+    const rows = readArtistReleaseGroups(
+        db,
+        artistId,
+        pageSize === null ? null : pageSize + 1,
+        offset,
+    );
+    if (pageSize !== null && rows.length > pageSize) {
+        rows.length = pageSize;
+        logger.warn('artist has more release groups than one page; returning the newest', {
+            artistId,
+            pageSize,
+            offset,
+        });
+    }
     if (rows.length === 0) {
         // Distinguish "artist genuinely has no releases" from "mirror does not know
         // this artist" so the caller can decide whether to fall back.
@@ -70,8 +95,8 @@ export const getArtistReleasesFromMirror = (
         id: row.mbid,
         title: row.title,
         'primary-type': row.primary_type ?? null,
-        date: row.first_release_date ?? null,
-        disambiguation: row.disambiguation ?? null,
+        date: nullIfEmpty(row.first_release_date),
+        disambiguation: disambiguationValue(row.disambiguation),
         releaseIds: row.release_ids.split(' ').filter(Boolean),
     }));
 };
@@ -249,12 +274,12 @@ export const getReleaseMetadataFromMirror = (
         id: row.mbid,
         title: row.title,
         artistId: credits[0]?.id ?? '',
-        date: row.date ?? null,
-        date_for_display: formatDate(row.date ?? null),
-        disambiguation: row.disambiguation ?? null,
+        date: nullIfEmpty(row.date),
+        date_for_display: formatDate(nullIfEmpty(row.date)),
+        disambiguation: disambiguationValue(row.disambiguation),
         releaseGroupId: row.release_group_mbid ?? null,
         'release-group': releaseGroup,
         'artist-credit': credits,
-        externalLinks: links.flatMap((link) => mapUrlsToExternalLinks([link.url], link.rel_type)),
+        externalLinks: linksFromRows(links),
     };
 };

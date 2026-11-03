@@ -26,12 +26,6 @@ services:
             PORT: ${PORT:-10000}
             DAPR_HTTP_ENDPOINT: http://pawify-dapr:${DAPR_HTTP_PORT:-3500}
             NODE_OPTIONS: ${PAWIFY_NODE_OPTIONS:---max-old-space-size=384}
-            # Local MusicBrainz mirror. `api` keeps the old behaviour; `sqlite`
-            # reads artist/search/release metadata from the mounted mirror and
-            # falls back to the API when it cannot answer.
-            MUSIC_DB_MODE: ${MUSIC_DB_MODE:-api}
-            MUSIC_DB_PATH: ${MUSIC_DB_PATH:-/var/pawify/music/mb.db}
-            MUSIC_DB_FALLBACK_TO_API: ${MUSIC_DB_FALLBACK_TO_API:-true}
         expose:
             - '${PORT:-10000}'
         ports:
@@ -41,6 +35,10 @@ services:
             # The mirror's directory, not just mb.db: the database is in WAL mode
             # and SQLite needs the -wal/-shm side files next to it. Read-only is
             # enough (measured against the live 13.7 GB mirror).
+            # MUSIC_DB_MODE / MUSIC_DB_PATH / MUSIC_DB_FALLBACK_TO_API are read
+            # from the app env file, NOT declared under `environment:` above —
+            # anything declared there would shadow the env file with a default and
+            # silently keep mirror mode off.
             - ${PAWIFY_MUSIC_DB_DIR:-./music}:/var/pawify/music:ro
         healthcheck:
             test:

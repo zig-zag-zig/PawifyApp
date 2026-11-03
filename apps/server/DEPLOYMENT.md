@@ -221,6 +221,7 @@ MUSIC_DB_MODE=sqlite
 MUSIC_DB_PATH=/var/pawify/music/mb.db
 PAWIFY_MUSIC_DB_DIR=/home/deploy/pawify-mb
 MUSIC_DB_FALLBACK_TO_API=true
+MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS=1000
 ```
 
 `PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source; the deploy
@@ -240,7 +241,21 @@ previous API-only behaviour, so a host without a mirror needs no extra setup.
   answer is re-checked against the API, because that endpoint deletes user state
   and the mirror can be up to an hour behind.
 - Search needs the mirror's `search_fts` index (`mbforge search-index`). Without
-  it search falls back to the API; nothing else is affected.
+  it search falls back to the API; nothing else is affected. Terms are OR'ed and
+  prefix-matched, like the MusicBrainz search server: `q=lloyd banks` matches
+  either term and ranks rows containing both first. AND'ing the terms would return
+  4 artists where the API returns 1881.
+- A missing mirror file is not fatal: the server logs a warning and serves from the
+  API, and it re-checks on each request so a mirror created by the hourly sync is
+  picked up without a restart. A mirror that exists but cannot be opened, or that
+  does not match the reader contract, *does* fail the boot.
+- `MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS` (default 1000) bounds one artist's release
+  groups. The endpoint has no pagination contract yet, and unbounded is not
+  survivable: Various Artists has 297k groups and building that page killed the
+  process with a JavaScript heap OOM.
+- Queries run synchronously on the event loop (better-sqlite3). Normal requests
+  are 0.1-10 ms; a pathological artist page blocks the loop for ~2 s while its
+  groups are sorted. Bounded cost, but worth knowing before adding heavier SQL.
 
 ### Verifying on a running host
 

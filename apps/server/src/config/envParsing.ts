@@ -3,6 +3,15 @@ export const parsePositiveIntEnv = (value: string | undefined, fallback: number)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+/**
+ * Like {@link parsePositiveIntEnv} but accepts 0, which several settings use to mean
+ * "no limit". Negative or unparseable values fall back.
+ */
+export const parseNonNegativeIntEnv = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value ?? '', 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
 export const parseBooleanEnv = (value: string | undefined, fallback = false): boolean => {
     if (!value) {
         return fallback;

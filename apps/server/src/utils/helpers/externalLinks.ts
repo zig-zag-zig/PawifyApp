@@ -255,7 +255,7 @@ const getRelationUrlResources = (relation: any): string[] => {
     });
 };
 
-const dedupeExternalLinks = (links: ExternalLink[]): ExternalLink[] => {
+export const dedupeExternalLinks = (links: ExternalLink[]): ExternalLink[] => {
     const seenUrls = new Set<string>();
     const result: ExternalLink[] = [];
 

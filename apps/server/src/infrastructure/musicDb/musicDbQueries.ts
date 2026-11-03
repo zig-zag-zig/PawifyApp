@@ -44,11 +44,17 @@ export type ArtistRelationshipRow = {
 export type ExternalLinkRow = { rel_type: string; url: string };
 
 /**
- * Escapes user input for an FTS5 MATCH expression.
+ * Translates user input into an FTS5 MATCH expression.
  *
  * Raw input is not safe: `version 2.0` is an FTS5 syntax error, and bare tokens
- * would be parsed as operators. Each token is quoted and given a `*` suffix so
- * "porcupine tr" behaves like a prefix search instead of an exact phrase.
+ * would be parsed as operators, so every token is quoted and given a `*` suffix
+ * (prefix match, so "porcupine tr" still finds things).
+ *
+ * Terms are OR'ed, not AND'ed, because that is what MusicBrainz does: `q=lloyd
+ * banks` matches artists containing *either* term and ranks rows containing both
+ * first. AND'ing them returns 4 artists where the API returns 1881 — a search
+ * regression no matter how the ranking is tuned. `bm25` already lifts rows that
+ * match more terms, so plain `ORDER BY bm25(...)` reproduces that ordering.
  */
 export const toFtsQuery = (query: string): string => {
     const tokens = query
@@ -60,8 +66,25 @@ export const toFtsQuery = (query: string): string => {
         return '';
     }
 
-    return tokens.map((token) => `"${token.replace(/"/g, '""')}"*`).join(' ');
+    return tokens.map((token) => `"${token.replace(/"/g, '""')}"*`).join(' OR ');
 };
+
+/**
+ * The MusicBrainz API returns `""` (not null) for "no disambiguation", and the
+ * existing mappers pass that straight through to the client. The mirror column is
+ * nullable, so it can hold NULL; normalising here keeps mirror payloads byte-equal
+ * to the API ones instead of introducing a second "empty" representation.
+ */
+export const disambiguationValue = (value: string | null | undefined): string => value ?? '';
+
+/**
+ * The mirror stores "unknown" string columns as '' (NOT NULL defaults), while the
+ * API omits the field entirely and the existing mappers turn that into null. These
+ * two are *not* interchangeable — `disambiguation` is '', dates and names are null
+ * — so nullable fields are normalised per field rather than globally.
+ */
+export const nullIfEmpty = (value: string | null | undefined): string | null =>
+    value && value.length > 0 ? value : null;
 
 export const readArtistRow = (db: MusicDb, artistId: string) =>
     db
@@ -120,7 +143,7 @@ export const buildArtist = (
     id: row.mbid,
     name: row.name,
     type: row.type as Artist['type'],
-    disambiguation: row.disambiguation ?? null,
+    disambiguation: disambiguationValue(row.disambiguation),
     aliases: aliases.map((name) => ({ name })),
     externalLinks: mapLinks(externalLinks),
     members: relationships
@@ -128,8 +151,8 @@ export const buildArtist = (
         .map((rel) => ({
             id: rel.related_artist_mbid,
             name: rel.related_artist_name,
-            begin: rel.begin_date,
-            end: rel.end_date,
+            begin: nullIfEmpty(rel.begin_date),
+            end: nullIfEmpty(rel.end_date),
             artistType: (rel.related_artist_type ?? 'Person') as 'Person' | 'Group',
             type: rel.type as 'member of band' | 'subgroup',
             direction: rel.direction as 'forward' | 'backward',
@@ -144,12 +167,12 @@ export const buildArtist = (
             artistType: (rel.related_artist_type ?? 'Person') as 'Person' | 'Group',
         })),
     lifeSpan: {
-        begin: row.begin_date ?? null,
-        end: row.end_date ?? null,
+        begin: nullIfEmpty(row.begin_date),
+        end: nullIfEmpty(row.end_date),
         ended: row.ended === 1,
     },
     beginArea: {
-        name: row.begin_area_name ?? null,
+        name: nullIfEmpty(row.begin_area_name),
     },
 });
 
@@ -177,17 +200,20 @@ export const readArtistReleaseGroups = (
     offset: number,
 ): ArtistReleaseGroupRow[] => {
     // EVERY release of each group is aggregated, not just the page's rows: the
-    // client taps a group and needs all of its pressings. The page itself is chosen
-    // by the group's newest release date, so pages do not overlap or skip groups as
-    // releases are added between requests.
+    // client taps a group and needs all of its pressings.
+    //
+    // Ordering is by the group's own first release date — the same key the API path
+    // sorts by — not by the newest pressing, so the list order does not change when
+    // a reissue lands. The page is chosen with the same key and a mbid tie-break, so
+    // pages cannot overlap or skip groups.
     const sql = `
         WITH paged AS (
-            SELECT r2.release_group_mbid AS gid, MAX(r2.date) AS newest
+            SELECT DISTINCT r2.release_group_mbid AS gid, rg2.first_release_date AS sort_date
             FROM releases r2
             JOIN release_artists ra2 ON ra2.release_mbid = r2.mbid
+            JOIN release_groups rg2 ON rg2.mbid = r2.release_group_mbid
             WHERE ra2.artist_mbid = ? AND r2.release_group_mbid IS NOT NULL
-            GROUP BY r2.release_group_mbid
-            ORDER BY newest IS NULL, newest DESC, gid ASC
+            ORDER BY sort_date IS NULL, sort_date DESC, gid ASC
             LIMIT ? OFFSET ?
         )
         SELECT rg.mbid,
@@ -195,12 +221,12 @@ export const readArtistReleaseGroups = (
                rg.primary_type,
                rg.disambiguation,
                rg.first_release_date,
-               group_concat(r.mbid, ' ') AS release_ids
+               group_concat(r.mbid, ' ' ORDER BY r.date IS NULL, r.date DESC, r.mbid ASC) AS release_ids
         FROM paged p
         JOIN release_groups rg ON rg.mbid = p.gid
         JOIN releases r ON r.release_group_mbid = rg.mbid
         GROUP BY rg.mbid
-        ORDER BY p.newest IS NULL, p.newest DESC, rg.mbid ASC`;
+        ORDER BY p.sort_date IS NULL, p.sort_date DESC, rg.mbid ASC`;
 
     return db.prepare(sql).all(artistId, limit ?? -1, offset) as ArtistReleaseGroupRow[];
 };
@@ -276,8 +302,8 @@ export const buildReleaseGroup = (row: {
     id: row.mbid,
     title: row.title,
     'primary-type': row.primary_type ?? null,
-    date: row.first_release_date ?? null,
-    disambiguation: row.disambiguation ?? null,
+    date: nullIfEmpty(row.first_release_date),
+    disambiguation: disambiguationValue(row.disambiguation),
 });
 
 export const readReleaseRow = (db: MusicDb, releaseId: string) =>

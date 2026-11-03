@@ -1,4 +1,9 @@
-import { parseFloatEnv, parseBooleanEnv, parsePositiveIntEnv } from './envParsing.js';
+import {
+    parseFloatEnv,
+    parseBooleanEnv,
+    parseNonNegativeIntEnv,
+    parsePositiveIntEnv,
+} from './envParsing.js';
 
 type RuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -240,5 +245,16 @@ export const musicDbConfig = {
     /** Fall back to the API when the mirror cannot answer a request. */
     get fallbackToApi(): boolean {
         return parseBooleanEnv(process.env.MUSIC_DB_FALLBACK_TO_API, true);
+    },
+    /**
+     * Hard upper bound on release groups returned for one artist.
+     *
+     * The mirror makes "every release group of this artist" cheap to query, but not
+     * free: Various Artists has 297k groups / 336k releases and building that page
+     * killed the process with a JavaScript heap OOM (measured). The endpoint has no
+     * pagination contract yet, so the bound lives here; 0 disables it.
+     */
+    get maxArtistReleaseGroups(): number {
+        return parseNonNegativeIntEnv(process.env.MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS, 1000);
     },
 };

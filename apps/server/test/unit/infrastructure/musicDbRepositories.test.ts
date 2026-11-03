@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import Database from 'better-sqlite3';
 
-import { closeMusicDb, getMusicDb } from '../../../src/infrastructure/musicDb/musicDbClient.js';
+import {
+    closeMusicDb,
+    getMusicDb,
+    initializeMusicDb,
+} from '../../../src/infrastructure/musicDb/musicDbClient.js';
 import {
     countArtistReleasesFromMirror,
     getArtistDetailsFromMirror,
@@ -218,13 +222,27 @@ describe('musicDb repositories', () => {
             assert.equal(getMusicDb(), null);
         });
 
+        it('degrades at boot when the mirror file is not there yet', () => {
+            // A host without a synced mirror must serve from the API, not crash-loop.
+            const missing = path.join(os.tmpdir(), `pawify-missing-${Date.now()}.db`);
+            useMirror(missing);
+
+            assert.equal(initializeMusicDb(), null);
+            // Not cached: the hourly sync can create the file later.
+            assert.equal(getMusicDb(), null);
+
+            const late = createMusicDbFixture(seed);
+            process.env.MUSIC_DB_PATH = late;
+            assert.notEqual(getMusicDb(), null);
+        });
+
         it('returns null when mirror mode is off', () => {
             closeMusicDb();
             process.env.MUSIC_DB_MODE = 'api';
             assert.equal(getMusicDb(), null);
         });
 
-        it('fails loudly when the file does not match the reader contract', () => {
+        it('fails the boot when the file does not match the reader contract', () => {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-bad-musicdb-'));
             const badPath = path.join(directory, 'mb.db');
             const db = new Database(badPath);
@@ -232,10 +250,27 @@ describe('musicDb repositories', () => {
             db.close();
 
             useMirror(badPath);
+            // Boot must be loud: a schema mismatch is a deploy problem, not a
+            // per-request error.
             assert.throws(
-                () => getMusicDb(),
+                () => initializeMusicDb(),
                 /does not match this server's reader contract:[\s\S]*artists\.name/,
             );
+            fs.rmSync(directory, { recursive: true, force: true });
+        });
+
+        it('degrades instead of throwing when the file breaks at runtime', () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-bad-musicdb-'));
+            const badPath = path.join(directory, 'mb.db');
+            const db = new Database(badPath);
+            db.exec('CREATE TABLE artists (mbid TEXT PRIMARY KEY)');
+            db.close();
+
+            useMirror(badPath);
+            // A request must fall back to the API rather than 500.
+            assert.equal(getMusicDb(), null);
+            assert.equal(getArtistDetailsFromMirror('anything'), null);
+            assert.equal(searchArtistsFromMirror('anything', 0, 5), null);
             fs.rmSync(directory, { recursive: true, force: true });
         });
     });
@@ -282,6 +317,61 @@ describe('musicDb repositories', () => {
             assert.ok(services.includes('official'));
         });
 
+        it('collapses the same url listed under several relation types', () => {
+            const dupePath = createMusicDbFixture({
+                artists: [{ mbid: ARTIST_ID, name: 'Lloyd Banks', ended: 0 }],
+                externalLinks: [
+                    {
+                        entity_type: 'artist',
+                        entity_mbid: ARTIST_ID,
+                        rel_type: 'purchase for download',
+                        url: 'https://music.apple.com/de/album/6795649635',
+                    },
+                    {
+                        entity_type: 'artist',
+                        entity_mbid: ARTIST_ID,
+                        rel_type: 'streaming',
+                        url: 'https://music.apple.com/de/album/6795649635',
+                    },
+                ],
+            });
+            useMirror(dupePath);
+
+            const artist = getArtistDetailsFromMirror(ARTIST_ID);
+            assert.ok(artist);
+            assert.equal(artist.externalLinks.length, 1);
+        });
+
+        it('reports unknown member dates as null, like the API does', () => {
+            // The mirror stores '' for missing relation dates, the API omits them.
+            assert.ok(getArtistDetailsFromMirror(ARTIST_ID)?.members?.[0]);
+            const artist = getArtistDetailsFromMirror(ARTIST_ID)!;
+            const member = artist.members![0];
+            assert.equal(member.begin, '1999');
+            assert.equal(member.end, null);
+        });
+
+        it('reports unknown dates and areas as null, like the API does', () => {
+            const emptyPath = createMusicDbFixture({
+                artists: [
+                    {
+                        mbid: ARTIST_ID,
+                        name: 'Unknown Dates',
+                        begin_date: '',
+                        end_date: '',
+                        begin_area_name: '',
+                        ended: 0,
+                    },
+                ],
+            });
+            useMirror(emptyPath);
+
+            const artist = getArtistDetailsFromMirror(ARTIST_ID);
+            assert.ok(artist);
+            assert.deepEqual(artist.lifeSpan, { begin: null, end: null, ended: false });
+            assert.deepEqual(artist.beginArea, { name: null });
+        });
+
         it('returns null for an artist the mirror does not know', () => {
             assert.equal(getArtistDetailsFromMirror('unknown-artist'), null);
         });
@@ -297,6 +387,14 @@ describe('musicDb repositories', () => {
     });
 
     describe('artist releases', () => {
+        it("orders a group's releases newest first, like the API path", () => {
+            const releases = getArtistReleasesFromMirror(ARTIST_ID);
+            const hunger = releases?.find((group) => group.id === GROUP_ID);
+
+            // RELEASE_NEWER (2003-06-17) before RELEASE_OLDER (2003-04-29).
+            assert.deepEqual(hunger?.releaseIds, [RELEASE_NEWER, RELEASE_OLDER]);
+        });
+
         it('groups every release of a group, not just the newest', () => {
             const releases = getArtistReleasesFromMirror(ARTIST_ID);
 
@@ -306,6 +404,47 @@ describe('musicDb repositories', () => {
             assert.deepEqual(hunger.releaseIds.sort(), [RELEASE_NEWER, RELEASE_OLDER].sort());
             assert.equal(hunger['primary-type'], 'Album');
             assert.equal(hunger.date, '2003-04-29');
+        });
+
+        it('reports a missing disambiguation as an empty string, like the API does', () => {
+            // The mirror column is nullable while the API emits ''; the repository
+            // normalises so mirror and API payloads match.
+            const emptyDisambiguationPath = createMusicDbFixture({
+                artists: [{ mbid: ARTIST_ID, name: 'Lloyd Banks', ended: 0 }],
+                releaseGroups: [
+                    {
+                        mbid: GROUP_ID,
+                        title: 'Hunger for More',
+                        primary_type: 'Album',
+                        disambiguation: '',
+                        first_release_date: '2003-04-29',
+                    },
+                ],
+                releases: [
+                    {
+                        mbid: RELEASE_OLDER,
+                        title: 'Hunger for More',
+                        date: '2003-04-29',
+                        disambiguation: '',
+                        release_group_mbid: GROUP_ID,
+                    },
+                ],
+                releaseArtists: [
+                    {
+                        release_mbid: RELEASE_OLDER,
+                        artist_mbid: ARTIST_ID,
+                        artist_name: 'Lloyd Banks',
+                        join_phrase: '',
+                        position: 0,
+                    },
+                ],
+            });
+            useMirror(emptyDisambiguationPath);
+
+            const releases = getArtistReleasesFromMirror(ARTIST_ID);
+            assert.ok(releases);
+            assert.equal(releases[0].disambiguation, '');
+            assert.equal(getReleaseMetadataFromMirror(RELEASE_OLDER)?.disambiguation, '');
         });
 
         it('orders groups newest first and reports the real total', () => {
@@ -335,6 +474,23 @@ describe('musicDb repositories', () => {
             );
             // The group on the page still carries all of its pressings.
             assert.equal(secondPage[0].releaseIds.length, 2);
+        });
+
+        it('never returns more groups than the configured cap', () => {
+            // A pathological artist (Various Artists: 297k groups) must degrade to a
+            // bounded page instead of exhausting the process heap.
+            process.env.MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS = '1';
+            try {
+                const releases = getArtistReleasesFromMirror(ARTIST_ID);
+                assert.ok(releases);
+                assert.equal(releases.length, 1);
+                // The page is still the newest group.
+                assert.equal(releases[0].id, GROUP_TWO_ID);
+                // An explicit limit still wins.
+                assert.equal(getArtistReleasesFromMirror(ARTIST_ID, 2)?.length, 2);
+            } finally {
+                delete process.env.MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS;
+            }
         });
 
         it('returns an empty list for a known artist with no releases', () => {
@@ -424,9 +580,23 @@ describe('musicDb repositories', () => {
     describe('search', () => {
         it('escapes FTS operators in user input', () => {
             // Raw input like this is an FTS5 syntax error without quoting.
-            assert.equal(toFtsQuery('version 2.0'), '"version"* "2"* "0"*');
+            assert.equal(toFtsQuery('version 2.0'), '"version"* OR "2"* OR "0"*');
             assert.equal(toFtsQuery('  '), '');
-            assert.equal(toFtsQuery('AC/DC'), '"AC"* "DC"*');
+            assert.equal(toFtsQuery('AC/DC'), '"AC"* OR "DC"*');
+        });
+
+        it('matches either term, like the MusicBrainz search API', () => {
+            // AND'ing the terms would return only the artists named both "Lloyd"
+            // and "Banks" (4), where the API returns ~1881.
+            const either = searchArtistsFromMirror('banks', 0, 10);
+            const both = searchArtistsFromMirror('lloyd banks', 0, 10);
+
+            assert.ok(either);
+            assert.ok(both);
+            assert.ok(
+                (both.count ?? 0) >= (either.count ?? 0),
+                'a two-term OR query must not match fewer rows than one of its terms',
+            );
         });
 
         it('finds artists by prefix', () => {
