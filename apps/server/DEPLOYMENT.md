@@ -64,11 +64,14 @@ secrets/prod/firebase-service-account.json
 }
 ```
 
-`tidal-token` may be omitted or left empty. The server then falls back to
-`TIDAL_API_TOKEN` and finally to a built-in shared public community token, so
-Tidal artist-image lookups work without any configuration. If Tidal ever revokes
-that token the API returns HTTP 401 and Tidal is skipped in favour of Discogs;
-set `tidal-token` here to a working value to restore it.
+`tidal-token` is optional, but Tidal is skipped without it. The server logs one
+`optional provider credential missing` warning and falls through to Discogs, so
+artist images keep resolving from the remaining providers. `TIDAL_API_TOKEN` is
+an explicit environment override for the same credential and is read after the
+Dapr secret. There is no built-in token: a missing or revoked credential shows up
+as `tidalImageFoundCount: 0` in the artist-image batch summary (and HTTP 401 from
+Tidal when the token itself is rejected), instead of silently borrowing a shared
+credential.
 
 `REDIS_PASSWORD` lives only in the environment file. Redis uses it when starting, and the Dapr sidecar reads the same env var through `dapr/components/env-secrets.yaml` for the Redis state and lock components.
 

@@ -223,7 +223,13 @@ jobs:
           chmod 600 ~/.ssh/pawify_deploy_key
           ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
-          scp -P "$VPS_PORT" -i ~/.ssh/pawify_deploy_key -r "$SECRETS_SOURCE_DIR"             "$VPS_USER@$VPS_HOST:/home/$VPS_USER/pawify-prod-secrets"
+          # Copy into the parent directory. scp -r nests the source directory when
+          # the target already exists, so pointing straight at
+          # /home/<user>/pawify-prod-secrets stranded every upload in
+          # /home/<user>/pawify-prod-secrets/pawify-prod-secrets while the deploy
+          # script kept reading the stale copy one level up.
+          scp -P "$VPS_PORT" -i ~/.ssh/pawify_deploy_key -r \
+            "$SECRETS_SOURCE_DIR" "$VPS_USER@$VPS_HOST:/home/$VPS_USER/"
 
           remote_repo_url="$(printf '%q' "$PAWIFY_REPO_URL")"
           remote_branch="$(printf '%q' "$PAWIFY_DEPLOY_BRANCH")"

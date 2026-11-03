@@ -1,6 +1,11 @@
 import { createLogger } from '../../common/logging/logger.js';
 import { artistNamesMatch } from './artistNameMatch.js';
-import { getTidalCountryCode, getTidalToken, logTidalTokenRejectedOnce } from './credentials.js';
+import {
+    getTidalCountryCode,
+    getTidalToken,
+    logMissingOptionalCredentialOnce,
+    logTidalTokenRejectedOnce,
+} from './credentials.js';
 import { fetchDaprProvider, isAbortError } from './httpClient.js';
 import { isConfirmedMissingFetchFailure, isFetchFailureResult } from './types.js';
 import type { ArtistImageLookupOptions, HttpOptions, ProviderValueState } from './types.js';
@@ -136,7 +141,11 @@ type TidalLookup =
 
 type TidalCandidate = { url: string; name: string };
 
-const lookupTidalArtist = async (tidalUrl: string, signal?: AbortSignal): Promise<TidalLookup> => {
+const lookupTidalArtist = async (
+    tidalUrl: string,
+    token: string,
+    signal?: AbortSignal,
+): Promise<TidalLookup> => {
     const artistId = extractTidalArtistId(tidalUrl);
     if (!artistId) {
         // Not a Tidal artist link at all, so there is nothing to retry.
@@ -144,13 +153,14 @@ const lookupTidalArtist = async (tidalUrl: string, signal?: AbortSignal): Promis
     }
 
     const countryCode = getTidalCountryCode();
-    const options: HttpOptions = {
-        method: 'GET',
-        headers: { 'x-tidal-token': await getTidalToken() },
-    };
 
     let response: unknown;
     try {
+        const options: HttpOptions = {
+            method: 'GET',
+            headers: { 'x-tidal-token': token },
+        };
+
         response = await fetchDaprProvider(
             'tidal',
             `/v1/artists/${artistId}?countryCode=${encodeURIComponent(countryCode)}`,
@@ -220,6 +230,34 @@ const lookupTidalArtist = async (tidalUrl: string, signal?: AbortSignal): Promis
 };
 
 /**
+ * Reads the Tidal credential once per lookup.
+ *
+ * A missing or unreadable credential is a configuration problem, not a per-artist
+ * failure: it is reported once per process and Tidal is skipped so the chain can
+ * continue to Discogs.
+ */
+const resolveTidalToken = async (): Promise<string | undefined> => {
+    try {
+        const token = await getTidalToken();
+        if (!token) {
+            logMissingOptionalCredentialOnce('tidal-token');
+        }
+
+        return token;
+    } catch (error) {
+        if (isAbortError(error)) {
+            throw error;
+        }
+
+        logMissingOptionalCredentialOnce('tidal-token');
+        logger.debug('tidal credential lookup failed', {
+            reason: error instanceof Error ? error.message : String(error),
+        });
+        return undefined;
+    }
+};
+
+/**
  * Resolves an artist image from Tidal.
  *
  * Tidal exposes no audience metric comparable to Deezer's fan count, so rather
@@ -231,11 +269,18 @@ export const getTidalArtistImage = async (
     tidalUrls: string[],
     options: ArtistImageLookupOptions = {},
 ): Promise<ProviderValueState> => {
+    const token = await resolveTidalToken();
+    if (!token) {
+        // No credential means Tidal cannot answer; undefined keeps the artist
+        // transient so a later run retries once the secret is configured.
+        return undefined;
+    }
+
     const candidates: TidalCandidate[] = [];
     let sawTransientFailure = false;
 
     for (const tidalUrl of tidalUrls) {
-        const lookup = await lookupTidalArtist(tidalUrl, options.signal);
+        const lookup = await lookupTidalArtist(tidalUrl, token, options.signal);
 
         if (lookup.kind === 'candidate') {
             candidates.push(lookup.candidate);
