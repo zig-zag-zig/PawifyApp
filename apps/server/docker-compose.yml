@@ -13,6 +13,10 @@ services:
             context: ../..
             dockerfile: apps/server/Dockerfile
         image: ${PAWIFY_IMAGE:-pawify:local}
+        # The mirror is maintained by the deploy user (uid/gid 1000) and SQLite
+        # WAL mode needs the app to create/update mb.db-shm/mb.db-wal. Keep the
+        # app user aligned with that owner; the image's nodeapp user is uid 999.
+        user: ${PAWIFY_APP_UID:-1000}:${PAWIFY_APP_GID:-1000}
         restart: unless-stopped
         logging: *pawify-logging
         mem_limit: ${PAWIFY_APP_MEMORY_LIMIT:-512m}
@@ -38,7 +42,9 @@ services:
             # MUSIC_DB_PATH is read from the app env file, NOT declared under
             # `environment:` above — anything declared there would shadow the env
             # file with a default.
-            - ${PAWIFY_MUSIC_DB_DIR:-./music}:/var/pawify/music:ro
+            # Writable directory is required for SQLite WAL shared-memory files;
+            # the app opens the database itself read-only.
+            - ${PAWIFY_MUSIC_DB_DIR:-./music}:/var/pawify/music
         healthcheck:
             test:
                 [
