@@ -14,11 +14,19 @@ import {
     getArtistDetails as getArtistDetailsFromService,
     getFollowedArtistSummary as getFollowedArtistSummaryFromService,
 } from '../../../services/artistDetailsService.js';
-import { getArtistKnownReleaseIds } from '../../../services/musicbrainz/cachedReleaseCatalog.js';
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
 import { searchForArtist } from '../../../services/musicbrainz/artistSearch.js';
 import { searchReleaseGroups } from '../../../services/musicbrainz/releaseGroupSearch.js';
+import {
+    getArtistDetailsFromMirror,
+    getArtistReleaseGroupIdsFromMirror,
+    getFollowedArtistSummaryFromMirror,
+    searchArtistsFromMirror,
+    searchReleaseGroupsFromMirror,
+} from '../../../infrastructure/musicDb/musicDbRepositories.js';
+import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
+import { getArtistReleaseGroupCatalog } from '../../../services/musicbrainz/artistReleaseGroupCatalog.js';
 import type { ArtistUseCaseDependencies } from '../ports.js';
 
 const logger = createLogger('features.artists.dependencies');
@@ -26,7 +34,13 @@ const logger = createLogger('features.artists.dependencies');
 export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'> = {
     artistDetailsGateway: {
         getArtistDetails: async (userId, artistId) => {
-            const artist = await getArtistDetailsFromService(userId, artistId);
+            // The mirror answers from local data; a miss (or a mirror failure)
+            // transparently uses the API, including its Redis cache.
+            const artist = await withMusicDb(
+                'getArtistDetails',
+                () => getArtistDetailsFromMirror(artistId),
+                () => getArtistDetailsFromService(userId, artistId),
+            );
 
             if (artist === null) {
                 await deleteArtistFromDb(userId, artistId);
@@ -35,7 +49,11 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
             return artist;
         },
         getFollowedArtistSummary: async (userId, artistId) => {
-            const summary = await getFollowedArtistSummaryFromService(userId, artistId);
+            const summary = await withMusicDb(
+                'getFollowedArtistSummary',
+                () => getFollowedArtistSummaryFromMirror(artistId),
+                () => getFollowedArtistSummaryFromService(userId, artistId),
+            );
 
             if (summary === null) {
                 await deleteArtistFromDb(userId, artistId);
@@ -51,8 +69,17 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
         getFollowingState: async (userId) => {
             return await getFollowingStateFromDb(userId);
         },
-        saveFollowedArtist: async (userId, artistId, releaseIds, artistSummary) => {
-            await saveArtistAndKnownReleasesToDb(userId, artistId, releaseIds, [], artistSummary);
+        saveFollowedArtist: async (userId, artistId, groupIds, artistSummary) => {
+            // Seeded with an empty event date: the artist's existing catalogue is
+            // known and must not notify. The first scan records the real dates
+            // without notifying (the baseline path).
+            await saveArtistAndKnownReleasesToDb(
+                userId,
+                artistId,
+                new Map(groupIds.map((groupId) => [groupId, ''])),
+                [],
+                artistSummary,
+            );
         },
         saveFollowingArtistSummaries: async (userId, artistSummaries) => {
             await saveFollowingArtistSummariesToDb(userId, artistSummaries);
@@ -62,14 +89,30 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
         },
     },
     artistReleaseCatalogGateway: {
-        getArtistReleaseIds: async (artistId, ttl) => await getArtistKnownReleaseIds(artistId, ttl),
+        getArtistReleaseGroupIds: async (artistId, ttl) =>
+            (await withMusicDb(
+                'getArtistReleaseGroupIds',
+                () => getArtistReleaseGroupIdsFromMirror(artistId),
+                async () =>
+                    (await getArtistReleaseGroupCatalog(artistId)).groups.map(
+                        (group) => group.id,
+                    ),
+            )) ?? [],
     },
     artistProfileImageQueue: artistProfileImageTaskQueue,
     artistSearchGateway: {
         searchArtists: async (userId, query, offset, limit) =>
-            await searchForArtist(userId, query, offset, limit),
+            (await withMusicDb(
+                'searchArtists',
+                () => searchArtistsFromMirror(query, offset, limit),
+                async () => await searchForArtist(userId, query, offset, limit),
+            )) ?? { artists: [], count: 0 },
         searchReleaseGroups: async (userId, query, offset, limit) =>
-            await searchReleaseGroups(userId, query, offset, limit),
+            (await withMusicDb(
+                'searchReleaseGroups',
+                () => searchReleaseGroupsFromMirror(query, offset, limit),
+                async () => await searchReleaseGroups(userId, query, offset, limit),
+            )) ?? { releaseGroups: [], count: 0 },
     },
     followingNotifier: {
         notifyFollowingChanged: async (userId, sourcePushToken) => {

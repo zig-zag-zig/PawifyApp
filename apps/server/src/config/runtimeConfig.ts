@@ -1,4 +1,9 @@
-import { parseFloatEnv, parseBooleanEnv, parsePositiveIntEnv } from './envParsing.js';
+import {
+    parseFloatEnv,
+    parseBooleanEnv,
+    parseNonNegativeIntEnv,
+    parsePositiveIntEnv,
+} from './envParsing.js';
 
 type RuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -62,6 +67,11 @@ export const cacheConfig = {
         process.env.ARTIST_METADATA_REFRESH_TTL_MS,
         1000 * 60 * 60 * 24 * 28,
     ),
+    // Provider artwork/lyrics: a month of success, a week of "definitely absent".
+    // Covers change independently of MusicBrainz (a provider can replace artwork),
+    // so they do not inherit the 61-day artist-metadata TTL.
+    assetSuccessTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_SUCCESS_TTL_HOURS, 24 * 30),
+    assetMissTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_MISS_TTL_HOURS, 24 * 7),
     transientRemoteValueRetryWindowMs: parsePositiveIntEnv(
         process.env.TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS,
         1000 * 60 * 5,
@@ -212,4 +222,33 @@ export const firebaseAdminConfig = {
     serviceAccountJson: optionalEnv('FIREBASE_SERVICE_ACCOUNT_JSON'),
     credentialsFilePath: optionalEnv('GOOGLE_APPLICATION_CREDENTIALS'),
     databaseURL: optionalEnv('FIREBASE_DATABASE_URL'),
+};
+
+/**
+ * Local MusicBrainz mirror (SQLite), produced by zig-zag-zig/pawify_mb_sqlite.
+ *
+ * The mirror is the source of truth for artist and release metadata; there is no
+ * "use the API instead" switch, because running both paths is a cost with no user
+ * benefit. The API stays as a *failure* path only: if the file is missing or cannot
+ * be opened, requests are served from the API and an error is logged, so a broken
+ * sync job degrades the app instead of taking it down. Tracklists always come from
+ * the API because the mirror stores none.
+ */
+export const musicDbConfig = {
+    // Resolved on access: the mirror client is a lazily opened singleton and tests
+    // point a process at a fixture without controlling import order.
+    get path(): string | undefined {
+        return optionalEnv('MUSIC_DB_PATH');
+    },
+    /**
+     * Hard upper bound on release groups returned for one artist.
+     *
+     * "Every release group of this artist" is cheap to query but not free: Various
+     * Artists has 297k groups / 336k releases and building that page killed the
+     * process with a JavaScript heap OOM (measured). The endpoint has no pagination
+     * contract yet, so the bound lives here; 0 disables it.
+     */
+    get maxArtistReleaseGroups(): number {
+        return parseNonNegativeIntEnv(process.env.MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS, 1000);
+    },
 };

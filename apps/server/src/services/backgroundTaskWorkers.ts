@@ -188,10 +188,20 @@ const submitNewReleaseCoversPage = (
     session.submitPage(async (signal) => {
         const covers: NewReleaseCoverTaskResult['covers'] = {};
 
-        await mapWithConcurrency(pageEntries, 4, async (pageEntry) => {
+        // One release per entry would nest concurrency (groups x releases), so the
+        // page is flattened into independent (group, release) items and the worker's
+        // own bound applies to the whole list.
+        const items = pageEntries.flatMap((pageEntry) =>
+            dedupeStrings(pageEntry.releaseIds).map((releaseId) => ({
+                releaseGroupId: pageEntry.releaseGroupId,
+                releaseId,
+            })),
+        );
+
+        await mapWithConcurrency(items, 4, async (item) => {
             const result = await fetchAndUpsertReleaseGroupReleaseCovers(
-                pageEntry.releaseGroupId,
-                pageEntry.releaseIds,
+                item.releaseGroupId,
+                [item.releaseId],
                 ttl,
                 signal,
             );

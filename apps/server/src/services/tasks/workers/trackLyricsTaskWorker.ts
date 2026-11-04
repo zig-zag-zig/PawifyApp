@@ -1,11 +1,10 @@
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
-import { getCachedData, replaceCachedData } from '../../cacheService.js';
+import { assetKeys, readAssetStates, writeAssetState } from '../../cache/assetCache.js';
 import { fetchGeniusLyrics } from '../../musicApi/geniusClient.js';
-import { getCacheKey } from '../../../utils/helpers/cacheHelpers.js';
 import { getReleaseLyricsTtl } from '../../../services/cache/ttlPolicy.js';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
-import type { CachedReleaseLyricsByRelease } from '../../../utils/types/cacheTypes.js';
+import type { LyricsState } from '../../../utils/types/cacheTypes.js';
 import type { TrackLyricsRequest, TrackLyricsTaskResult } from '../../../utils/types/taskTypes.js';
 import { dedupeTracks, mapLyricsToState, shouldRefetchState } from '../backgroundTaskMappers.js';
 
@@ -28,8 +27,10 @@ export const fetchAndUpsertTrackLyrics = async (
     }
 
     const lyricsTtl = getReleaseLyricsTtl(ttl);
-    const cacheKey = getCacheKey(releaseId, 'releaseLyrics');
-    const cached = (await getCachedData<CachedReleaseLyricsByRelease>(cacheKey)) ?? {};
+    // Per-track keys: one track resolving must not rewrite the release's whole map.
+    const cached = await readAssetStates<LyricsState>(
+        uniqueTracks.map((track) => assetKeys.trackLyrics(releaseId, track.trackId)),
+    );
     const startedAt = Date.now();
     const resultMap: { [trackId: string]: string | null | undefined } = {};
     let cacheHitCount = 0;
@@ -42,7 +43,8 @@ export const fetchAndUpsertTrackLyrics = async (
     });
 
     await mapWithConcurrency(uniqueTracks, TRACK_LYRICS_REQUEST_CONCURRENCY, async (track) => {
-        const existing = cached[track.trackId];
+        const cacheKey = assetKeys.trackLyrics(releaseId, track.trackId);
+        const existing = cached.get(cacheKey);
 
         if (existing && !shouldRefetchState(existing)) {
             cacheHitCount += 1;
@@ -52,11 +54,10 @@ export const fetchAndUpsertTrackLyrics = async (
 
         const lyricsUrl = await fetchGeniusLyrics(track.artistName, track.trackName, signal);
         fetchedCount += 1;
-        cached[track.trackId] = mapLyricsToState(lyricsUrl);
-        resultMap[track.trackId] = cached[track.trackId].url;
+        const state = mapLyricsToState(lyricsUrl);
+        await writeAssetState(cacheKey, state);
+        resultMap[track.trackId] = state.url;
     });
-
-    await replaceCachedData(cacheKey, cached, lyricsTtl);
 
     logger.debug('track lyrics batch completed', {
         releaseId,

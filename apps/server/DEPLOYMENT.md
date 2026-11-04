@@ -64,11 +64,14 @@ secrets/prod/firebase-service-account.json
 }
 ```
 
-`tidal-token` may be omitted or left empty. The server then falls back to
-`TIDAL_API_TOKEN` and finally to a built-in shared public community token, so
-Tidal artist-image lookups work without any configuration. If Tidal ever revokes
-that token the API returns HTTP 401 and Tidal is skipped in favour of Discogs;
-set `tidal-token` here to a working value to restore it.
+`tidal-token` is optional, but Tidal is skipped without it. The server logs one
+`optional provider credential missing` warning and falls through to Discogs, so
+artist images keep resolving from the remaining providers. `TIDAL_API_TOKEN` is
+an explicit environment override for the same credential and is read after the
+Dapr secret. There is no built-in token: a missing or revoked credential shows up
+as `tidalImageFoundCount: 0` in the artist-image batch summary (and HTTP 401 from
+Tidal when the token itself is rejected), instead of silently borrowing a shared
+credential.
 
 `REDIS_PASSWORD` lives only in the environment file. Redis uses it when starting, and the Dapr sidecar reads the same env var through `dapr/components/env-secrets.yaml` for the Redis state and lock components.
 
@@ -183,6 +186,93 @@ curl http://127.0.0.1:3001/v1/health
 docker compose --env-file .env.prod exec redis redis-cli -a "$(grep '^REDIS_PASSWORD=' .env.prod | cut -d= -f2-)" ping
 docker compose --env-file .env.prod exec pawify-dapr wget -qO- http://localhost:3500/v1.0/metadata
 ```
+
+## Local MusicBrainz Mirror (optional)
+
+Artist details, artist search, release-group search, artist release-group
+listings, release-group releases and release metadata are served from a local
+SQLite mirror. Tracklists still come from the API when a release screen is
+opened, because the mirror deliberately does not store tracks.
+
+There is no "use the API instead" switch: running both paths as a choice doubles
+the code and the tests for no user benefit. The API is the *failure* path only.
+
+The mirror itself is built off-box by
+[zig-zag-zig/pawify_mb_sqlite](https://github.com/zig-zag-zig/pawify_mb_sqlite)
+and synced hourly on the host; this repository only reads it.
+
+### Host layout
+
+```bash
+/home/deploy/pawify-mb/mb.db          # ~13.7 GB, written hourly by sync.sh
+/home/deploy/pawify-mb/mb.db-wal      # WAL side files: must stay next to mb.db
+/home/deploy/pawify-mb/mb.db-shm
+```
+
+The directory is mounted read-only at `/var/pawify/music`. The whole directory is
+mounted, not just `mb.db`: the mirror is in WAL mode and SQLite needs the side
+files present. Access was verified against the live mirror from inside the
+container user (`uid 999`), which can read it without write permission.
+
+### Enabling it
+
+In the secret env file (`PAWIFY_ENV_FILE_B64`):
+
+```dotenv
+MUSIC_DB_PATH=/var/pawify/music/mb.db
+PAWIFY_MUSIC_DB_DIR=/home/deploy/pawify-mb
+MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS=1000
+```
+
+`PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source. The production
+ deploy wrapper forces it to `/home/<deploy-user>/pawify-mb` and forces
+`MUSIC_DB_PATH=/var/pawify/music/mb.db`, so an older secret env file cannot silently
+switch production back to the MusicBrainz API.
+
+### Behaviour and failure modes
+
+- The mirror is opened lazily on first use, read-only, with the reader contract
+  (`tables`, `columns`) asserted. A mirror from a different schema fails at
+  startup with the exact missing column instead of a per-request error.
+- A mirror miss (unknown id, no search index, mode off) quietly uses the API.
+- A mirror *failure* (corrupt file, permission problem) is logged as a warning
+  and then falls back to the API. This is not configurable: it exists so a broken
+  sync job degrades the app instead of taking it down.
+- `releaseExists` only trusts a *positive* answer from the mirror. A negative
+  answer is re-checked against the API, because that endpoint deletes user state
+  and the mirror can be up to an hour behind.
+- Search needs the mirror's `search_fts` index (`mbforge search-index`). Without
+  it search falls back to the API; nothing else is affected. Terms are OR'ed and
+  prefix-matched, like the MusicBrainz search server: `q=lloyd banks` matches
+  either term and ranks rows containing both first. AND'ing the terms would return
+  4 artists where the API returns 1881.
+- A missing mirror file is not fatal: the server logs a warning and serves from the
+  API, and it re-checks on each request so a mirror created by the hourly sync is
+  picked up without a restart. A mirror that exists but cannot be opened, or that
+  does not match the reader contract, *does* fail the boot.
+- `MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS` (default 1000) bounds one artist's release
+  groups. The endpoint has no pagination contract yet, and unbounded is not
+  survivable: Various Artists has 297k groups and building that page killed the
+  process with a JavaScript heap OOM.
+- Queries run synchronously on the event loop (better-sqlite3). Normal requests
+  are 0.1-10 ms; a pathological artist page blocks the loop for ~2 s while its
+  groups are sorted. Bounded cost, but worth knowing before adding heavier SQL.
+
+### Verifying on a running host
+
+```bash
+cd /srv/pawify-prod/apps/server
+docker compose --env-file .env.prod exec pawify node -e "
+const D=require('better-sqlite3');
+const db=new D(process.env.MUSIC_DB_PATH,{readonly:true,fileMustExist:true});
+console.log(db.prepare('select count(*) c from artists').get());
+"
+docker compose --env-file .env.prod logs pawify | grep 'MusicBrainz mirror'
+```
+
+The startup log line reports the path, whether the search index was found, and
+the mirror's `_meta` (`replication_sequence`, `entities`, ...), which is what the
+sync job advances.
 
 ## Redis Backup
 

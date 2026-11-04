@@ -3,44 +3,50 @@ import type { Release } from '@pawify/shared';
 const dateTimeMin = -8640000000000000;
 
 export const dateToTimestamp = (dateStr: string | null): number => {
-  if (!dateStr?.trim()) return dateTimeMin;
+    if (!dateStr?.trim()) return dateTimeMin;
 
-  const parsedDate = new Date(dateStr);
-  if (!isNaN(parsedDate.getTime())) {
-    return parsedDate.getTime();
-  }
+    const parsedDate = new Date(dateStr);
+    if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.getTime();
+    }
 
-  const dateParts = dateStr.split('-');
+    const dateParts = dateStr.split('-');
 
-  if (dateParts.length === 1) dateParts.push('01');
+    if (dateParts.length === 1) dateParts.push('01');
 
-  if (dateParts.length === 2) dateParts.push('01');
+    if (dateParts.length === 2) dateParts.push('01');
 
-  if (dateParts.length !== 3) return dateTimeMin;
+    if (dateParts.length !== 3) return dateTimeMin;
 
-  const day = dateParts[2].padStart(2, '0');
-  const month = dateParts[1].padStart(2, '0');
+    const day = dateParts[2].padStart(2, '0');
+    const month = dateParts[1].padStart(2, '0');
 
-  const validDate = new Date(`${dateParts[0]}-${month}-${day}`);
+    const validDate = new Date(`${dateParts[0]}-${month}-${day}`);
 
-  if (isNaN(validDate.getTime())) {
-    console.error("Invalid date:", dateStr);
-    return dateTimeMin;
-  }
+    if (isNaN(validDate.getTime())) {
+        console.error('Invalid date:', dateStr);
+        return dateTimeMin;
+    }
 
-  return validDate.getTime();
+    return validDate.getTime();
 };
 
+/** Newest first; entries without a date sort last. Comparator for any dated item. */
+export const sortByDateDescending = (
+    left: { date: string | null },
+    right: { date: string | null },
+): number => dateToTimestamp(right.date) - dateToTimestamp(left.date);
+
 export const sortReleasesByDate = (releases: Release[]) => {
-  releases.sort((a, b) => {
-    const dateA = dateToTimestamp(a.date);
-    const dateB = dateToTimestamp(b.date);
-    return dateB - dateA;
-  });
+    releases.sort((a, b) => {
+        const dateA = dateToTimestamp(a.date);
+        const dateB = dateToTimestamp(b.date);
+        return dateB - dateA;
+    });
 };
 
 export const isFutureDate = (dateString: string | null): boolean => {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return dateToTimestamp(dateString) > now.getTime();
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return dateToTimestamp(dateString) > now.getTime();
 };

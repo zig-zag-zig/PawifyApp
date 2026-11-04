@@ -21,3 +21,7 @@ backups/
 service-account*.json
 firebase-service-account*.json
 .pi*
+# Local MusicBrainz mirror mount point (only .gitkeep is tracked)
+music/*
+!music/.gitkeep
+

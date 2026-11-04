@@ -1,16 +1,16 @@
 import type { UserSettingsUseCaseDependencies } from '../../src/features/userSettings/ports.js';
-import type { Release, ReleaseNotificationSettings } from '@pawify/shared';
+import type { ReleaseNotificationSettings } from '@pawify/shared';
 import { createReleaseNotificationSettings } from './releaseFixtures.js';
 
 type UserSettingsFakeOptions = {
-    catalog?: Record<string, Release[]>;
+    catalog?: Record<string, { id: string; date: string | null }[]>;
     previousSettings?: ReleaseNotificationSettings;
     failArtistId?: string;
 };
 
 export const createUserSettingsDependencies = (options: UserSettingsFakeOptions = {}) => {
     const saveCalls: ReleaseNotificationSettings[] = [];
-    const replaceCalls: Array<{ userId: string; artistId: string; releaseIds: string[] }> = [];
+    const replaceCalls: Array<{ userId: string; artistId: string; groupState: ReadonlyMap<string, string> }> = [];
     const removeCalls: Array<{ userId: string; settings: ReleaseNotificationSettings }> = [];
     const notificationCalls: string[] = [];
     const previousSettings =
@@ -27,8 +27,8 @@ export const createUserSettingsDependencies = (options: UserSettingsFakeOptions 
             },
         },
         knownReleaseRepository: {
-            async replaceArtistReleaseIds(userId, artistId, releaseIds) {
-                replaceCalls.push({ userId, artistId, releaseIds });
+            async replaceArtistReleaseGroupState(userId, artistId, groupState) {
+                replaceCalls.push({ userId, artistId, groupState });
             },
         },
         newReleaseRepository: {

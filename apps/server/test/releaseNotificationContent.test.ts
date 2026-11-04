@@ -48,8 +48,51 @@ describe('buildReleaseNotifications', () => {
         );
         assert.deepEqual(notifications[0].data, {
             eventName: 'releases',
-            payload: { releaseId: 'release-1' },
+            payload: { releaseId: 'release-1', releaseGroupId: null, releaseCount: 1 },
         });
+    });
+
+    it('sends one notification per release group, not per pressing', () => {
+        // Three pressings of one album used to notify three times.
+        const notifications = buildReleaseNotifications([
+            newRelease('release-1', 'Midnight Signals', undefined, {
+                releaseGroupId: 'group-1',
+                releaseCount: 3,
+            }),
+            newRelease('release-2', 'Midnight Signals', undefined, {
+                releaseGroupId: 'group-1',
+                releaseCount: 3,
+            }),
+            newRelease('release-3', 'Midnight Signals', undefined, {
+                releaseGroupId: 'group-1',
+                releaseCount: 3,
+            }),
+        ]);
+
+        assert.equal(notifications.length, 1);
+        assert.deepEqual(notifications[0].data.payload, {
+            releaseId: 'release-1',
+            releaseGroupId: 'group-1',
+            releaseCount: 3,
+        });
+    });
+
+    it('keeps separate groups apart', () => {
+        const notifications = buildReleaseNotifications([
+            newRelease('release-1', 'Album A', undefined, {
+                releaseGroupId: 'group-1',
+                releaseCount: 2,
+            }),
+            newRelease('release-2', 'Album B', undefined, {
+                releaseGroupId: 'group-2',
+                releaseCount: 1,
+            }),
+        ]);
+
+        assert.deepEqual(
+            notifications.map((notification) => notification.title),
+            ['Album A', 'Album B'],
+        );
     });
 
     it('merges duplicate release ids and unions their artist names', () => {

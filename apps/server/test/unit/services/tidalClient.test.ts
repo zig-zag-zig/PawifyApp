@@ -306,6 +306,61 @@ describe('tidalClient', () => {
             assert.equal(await getTidalArtistImage(['https://tidal.com/artist/9706']), undefined);
         });
 
+        it('skips Tidal without a credential instead of borrowing a built-in token', async () => {
+            const calls: string[] = [];
+            installFetch((url) => {
+                calls.push(url);
+                if (url.includes('/secrets/pawify-secrets/tidal-token')) {
+                    return jsonResponse(
+                        {
+                            errorCode: 'ERR_SECRET_GET',
+                            message:
+                                'failed getting secret with key tidal-token from secret store pawify-secrets: secret tidal-token not found',
+                        },
+                        500,
+                    );
+                }
+                return url.includes('/invoke/tidalimages/')
+                    ? new Response(null, { status: 200 })
+                    : jsonResponse({ id: 9706, picture: PICTURE_UUID });
+            });
+
+            const { getTidalArtistImage } =
+                await import('../../../src/services/musicApi/tidalClient.js');
+
+            // Transient, so the artist is retried once the secret exists, but no
+            // Tidal API call is made with a fallback credential.
+            assert.equal(await getTidalArtistImage(['https://tidal.com/artist/9706']), undefined);
+            assert.equal(
+                calls.some((url) => url.includes('/invoke/tidal/method/')),
+                false,
+                'must not call the Tidal API without a configured token',
+            );
+        });
+
+        it('degrades to transient when the token secret cannot be read', async () => {
+            installFetch((url) => {
+                if (url.includes('/secrets/pawify-secrets/tidal-token')) {
+                    return jsonResponse(
+                        {
+                            errorCode: 'ERR_SECRET_GET',
+                            message:
+                                'failed getting secret with key tidal-token from secret store pawify-secrets: open /var/pawify/secrets/dapr-secrets.json: permission denied',
+                        },
+                        500,
+                    );
+                }
+                return jsonResponse({ id: 9706, picture: PICTURE_UUID });
+            });
+
+            const { getTidalArtistImage } =
+                await import('../../../src/services/musicApi/tidalClient.js');
+
+            // A secret-store outage is one transient artist, never a thrown error
+            // that aborts the whole 30-artist page.
+            assert.equal(await getTidalArtistImage(['https://tidal.com/artist/9706']), undefined);
+        });
+
         it('returns null when the artist exists but has no picture', async () => {
             let probedCdn = false;
             installTidalFetch((url) => {

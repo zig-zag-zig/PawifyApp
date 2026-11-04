@@ -266,6 +266,8 @@ export function useArtistPageDataTaskResults({
             dispatch({
                 type: 'releasesLoadSucceeded',
                 releaseGroups: task?.result?.releaseGroups ?? [],
+                nextCursor: task?.result?.nextCursor ?? null,
+                hasMore: task?.result?.hasMore ?? false,
             });
 
             const releaseGroups = task?.result?.releaseGroups ?? [];

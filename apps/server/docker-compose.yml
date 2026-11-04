@@ -32,6 +32,13 @@ services:
             - '${PAWIFY_HOST_BIND_ADDRESS:-127.0.0.1}:${PAWIFY_HOST_PORT:-3001}:${PORT:-10000}'
         volumes:
             - ${PAWIFY_SECRETS_DIR:-./secrets}:/var/pawify/secrets:ro
+            # The mirror's directory, not just mb.db: the database is in WAL mode
+            # and SQLite needs the -wal/-shm side files next to it. Read-only is
+            # enough (measured against the live 13.7 GB mirror).
+            # MUSIC_DB_PATH is read from the app env file, NOT declared under
+            # `environment:` above — anything declared there would shadow the env
+            # file with a default.
+            - ${PAWIFY_MUSIC_DB_DIR:-./music}:/var/pawify/music:ro
         healthcheck:
             test:
                 [

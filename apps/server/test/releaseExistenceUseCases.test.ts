@@ -22,6 +22,11 @@ const createDependencies = (exists: boolean) => {
             },
         },
         releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
             async getArtistReleases() {
                 throw new Error('getArtistReleases should not run');
             },

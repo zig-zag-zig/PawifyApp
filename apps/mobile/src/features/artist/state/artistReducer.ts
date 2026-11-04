@@ -8,7 +8,20 @@ export type ArtistPageAction =
     | { type: 'artistLoadSucceeded'; artist: Artist }
     | { type: 'artistLoadFailed'; message: string }
     | { type: 'releasesLoadStarted' }
-    | { type: 'releasesLoadSucceeded'; releaseGroups: ArtistReleaseGroup[] }
+    | {
+          type: 'releasesLoadSucceeded';
+          releaseGroups: ArtistReleaseGroup[];
+          nextCursor?: string | null;
+          hasMore?: boolean;
+      }
+    | { type: 'releasesMoreStarted' }
+    | {
+          type: 'releasesMoreSucceeded';
+          releaseGroups: ArtistReleaseGroup[];
+          nextCursor: string | null;
+          hasMore: boolean;
+      }
+    | { type: 'releasesMoreFailed' }
     | { type: 'releasesLoadFailed'; message: string }
     | { type: 'followToggleStarted' }
     | { type: 'followToggleFinished' }
@@ -30,6 +43,9 @@ export function createInitialArtistPageState(): ArtistPageState {
     return {
         artist: undefined,
         allReleaseGroups: [],
+        releaseGroupsNextCursor: null,
+        hasMoreReleaseGroups: false,
+        isLoadingMoreReleases: false,
         membersWithoutCachedPicture: [],
         pendingArtistImageIds: [],
         pendingReleaseGroupCoverIds: [],
@@ -81,8 +97,38 @@ export function artistReducer(state: ArtistPageState, action: ArtistPageAction):
             return {
                 ...state,
                 allReleaseGroups: action.releaseGroups,
+                releaseGroupsNextCursor: action.nextCursor ?? null,
+                hasMoreReleaseGroups: action.hasMore ?? false,
                 isLoadingReleases: false,
+                isLoadingMoreReleases: false,
                 error: null,
+            };
+
+        case 'releasesMoreStarted':
+            return {
+                ...state,
+                isLoadingMoreReleases: true,
+            };
+
+        case 'releasesMoreSucceeded': {
+            // Pages can overlap if the catalog changed between requests, so append
+            // by id rather than concatenating blindly.
+            const seen = new Set(state.allReleaseGroups.map(group => group.id));
+            const appended = action.releaseGroups.filter(group => !seen.has(group.id));
+
+            return {
+                ...state,
+                allReleaseGroups: [...state.allReleaseGroups, ...appended],
+                releaseGroupsNextCursor: action.nextCursor,
+                hasMoreReleaseGroups: action.hasMore,
+                isLoadingMoreReleases: false,
+            };
+        }
+
+        case 'releasesMoreFailed':
+            return {
+                ...state,
+                isLoadingMoreReleases: false,
             };
 
         case 'releasesLoadFailed':

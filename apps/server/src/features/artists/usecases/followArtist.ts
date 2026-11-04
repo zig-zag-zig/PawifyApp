@@ -22,12 +22,12 @@ export const createFollowArtistUseCase =
     async (userId: string, artistId: string, sourcePushToken?: string): Promise<void> => {
         const artistSummary = await artistDetailsGateway.getFollowedArtistSummary(userId, artistId);
         const ttl = artistCacheTtlHours;
-        const releaseIds = await artistReleaseCatalogGateway.getArtistReleaseIds(artistId, ttl);
+        const groupIds = await artistReleaseCatalogGateway.getArtistReleaseGroupIds(artistId, ttl);
 
         await artistFollowingRepository.saveFollowedArtist(
             userId,
             artistId,
-            releaseIds,
+            groupIds,
             artistSummary ?? undefined,
         );
 

@@ -10,6 +10,11 @@ export type NewReleasesMap = {
     [releaseId: string]: NewRelease;
 };
 
+/**
+ * A feed entry. `id`/`releaseGroupId` pair a release with its group: the release id
+ * keeps the release screen and cover tasks working, the group id is what new-release
+ * detection and notifications are keyed by.
+ */
 export type StoredNewRelease = NewRelease & {
     releaseGroupId: string | null;
 };

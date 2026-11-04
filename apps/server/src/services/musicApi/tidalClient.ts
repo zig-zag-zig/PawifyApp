@@ -1,6 +1,11 @@
 import { createLogger } from '../../common/logging/logger.js';
 import { artistNamesMatch } from './artistNameMatch.js';
-import { getTidalCountryCode, getTidalToken, logTidalTokenRejectedOnce } from './credentials.js';
+import {
+    getTidalCountryCode,
+    getTidalToken,
+    logMissingOptionalCredentialOnce,
+    logTidalTokenRejectedOnce,
+} from './credentials.js';
 import { fetchDaprProvider, isAbortError } from './httpClient.js';
 import { isConfirmedMissingFetchFailure, isFetchFailureResult } from './types.js';
 import type { ArtistImageLookupOptions, HttpOptions, ProviderValueState } from './types.js';
@@ -10,6 +15,7 @@ const logger = createLogger('services.musicApi.tidal');
 const TIDAL_IMAGE_CDN = 'https://resources.tidal.com';
 
 const TIDAL_ARTIST_PATH = /^\/(?:browse\/)?artist\/(\d+)/i;
+const TIDAL_ALBUM_PATH = /^\/(?:browse\/)?album\/(\d+)/i;
 
 /**
  * Largest-first, then medium, then smaller. These are the only sizes Tidal
@@ -136,7 +142,11 @@ type TidalLookup =
 
 type TidalCandidate = { url: string; name: string };
 
-const lookupTidalArtist = async (tidalUrl: string, signal?: AbortSignal): Promise<TidalLookup> => {
+const lookupTidalArtist = async (
+    tidalUrl: string,
+    token: string,
+    signal?: AbortSignal,
+): Promise<TidalLookup> => {
     const artistId = extractTidalArtistId(tidalUrl);
     if (!artistId) {
         // Not a Tidal artist link at all, so there is nothing to retry.
@@ -144,13 +154,14 @@ const lookupTidalArtist = async (tidalUrl: string, signal?: AbortSignal): Promis
     }
 
     const countryCode = getTidalCountryCode();
-    const options: HttpOptions = {
-        method: 'GET',
-        headers: { 'x-tidal-token': await getTidalToken() },
-    };
 
     let response: unknown;
     try {
+        const options: HttpOptions = {
+            method: 'GET',
+            headers: { 'x-tidal-token': token },
+        };
+
         response = await fetchDaprProvider(
             'tidal',
             `/v1/artists/${artistId}?countryCode=${encodeURIComponent(countryCode)}`,
@@ -220,6 +231,34 @@ const lookupTidalArtist = async (tidalUrl: string, signal?: AbortSignal): Promis
 };
 
 /**
+ * Reads the Tidal credential once per lookup.
+ *
+ * A missing or unreadable credential is a configuration problem, not a per-artist
+ * failure: it is reported once per process and Tidal is skipped so the chain can
+ * continue to Discogs.
+ */
+const resolveTidalToken = async (): Promise<string | undefined> => {
+    try {
+        const token = await getTidalToken();
+        if (!token) {
+            logMissingOptionalCredentialOnce('tidal-token');
+        }
+
+        return token;
+    } catch (error) {
+        if (isAbortError(error)) {
+            throw error;
+        }
+
+        logMissingOptionalCredentialOnce('tidal-token');
+        logger.debug('tidal credential lookup failed', {
+            reason: error instanceof Error ? error.message : String(error),
+        });
+        return undefined;
+    }
+};
+
+/**
  * Resolves an artist image from Tidal.
  *
  * Tidal exposes no audience metric comparable to Deezer's fan count, so rather
@@ -231,11 +270,18 @@ export const getTidalArtistImage = async (
     tidalUrls: string[],
     options: ArtistImageLookupOptions = {},
 ): Promise<ProviderValueState> => {
+    const token = await resolveTidalToken();
+    if (!token) {
+        // No credential means Tidal cannot answer; undefined keeps the artist
+        // transient so a later run retries once the secret is configured.
+        return undefined;
+    }
+
     const candidates: TidalCandidate[] = [];
     let sawTransientFailure = false;
 
     for (const tidalUrl of tidalUrls) {
-        const lookup = await lookupTidalArtist(tidalUrl, options.signal);
+        const lookup = await lookupTidalArtist(tidalUrl, token, options.signal);
 
         if (lookup.kind === 'candidate') {
             candidates.push(lookup.candidate);
@@ -253,4 +299,125 @@ export const getTidalArtistImage = async (
     );
 
     return (named ?? candidates[0]!).url;
+};
+
+
+/** Extracts the numeric Tidal album id from a MusicBrainz url-rel. */
+export const extractTidalAlbumId = (url: string): string | null => {
+    try {
+        const parsed = new URL(url);
+        if (!isTidalHost(parsed.hostname.toLowerCase())) {
+            return null;
+        }
+
+        return TIDAL_ALBUM_PATH.exec(parsed.pathname)?.[1] ?? null;
+    } catch {
+        return null;
+    }
+};
+
+type TidalAlbumLookup =
+    | { kind: 'image'; url: string }
+    | { kind: 'miss' }
+    | { kind: 'transient' };
+
+const lookupTidalAlbumCover = async (
+    tidalUrl: string,
+    token: string,
+    signal?: AbortSignal,
+): Promise<TidalAlbumLookup> => {
+    const albumId = extractTidalAlbumId(tidalUrl);
+    if (!albumId) {
+        return { kind: 'miss' };
+    }
+
+    const countryCode = getTidalCountryCode();
+
+    let response: unknown;
+    try {
+        response = await fetchDaprProvider(
+            'tidal',
+            `/v1/albums/${albumId}?countryCode=${encodeURIComponent(countryCode)}`,
+            { method: 'GET', headers: { 'x-tidal-token': token } },
+            true,
+            true,
+            'status',
+            signal,
+            'background',
+        );
+    } catch (error) {
+        if (isAbortError(error)) {
+            throw error;
+        }
+
+        return { kind: 'transient' };
+    }
+
+    if (isFetchFailureResult(response)) {
+        const status = response.status;
+        if (isConfirmedMissingFetchFailure(response)) {
+            return { kind: 'miss' };
+        }
+
+        if (status === 401 || status === 403) {
+            logTidalTokenRejectedOnce(status);
+        } else {
+            logger.debug('tidal album lookup failed transiently', { albumId, status });
+        }
+        return { kind: 'transient' };
+    }
+
+    if (response === null || response === undefined) {
+        return { kind: 'transient' };
+    }
+
+    const record = response as { cover?: unknown };
+    const cover = record.cover;
+    if (typeof cover !== 'string' || cover.trim().length === 0) {
+        // The album exists on Tidal but has no artwork attached.
+        return { kind: 'miss' };
+    }
+
+    const imageUrl = await buildValidTidalImageUrl(cover.trim(), signal);
+    if (imageUrl === undefined) {
+        return { kind: 'transient' };
+    }
+
+    if (imageUrl === null) {
+        return { kind: 'miss' };
+    }
+
+    return { kind: 'image', url: imageUrl };
+};
+
+/**
+ * Resolves release artwork from Tidal album links.
+ *
+ * Mirrors the artist path: needs the credential, walks every candidate, and keeps
+ * transient failures separate from confirmed misses so the caller can retry later.
+ */
+export const getTidalAlbumImage = async (
+    tidalUrls: string[],
+    signal?: AbortSignal,
+): Promise<ProviderValueState> => {
+    const token = await resolveTidalToken();
+    if (!token) {
+        return undefined;
+    }
+
+    let sawTransientFailure = false;
+
+    for (const tidalUrl of tidalUrls) {
+        const lookup = await lookupTidalAlbumCover(tidalUrl, token, signal);
+
+        if (lookup.kind === 'image') {
+            return lookup.url;
+        }
+
+        if (lookup.kind === 'transient') {
+            sawTransientFailure = true;
+        }
+    }
+
+    return sawTransientFailure ? undefined : null;
 };

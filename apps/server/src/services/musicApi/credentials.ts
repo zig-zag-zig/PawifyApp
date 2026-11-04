@@ -11,20 +11,16 @@ export const getGeniusAccessToken = async () => await getDaprSecret('genius-acce
 export const getDiscogsToken = async () => await getDaprSecret('discogs-token');
 
 /**
- * Widely-used public Tidal client token. It is not a per-user credential and can
- * be revoked or rotated by Tidal at any time, which surfaces as HTTP 401
- * (subStatus 6004 "Invalid token"). Kept as a last-resort default so the Tidal
- * fallback works in a fresh checkout with no secrets configured.
+ * Resolves the Tidal API token. Precedence: Dapr secret, then an explicit
+ * TIDAL_API_TOKEN override.
+ *
+ * Returns undefined when neither is configured. There is deliberately no
+ * built-in token: a shared public credential quietly carrying production
+ * traffic hides an unconfigured deployment, and it can be revoked by Tidal at
+ * any time (HTTP 401, subStatus 6004). Callers skip Tidal instead.
  */
-const TIDAL_COMMUNITY_TOKEN = 'gsFXkJqGrUNoYMQPZe4k3WKwijnrp8iGSwn3bApe';
-
-/**
- * Resolves the Tidal API token. Precedence: Dapr secret, then TIDAL_API_TOKEN,
- * then the built-in community token. Always returns a usable value, so callers
- * never need a missing-credential branch.
- */
-export const getTidalToken = async (): Promise<string> =>
-    (await getDaprSecret('tidal-token')) ?? musicApiConfig.tidalApiToken ?? TIDAL_COMMUNITY_TOKEN;
+export const getTidalToken = async (): Promise<string | undefined> =>
+    (await getDaprSecret('tidal-token')) ?? musicApiConfig.tidalApiToken;
 
 export const getTidalCountryCode = (): string => musicApiConfig.tidalCountryCode;
 

@@ -42,10 +42,11 @@ const transientImage = (): CachedArtistImage => ({
 });
 
 const imageCacheKey = (artistId: string): string => `${artistId}_artistImages`;
-const lyricsCacheKey = (releaseId: string): string => `${releaseId}_releaseLyrics`;
-const releaseCoversCacheKey = (releaseGroupId: string): string =>
-    `${releaseGroupId}_releaseGroupReleaseCovers`;
-const artistCoverCacheKey = (artistId: string): string => `${artistId}_artistReleaseGroupCovers`;
+const lyricsCacheKey = (releaseId: string, trackId: string): string =>
+    `asset:lyrics:${releaseId}:${trackId}`;
+const releaseCoversCacheKey = (releaseId: string): string => `asset:release-cover:${releaseId}`;
+const artistCoverCacheKey = (releaseGroupId: string): string =>
+    `asset:group-cover:${releaseGroupId}`;
 
 describe('partitionCachedAssets', () => {
     describe('partitionArtistProfileImages', () => {
@@ -104,10 +105,11 @@ describe('partitionCachedAssets', () => {
 
         it('resolves cached lyric URLs and confirmed nulls', async () => {
             const cache: StubCache = {
-                [lyricsCacheKey('release-1')]: {
-                    'track-hit': { url: 'https://lyrics.example/hit', confirmedMiss: false },
-                    'track-null': { url: null, confirmedMiss: true },
+                [lyricsCacheKey('release-1', 'track-hit')]: {
+                    url: 'https://lyrics.example/hit',
+                    confirmedMiss: false,
                 },
+                [lyricsCacheKey('release-1', 'track-null')]: { url: null, confirmedMiss: true },
             };
 
             const result = await partitionTrackLyrics('release-1', tracks, createStubReader(cache));
@@ -140,12 +142,8 @@ describe('partitionCachedAssets', () => {
 
         it('resolves cached cover URLs and confirmed nulls, keeps only unresolved release ids pending', async () => {
             const cache: StubCache = {
-                [releaseCoversCacheKey('rg-1')]: {
-                    'r-hit': { url: 'https://cover.example/r-hit.jpg' },
-                },
-                [releaseCoversCacheKey('rg-2')]: {
-                    'r-null': { url: null, confirmedMiss: true },
-                },
+                [releaseCoversCacheKey('r-hit')]: { url: 'https://cover.example/r-hit.jpg' },
+                [releaseCoversCacheKey('r-null')]: { url: null, confirmedMiss: true },
             };
 
             const result = await partitionReleaseGroupReleaseCovers(
@@ -171,10 +169,8 @@ describe('partitionCachedAssets', () => {
 
         it('returns empty pending when every entry is resolved', async () => {
             const cache: StubCache = {
-                [releaseCoversCacheKey('rg-1')]: {
-                    'r-hit': { url: 'https://cover.example/a.jpg' },
-                    'r-miss': { url: 'https://cover.example/b.jpg' },
-                },
+                [releaseCoversCacheKey('r-hit')]: { url: 'https://cover.example/a.jpg' },
+                [releaseCoversCacheKey('r-miss')]: { url: 'https://cover.example/b.jpg' },
             };
 
             const result = await partitionReleaseGroupReleaseCovers(
@@ -198,9 +194,7 @@ describe('partitionCachedAssets', () => {
 
         it('resolves cached artist release-group covers', async () => {
             const cache: StubCache = {
-                [artistCoverCacheKey('artist-1')]: {
-                    'rg-1': { url: 'https://cover.example/rg-1.jpg' },
-                },
+                [artistCoverCacheKey('rg-1')]: { url: 'https://cover.example/rg-1.jpg' },
             };
 
             const result = await partitionArtistReleaseGroupCovers(

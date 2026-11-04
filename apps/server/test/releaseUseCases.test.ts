@@ -137,6 +137,11 @@ describe('release use cases', () => {
                 }),
             }),
             releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                 async getArtistReleases(_artistId, _ttl) {
                     return [
                         {
@@ -211,6 +216,11 @@ describe('release use cases', () => {
                 }),
             }),
             releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                 async getArtistReleases(_artistId, _ttl) {
                     return [
                         {
@@ -341,6 +351,11 @@ describe('release use cases', () => {
                     }),
                 }),
                 releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -413,6 +428,11 @@ describe('release use cases', () => {
                     }),
                 }),
                 releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -476,6 +496,11 @@ describe('release use cases', () => {
             > = {
                 assetPlanner: createDefaultAssetPlanner(),
                 releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -541,6 +566,11 @@ describe('release use cases', () => {
                     },
                 }),
                 releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -637,6 +667,11 @@ describe('release use cases', () => {
                     }),
                 }),
                 releaseCatalogGateway: {
+                getArtistReleasesPage: async () => ({
+                    releaseGroups: [],
+                    hasMore: false,
+                    nextCursor: null,
+                }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },

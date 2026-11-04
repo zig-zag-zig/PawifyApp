@@ -1,102 +1,34 @@
-import { getCachedData, replaceCachedData } from '../cacheService.js';
-import { getCacheKey } from '../../utils/helpers/cacheHelpers.js';
-import type {
-    CachedArtistReleaseGroupCovers,
-    CachedReleaseGroupReleaseCovers,
-    CoverState,
-} from '../../utils/types/cacheTypes.js';
+import { mapCoverState } from '../../utils/helpers/remoteStateHelpers.js';
+import type { CoverState } from '../../utils/types/cacheTypes.js';
+import type { RemoteValueState } from '@pawify/shared';
+import { assetKeys, readAssetState, writeAssetState } from '../cache/assetCache.js';
 
-export type ArtistReleaseGroupCoverCacheContext = {
-    cache: CachedArtistReleaseGroupCovers;
-    dirty: boolean;
-};
-
-export const readReleaseCoverCache = async (
+/**
+ * Cover cache accessors.
+ *
+ * One key per release group and one per release, so resolving one artwork item never
+ * rewrites a page-sized map. `ttl` is accepted for call-site compatibility but the
+ * asset TTL policy decides the real lifetime: success and confirmed-miss entries get
+ * different lifetimes, which a single caller-supplied number cannot express.
+ */
+export const readGroupCoverState = async (
     releaseGroupId: string,
-): Promise<CachedReleaseGroupReleaseCovers> => {
-    return (
-        (await getCachedData<CachedReleaseGroupReleaseCovers>(
-            getCacheKey(releaseGroupId, 'releaseGroupReleaseCovers'),
-        )) ?? {}
-    );
-};
+): Promise<CoverState | null> => await readAssetState<CoverState>(assetKeys.groupCover(releaseGroupId));
 
-export const writeReleaseCoverCache = async (
-    releaseGroupId: string,
-    cache: CachedReleaseGroupReleaseCovers,
-    ttl: number | undefined,
-): Promise<void> => {
-    await replaceCachedData(getCacheKey(releaseGroupId, 'releaseGroupReleaseCovers'), cache, ttl);
-};
-
-export const readArtistReleaseGroupCoverCache = async (
-    artistId: string,
-): Promise<CachedArtistReleaseGroupCovers> => {
-    return (
-        (await getCachedData<CachedArtistReleaseGroupCovers>(
-            getCacheKey(artistId, 'artistReleaseGroupCovers'),
-        )) ?? {}
-    );
-};
-
-const writeArtistReleaseGroupCoverCache = async (
-    artistId: string,
-    cache: CachedArtistReleaseGroupCovers,
-    ttl: number | undefined,
-): Promise<void> => {
-    await replaceCachedData(getCacheKey(artistId, 'artistReleaseGroupCovers'), cache, ttl);
-};
-
-const isSameCoverState = (left: CoverState | undefined, right: CoverState): boolean =>
-    !!left &&
-    left.url === right.url &&
-    left.nextRefetchAt === right.nextRefetchAt &&
-    left.confirmedMiss === right.confirmedMiss;
-
-export const upsertArtistReleaseGroupCoverState = async (
-    artistId: string | undefined,
-    artistCoverCache: CachedArtistReleaseGroupCovers | undefined,
+export const writeGroupCoverState = async (
     releaseGroupId: string,
     state: CoverState,
-    ttl: number | undefined,
-    context?: ArtistReleaseGroupCoverCacheContext,
-): Promise<void> => {
-    if (!artistId || !artistCoverCache) {
-        return;
-    }
+    _ttl?: number | undefined,
+): Promise<void> => await writeAssetState(assetKeys.groupCover(releaseGroupId), state);
 
-    const current = artistCoverCache[releaseGroupId];
-    if (isSameCoverState(current, state)) {
-        return;
-    }
+export const readReleaseCoverState = async (
+    releaseId: string,
+): Promise<CoverState | null> => await readAssetState<CoverState>(assetKeys.releaseCover(releaseId));
 
-    artistCoverCache[releaseGroupId] = state;
-    if (context) {
-        context.dirty = true;
-        return;
-    }
+export const writeReleaseCoverState = async (
+    releaseId: string,
+    state: CoverState,
+    _ttl?: number | undefined,
+): Promise<void> => await writeAssetState(assetKeys.releaseCover(releaseId), state);
 
-    await writeArtistReleaseGroupCoverCache(artistId, artistCoverCache, ttl);
-};
-
-export const createArtistReleaseGroupCoverCacheContext = async (
-    artistId: string,
-): Promise<ArtistReleaseGroupCoverCacheContext> => {
-    return {
-        cache: await readArtistReleaseGroupCoverCache(artistId),
-        dirty: false,
-    };
-};
-
-export const flushArtistReleaseGroupCoverCacheContext = async (
-    artistId: string,
-    context: ArtistReleaseGroupCoverCacheContext,
-    ttl: number | undefined,
-): Promise<void> => {
-    if (!context.dirty) {
-        return;
-    }
-
-    await writeArtistReleaseGroupCoverCache(artistId, context.cache, ttl);
-    context.dirty = false;
-};
+export const toCoverState = (url: RemoteValueState): CoverState => mapCoverState(url);

@@ -5,7 +5,7 @@ import { useFollowing } from '../../artists/state/FollowingContext';
 import useTaskManager from '../../../hooks/useTaskManager';
 import { RootStackParamList } from '../../../types/navigation';
 import { useArtistApi } from '../api/artistApi';
-import { buildReleaseSections } from '../domain/releaseSections';
+import { buildReleaseSections, DEFAULT_RELEASE_ITEMS_TO_SHOW } from '../domain/releaseSections';
 import type { ArtistPageController, ArtistPageUiState, PendingTaskKey } from '../model/types';
 import { artistReducer, createInitialArtistPageState } from '../state/artistReducer';
 import { useArtistPageDataTasks } from './useArtistPageDataTasks';
@@ -14,6 +14,9 @@ import { useArtistPageDiagnostics } from './useArtistPageDiagnostics';
 import { useArtistPageActions } from './useArtistPageActions';
 import { useArtistRelationshipImageTasks } from './useArtistRelationshipImageTasks';
 import { useArtistPageTaskResolvers } from './useArtistPageTaskResolvers';
+import { diagnosticWarn, describeError } from '../../../utils/diagnostics';
+import { normalizeNullableStringMap } from '../../../utils/nullableMaps';
+import { getIdsMissingFromValues } from '../../../utils/nullableMaps';
 
 type ArtistRouteProp = RouteProp<RootStackParamList, 'Artist'>;
 
@@ -205,12 +208,91 @@ export function useArtistPage(): ArtistPageController {
         updatePendingTask,
     });
 
-    const handleLoadMoreReleases = useCallback((sectionTitle: string) => {
-        dispatch({
-            type: 'releaseSectionLoadMore',
-            sectionTitle,
-        });
-    }, []);
+    /**
+     * Reveals more rows in a section, fetching the next server page when the
+     * already-loaded groups run out.
+     *
+     * The catalog is paged with a keyset cursor, so "show more" costs one page of
+     * work instead of re-walking every release group.
+     */
+    const handleLoadMoreReleases = useCallback(
+        (sectionTitle: string) => {
+            const loadedForSection = state.allReleaseGroups.filter(
+                group => (group['primary-type'] ?? 'Other') === sectionTitle,
+            ).length;
+            const visibleForSection =
+                state.loadedItemsByType[sectionTitle] ?? DEFAULT_RELEASE_ITEMS_TO_SHOW;
+
+            const canRevealLocally =
+                visibleForSection < loadedForSection || !state.hasMoreReleaseGroups;
+
+            dispatch({
+                type: 'releaseSectionLoadMore',
+                sectionTitle,
+            });
+
+            if (canRevealLocally || state.isLoadingMoreReleases) {
+                return;
+            }
+
+            void (async () => {
+                dispatch({ type: 'releasesMoreStarted' });
+                try {
+                    const page = await getArtistReleases(artistId, {
+                        cursor: state.releaseGroupsNextCursor,
+                    });
+                    const releaseGroups = page.releaseGroups ?? [];
+
+                    mergeReleaseGroupCoversWithDiagnostics(
+                        normalizeNullableStringMap(page.releaseGroupCovers),
+                        releaseGroups.map(group => group.id),
+                        'artist-releases-more',
+                    );
+
+                    dispatch({
+                        type: 'releasesMoreSucceeded',
+                        releaseGroups,
+                        nextCursor: page.nextCursor ?? null,
+                        hasMore: page.hasMore ?? false,
+                    });
+
+                    const pendingIds = page.releaseGroupCoverTaskId
+                        ? getIdsMissingFromValues(
+                              releaseGroups.map(group => group.id),
+                              releaseGroupCovers,
+                          )
+                        : [];
+                    if (pendingIds.length > 0) {
+                        dispatch({
+                            type: 'releaseGroupCoverLoadQueued',
+                            releaseGroupIds: pendingIds,
+                        });
+                        void resolveReleaseGroupCoverTask(page.releaseGroupCoverTaskId, pendingIds);
+                    }
+                } catch (error) {
+                    diagnosticWarn('artist-page', 'artist-releases-more-error', {
+                        artistId: artistIdRef.current,
+                        error: describeError(error),
+                    });
+                    dispatch({ type: 'releasesMoreFailed' });
+                }
+            })();
+        },
+        [
+            artistId,
+            artistIdRef,
+            dispatch,
+            getArtistReleases,
+            mergeReleaseGroupCoversWithDiagnostics,
+            releaseGroupCovers,
+            resolveReleaseGroupCoverTask,
+            state.allReleaseGroups,
+            state.hasMoreReleaseGroups,
+            state.isLoadingMoreReleases,
+            state.loadedItemsByType,
+            state.releaseGroupsNextCursor,
+        ],
+    );
 
     const releaseSections = useMemo(() => {
         return buildReleaseSections(state.allReleaseGroups);

@@ -2,9 +2,9 @@ import type { FollowedArtistSummary } from '../../utils/types/followedArtistType
 import type { StoredNewRelease } from './types.js';
 import { readFollowingArtistsMap, writeFollowingArtistsMap } from './followingStore.js';
 import {
-    deleteKnownArtistReleasesFromDb,
-    getKnownReleasesFromDb,
-    replaceKnownArtistReleaseIdsInDb,
+    deleteKnownArtistReleaseGroupStateFromDb,
+    getKnownReleaseGroupStateFromDb,
+    replaceKnownArtistReleaseGroupStateInDb,
 } from './knownReleasesStore.js';
 import {
     mergeNewReleasesIntoState,
@@ -19,22 +19,25 @@ const removeUnfollowedArtistNewReleases = async (
     remainingArtistIds: string[],
 ): Promise<void> => {
     const newReleasesMap = await readNewReleasesState(userId);
-    const knownReleasesByArtist = await getKnownReleasesFromDb(userId);
-    const unfollowedArtistReleaseIds = new Set(knownReleasesByArtist[artistId] ?? []);
+    const knownStatesByArtist = await getKnownReleaseGroupStateFromDb(userId);
+    const unfollowedGroups = new Set(Object.keys(knownStatesByArtist[artistId] ?? {}));
 
-    if (unfollowedArtistReleaseIds.size === 0) {
+    if (unfollowedGroups.size === 0) {
         return;
     }
 
     let changed = false;
-
     for (const releaseId of Object.keys(newReleasesMap)) {
-        if (!unfollowedArtistReleaseIds.has(releaseId)) {
+        const groupId = newReleasesMap[releaseId]?.releaseGroupId;
+        if (!groupId || !unfollowedGroups.has(groupId)) {
             continue;
         }
 
         const stillKnownByFollowedArtist = remainingArtistIds.some((remainingArtistId) =>
-            (knownReleasesByArtist[remainingArtistId] ?? []).includes(releaseId),
+            Object.prototype.hasOwnProperty.call(
+                knownStatesByArtist[remainingArtistId] ?? {},
+                groupId,
+            ),
         );
         if (stillKnownByFollowedArtist) {
             continue;
@@ -52,16 +55,16 @@ const removeUnfollowedArtistNewReleases = async (
 export const saveArtistAndKnownReleasesToDb = async (
     userId: string,
     artistId: string,
-    releaseIds: string[],
+    groupState: ReadonlyMap<string, string>,
     newReleases: StoredNewRelease[],
     artistSummary?: FollowedArtistSummary,
 ): Promise<void> => {
-    if (!artistId || !Array.isArray(releaseIds)) {
-        throw new Error('Invalid input: artistId and releases are required.');
+    if (!artistId || !(groupState instanceof Map)) {
+        throw new Error('Invalid input: artistId and group state are required.');
     }
 
     await getDocumentRefAndSnapshot(userId);
-    await replaceKnownArtistReleaseIdsInDb(userId, artistId, releaseIds);
+    await replaceKnownArtistReleaseGroupStateInDb(userId, artistId, groupState);
 
     const followingArtistsMap = await readFollowingArtistsMap(userId);
     const existingFollowing = followingArtistsMap[artistId];
@@ -99,5 +102,5 @@ export const deleteArtistFromDb = async (userId: string, artistId: string): Prom
     }
 
     await removeUnfollowedArtistNewReleases(userId, artistId, remainingArtistIds);
-    await deleteKnownArtistReleasesFromDb(userId, artistId);
+    await deleteKnownArtistReleaseGroupStateFromDb(userId, artistId);
 };

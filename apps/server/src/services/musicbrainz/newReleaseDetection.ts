@@ -1,68 +1,35 @@
-import type {
-    NewRelease,
-    Release,
-    ReleaseNotificationSettings,
-} from '@pawify/shared';
+import type { NewRelease, ReleaseNotificationSettings } from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
 import {
-    getKnownReleasesFromDb,
-    mergeKnownArtistReleaseIdsInDb,
+    getKnownReleaseGroupStateFromDb,
 } from '../firebase/knownReleasesStore.js';
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
-import { getArtistReleaseScan } from './artistReleaseScanCache.js';
+import {
+    getArtistReleaseGroupCatalog,
+    type ArtistReleaseGroupCatalog,
+} from './artistReleaseGroupCatalog.js';
 
 type ArtistProcessResult = {
-    deletedReleaseIds: string[];
     newReleases: NewRelease[];
 };
 
-const getArtistReleasesForProcessing = async (artistId: string): Promise<Release[]> => {
-    return await getArtistReleaseScan(artistId);
-};
+const getCatalogForProcessing = async (artistId: string): Promise<ArtistReleaseGroupCatalog> =>
+    await getArtistReleaseGroupCatalog(artistId);
 
 const processSingleArtist = async (
     userId: string,
     artistId: string,
-    currentReleasesByArtist: { [artistId: string]: string[] },
+    currentReleaseGroupStateByArtist: { [artistId: string]: { [groupId: string]: string } },
     releaseNotificationSettings: ReleaseNotificationSettings,
 ): Promise<ArtistProcessResult> => {
     return await processArtistReleases(
         userId,
         artistId,
-        getArtistReleasesForProcessing,
-        currentReleasesByArtist,
+        getCatalogForProcessing,
+        currentReleaseGroupStateByArtist,
         releaseNotificationSettings,
-    );
-};
-
-const mergeKnownReleasesForFollowedReleaseArtists = async (
-    userId: string,
-    followedArtistIds: string[],
-    newReleases: NewRelease[],
-): Promise<void> => {
-    const followedArtistIdSet = new Set(followedArtistIds);
-    const releaseIdsByFollowedArtist = new Map<string, Set<string>>();
-
-    for (const release of newReleases) {
-        for (const artistId of Object.keys(release.artists)) {
-            if (!followedArtistIdSet.has(artistId)) {
-                continue;
-            }
-
-            const releaseIds = releaseIdsByFollowedArtist.get(artistId) ?? new Set<string>();
-            releaseIds.add(release.id);
-            releaseIdsByFollowedArtist.set(artistId, releaseIds);
-        }
-    }
-
-    await mapWithConcurrency(
-        Array.from(releaseIdsByFollowedArtist.entries()),
-        4,
-        async ([artistId, releaseIds]) => {
-            await mergeKnownArtistReleaseIdsInDb(userId, artistId, Array.from(releaseIds));
-        },
     );
 };
 
@@ -70,9 +37,9 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
     try {
         const followingArtists = await getFollowingFromDb(userId);
         const releaseNotificationSettings = await getReleaseNotificationSettingsFromDb(userId);
-        const currentReleasesByArtist = await getKnownReleasesFromDb(userId);
+        const currentReleaseGroupStateByArtist = await getKnownReleaseGroupStateFromDb(userId);
         for (const artistId of followingArtists) {
-            currentReleasesByArtist[artistId] ??= [];
+            currentReleaseGroupStateByArtist[artistId] ??= {};
         }
         const result: NewRelease[] = [];
 
@@ -83,7 +50,7 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
                 await processSingleArtist(
                     userId,
                     artistId,
-                    currentReleasesByArtist,
+                    currentReleaseGroupStateByArtist,
                     releaseNotificationSettings,
                 ),
         );
@@ -92,10 +59,6 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
             if (newReleases.length > 0) {
                 result.push(...newReleases);
             }
-        }
-
-        if (result.length > 0) {
-            await mergeKnownReleasesForFollowedReleaseArtists(userId, followingArtists, result);
         }
 
         return result;

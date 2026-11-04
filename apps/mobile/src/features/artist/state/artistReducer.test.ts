@@ -84,6 +84,58 @@ describe('artistReducer', () => {
       expect(state.error).toBeNull();
     });
 
+    it('releasesLoadSucceeded stores the paging cursor', () => {
+        const state = artistReducer(createInitialArtistPageState(), {
+            type: 'releasesLoadSucceeded',
+            releaseGroups: [makeReleaseGroup('a')],
+            nextCursor: 'cursor-1',
+            hasMore: true,
+        });
+
+        expect(state.releaseGroupsNextCursor).toBe('cursor-1');
+        expect(state.hasMoreReleaseGroups).toBe(true);
+    });
+
+    it('releasesMoreSucceeded appends the next page and advances the cursor', () => {
+        const first = artistReducer(createInitialArtistPageState(), {
+            type: 'releasesLoadSucceeded',
+            releaseGroups: [makeReleaseGroup('a')],
+            nextCursor: 'cursor-1',
+            hasMore: true,
+        });
+
+        const state = artistReducer(first, {
+            type: 'releasesMoreSucceeded',
+            releaseGroups: [makeReleaseGroup('b')],
+            nextCursor: 'cursor-2',
+            hasMore: true,
+        });
+
+        expect(state.allReleaseGroups.map(item => item.id)).toEqual(['a', 'b']);
+        expect(state.releaseGroupsNextCursor).toBe('cursor-2');
+        expect(state.isLoadingMoreReleases).toBe(false);
+    });
+
+    it('releasesMoreSucceeded drops groups that are already loaded', () => {
+        // Pages can overlap when the catalog changes between requests.
+        const first = artistReducer(createInitialArtistPageState(), {
+            type: 'releasesLoadSucceeded',
+            releaseGroups: [makeReleaseGroup('a'), makeReleaseGroup('b')],
+            nextCursor: 'cursor-1',
+            hasMore: true,
+        });
+
+        const state = artistReducer(first, {
+            type: 'releasesMoreSucceeded',
+            releaseGroups: [makeReleaseGroup('b'), makeReleaseGroup('c')],
+            nextCursor: null,
+            hasMore: false,
+        });
+
+        expect(state.allReleaseGroups.map(item => item.id)).toEqual(['a', 'b', 'c']);
+        expect(state.hasMoreReleaseGroups).toBe(false);
+    });
+
     it('releasesLoadSucceeded stores release groups and stops loading', () => {
       const groups = [makeReleaseGroup('rg-1'), makeReleaseGroup('rg-2')];
       const state = artistReducer(createInitialArtistPageState(), {
