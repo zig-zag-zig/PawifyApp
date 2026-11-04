@@ -6,6 +6,7 @@ import { createGetArtistDetailsUseCase } from './usecases/getArtistDetails.js';
 import { createGetFollowingUseCase } from './usecases/getFollowing.js';
 import { createSearchArtistsUseCase } from './usecases/searchArtists.js';
 import { createSearchReleaseGroupsUseCase } from './usecases/searchReleaseGroups.js';
+import { createSearchAllUseCase } from './usecases/searchAll.js';
 import { createUnfollowArtistsUseCase } from './usecases/unfollowArtists.js';
 import type { ArtistUseCaseDependencies } from './ports.js';
 import type {
@@ -72,6 +73,19 @@ export const createArtistUseCases = (
             {
                 getMetadata: (_userId, query, offset, limit) => ({ query, offset, limit }),
                 getResultMetadata: (result) => ({ resultCount: result.releaseGroups.length }),
+            },
+        ),
+        searchAll: withOperationLogging(
+            logger,
+            'searchAll',
+            createSearchAllUseCase(dependencies),
+            {
+                getMetadata: (_userId, query, offset, limit) => ({ query, offset, limit }),
+                getResultMetadata: (result) => ({
+                    artistCount: result.artists.length,
+                    releaseGroupCount: result.releaseGroups.length,
+                    recordingCount: result.recordings.length,
+                }),
             },
         ),
         unfollowArtists: withOperationLogging(

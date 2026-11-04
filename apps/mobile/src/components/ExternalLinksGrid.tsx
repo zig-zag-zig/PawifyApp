@@ -187,6 +187,9 @@ const ExternalLinksGrid = ({
     preferredService = null,
     onPreferredServiceChange,
 }: ExternalLinksGridProps) => {
+    // The preference is stored for future ordering/product use, but deliberately has
+    // no visual border. A persistent border made the selected tile look focused and
+    // confusingly changed between artist and release screens.
     const [expandedSections, setExpandedSections] = useState<Set<ExternalLinkSectionKey>>(
         () => new Set(),
     );
@@ -256,7 +259,7 @@ const ExternalLinksGrid = ({
         return null;
     }
 
-    const { border: borderColor, background: backgroundColor, mutedBackground: mutedBackgroundColor, label: labelColor, fallbackIcon: fallbackColor, overflowToggle: overflowButtonTextColor, accent: accentColor } = theme.colors.externalLinks;
+    const { border: borderColor, background: backgroundColor, mutedBackground: mutedBackgroundColor, label: labelColor, fallbackIcon: fallbackColor, overflowToggle: overflowButtonTextColor } = theme.colors.externalLinks;
 
     const renderLinkButton = (
         link: RankedExternalLink,
@@ -267,8 +270,6 @@ const ExternalLinksGrid = ({
         const linkKey = getLinkKey(link);
         const iconConfig = getExternalLinkIconConfig(link);
         const iconColor = getExternalLinkColor(link, fallbackColor);
-        const isPreferred =
-            isStreaming && preferredService !== null && link.resolvedService === preferredService;
         const canSetPreferred =
             isStreaming && onPreferredServiceChange !== undefined && !compact;
 
@@ -277,7 +278,7 @@ const ExternalLinksGrid = ({
                 key={linkKey}
                 onPress={() => openExternalLink(link)}
                 onLongPress={
-                    canSetPreferred && !isPreferred
+                    canSetPreferred
                         ? () => onPreferredServiceChange(link.resolvedService)
                         : undefined
                 }
@@ -294,7 +295,7 @@ const ExternalLinksGrid = ({
                         backgroundColor: compact ? mutedBackgroundColor : backgroundColor,
                         borderColor,
                     },
-                    isPreferred && [styles.preferredLinkButton, { borderColor: accentColor }],
+
                 ]}
             >
                 <View style={styles.iconBox}>

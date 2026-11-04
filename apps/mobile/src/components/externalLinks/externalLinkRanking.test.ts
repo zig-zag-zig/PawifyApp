@@ -68,7 +68,7 @@ describe('external link ranking', () => {
             expect(sections[0].key).toBe('listen');
         });
 
-        it('moves the preferred streaming service to the front of the listen section', () => {
+        it('keeps link positions stable when preferred service changes', () => {
             const sections = groupLinksBySection(
                 normalizeLinks([
                     externalLink('spotify', 'streaming'),
@@ -78,7 +78,7 @@ describe('external link ranking', () => {
                 'deezer',
             );
 
-            expect(servicesOf(sections[0].links)).toEqual(['deezer', 'spotify', 'appleMusic']);
+            expect(servicesOf(sections[0].links)).toEqual(['spotify', 'appleMusic', 'deezer']);
         });
 
         it('keeps rank order when no preference is set', () => {

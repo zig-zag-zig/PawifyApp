@@ -6,6 +6,7 @@ import type {
 import type { Artist } from '@pawify/shared';
 import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
 import type { ReleaseGroupSearchResult } from '../../services/musicbrainz/releaseGroupSearch.js';
+import type { RecordingSearchResult } from '../../services/musicbrainz/recordingSearch.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { ArtistProfileImageQueueOptions } from '../../utils/types/taskTypes.js';
 
@@ -79,6 +80,12 @@ interface ArtistSearchGateway {
         offset: number,
         limit: number,
     ): Promise<ReleaseGroupSearchResult>;
+
+    searchRecordings?(
+        query: string,
+        offset: number,
+        limit: number,
+    ): Promise<RecordingSearchResult>;
 }
 
 interface FollowingNotifier {

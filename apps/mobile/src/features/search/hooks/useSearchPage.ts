@@ -347,10 +347,12 @@ export function useSearchPage(): SearchPageController {
 
     const uiState: SearchPageUiState = {
         query: state.query,
+        submittedQuery: state.submittedQuery,
         artists: state.artists,
         artistProfileImages,
         pendingArtistImageIds,
         isLoading: state.isLoading,
+        allResultsFetched: state.allResultsFetched,
         canLoadMore,
     };
 

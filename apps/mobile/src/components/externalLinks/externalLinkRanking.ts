@@ -225,14 +225,10 @@ export const groupLinksBySection = (
         buckets[getSectionKey(link)].push(link);
     });
 
-    if (preferredService !== null && buckets.listen.length > 1) {
-        // Stable sort keeps the existing rank order within each group.
-        buckets.listen = [...buckets.listen].sort((a, b) => {
-            const aPreferred = a.resolvedService === preferredService ? 0 : 1;
-            const bPreferred = b.resolvedService === preferredService ? 0 : 1;
-            return aPreferred - bPreferred;
-        });
-    }
+    // Keep the canonical ranking stable. The preferred service is represented by
+    // the border in the grid, but must not move when the user long-presses a tile:
+    // moving siblings makes the pressed tile appear to jump and causes the artist
+    // and release screens to feel inconsistent.
 
     return SECTION_ORDER
         .map(key => ({ key, title: EXTERNAL_LINK_SECTION_TITLES[key], links: buckets[key] }))

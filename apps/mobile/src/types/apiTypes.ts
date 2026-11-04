@@ -88,3 +88,21 @@ export interface TaskResultResponse<T = unknown> {
   subtaskCount?: number;
   completedSubtaskCount?: number;
 }
+
+
+export interface UnifiedSearchResponse {
+  artists: Artist[];
+  artistCount: number;
+  artistProfileImages: Record<string, string | null>;
+  artistProfileImageTaskId?: string | null;
+  releaseGroups: SearchReleaseGroupsResponse['releaseGroups'];
+  releaseGroupCount: number;
+  releaseGroupCovers: Record<string, string | null>;
+  releaseGroupCoverTaskId?: string | null;
+  recordings: Array<{
+    id: string;
+    title: string;
+    'artist-credit': ArtistCredit[];
+  }>;
+  recordingCount: number;
+}

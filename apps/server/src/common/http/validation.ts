@@ -18,6 +18,14 @@ export const requireString = (body: unknown, property: string): string => {
     return value.trim();
 };
 
+export const requireSearchQuery = (body: unknown, property = 'query'): string => {
+    const query = requireString(body, property);
+    if (query.length < 2) {
+        throw new BadRequestError(`The ${property} property must contain at least 2 characters`);
+    }
+    return query;
+};
+
 export const optionalString = (body: unknown, property: string): string | undefined => {
     const value = requireBodyObject(body)[property];
 
