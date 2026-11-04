@@ -3,12 +3,12 @@ import {
     getReleaseNotificationSettingsFromDb,
     saveReleaseNotificationSettingsToDb,
 } from '../../../services/firebase/userSettingsStore.js';
-import { replaceKnownArtistReleaseIdsInDb } from '../../../services/firebase/knownReleasesStore.js';
+import { replaceKnownArtistReleaseGroupStateInDb } from '../../../services/firebase/knownReleasesStore.js';
 import {
     readNewReleasesState,
     writeNewReleasesState,
 } from '../../../services/firebase/newReleasesStore.js';
-import { fetchAllReleasesForArtist } from '../../../services/musicbrainz/releaseQueries.js';
+import { getArtistReleaseGroupCatalog } from '../../../services/musicbrainz/artistReleaseGroupCatalog.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
@@ -22,8 +22,8 @@ export const userSettingsDependencies: UserSettingsUseCaseDependencies = {
         getFollowedArtistIds: async (userId) => await getFollowingFromDb(userId),
     },
     knownReleaseRepository: {
-        replaceArtistReleaseIds: async (userId, artistId, releaseIds) => {
-            await replaceKnownArtistReleaseIdsInDb(userId, artistId, releaseIds);
+        replaceArtistReleaseGroupState: async (userId, artistId, groupState) => {
+            await replaceKnownArtistReleaseGroupStateInDb(userId, artistId, groupState);
         },
     },
     newReleaseRepository: {
@@ -41,7 +41,8 @@ export const userSettingsDependencies: UserSettingsUseCaseDependencies = {
         },
     },
     releaseCatalogGateway: {
-        getArtistReleases: async (artistId) => await fetchAllReleasesForArtist(artistId, false),
+        getArtistReleases: async (artistId) =>
+            (await getArtistReleaseGroupCatalog(artistId)).groups,
     },
     releaseNotificationSettingsRepository: {
         getSettings: async (userId) => await getReleaseNotificationSettingsFromDb(userId),

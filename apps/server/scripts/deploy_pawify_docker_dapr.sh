@@ -381,9 +381,14 @@ prepare_runtime_files() {
   # lives here; MUSIC_DB_MODE/MUSIC_DB_PATH come from the secret env file and are
   # passed through docker-compose.yml. A deploy without a mirror keeps the
   # API-only default, so a fresh host needs no extra setup.
-  if [[ -z "$(read_env_value "$env_path" "PAWIFY_MUSIC_DB_DIR")" ]]; then
-    replace_or_append_env "$env_path" "PAWIFY_MUSIC_DB_DIR" "./music"
-  fi
+  # The mirror is a production dependency, not an optional feature flag. Keep
+  # these as deploy defaults so a stale/older secret env file cannot silently
+  # switch the server back to the MusicBrainz API.
+  replace_or_append_env "$env_path" "MUSIC_DB_PATH" "/var/pawify/music/mb.db"
+  replace_or_append_env "$env_path" "MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS" "1000"
+  replace_or_append_env "$env_path" "PAWIFY_MUSIC_DB_DIR" "/home/$APP_USER/pawify-mb"
+  replace_or_append_env "$env_path" "ASSET_CACHE_SUCCESS_TTL_HOURS" "720"
+  replace_or_append_env "$env_path" "ASSET_CACHE_MISS_TTL_HOURS" "168"
   replace_or_append_env "$env_path" "PAWIFY_HOST_BIND_ADDRESS" "127.0.0.1"
   replace_or_append_env "$env_path" "PAWIFY_HOST_PORT" "$HOST_PORT"
   replace_or_append_env "$env_path" "APP_ENV" "$APP_ENV_VALUE"

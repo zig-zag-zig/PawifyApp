@@ -154,6 +154,15 @@ export const mergeKnownArtistReleaseIdsInDb = async (
     await rtdb.ref().update(updates);
 };
 
+export const deleteKnownArtistReleaseGroupStateFromDb = async (
+    userId: string,
+    artistId: string,
+): Promise<void> => {
+    assertRtdbKey('userId', userId);
+    assertRtdbKey('artistId', artistId);
+    await rtdb.ref(`${KNOWN_RELEASES_ROOT}/${userId}/${artistId}`).remove();
+};
+
 export const deleteKnownArtistReleasesFromDb = async (
     userId: string,
     artistId: string,

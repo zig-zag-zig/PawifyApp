@@ -1,4 +1,4 @@
-import type { Release, ReleaseNotificationSettings } from '@pawify/shared';
+import type { ReleaseNotificationSettings } from '@pawify/shared';
 
 export type ReleaseNotificationSettingsRepository = {
     getSettings(userId: string): Promise<ReleaseNotificationSettings>;
@@ -13,7 +13,11 @@ export type UserFollowedArtistsRepository = {
 };
 
 export type KnownReleaseRepository = {
-    replaceArtistReleaseIds(userId: string, artistId: string, releaseIds: string[]): Promise<void>;
+    replaceArtistReleaseGroupState(
+        userId: string,
+        artistId: string,
+        groupState: ReadonlyMap<string, string>,
+    ): Promise<void>;
 };
 
 export type NewReleaseRepository = {
@@ -23,8 +27,10 @@ export type NewReleaseRepository = {
     ): Promise<void>;
 };
 
+export type ReleaseGroupForSettings = { id: string; date: string | null };
+
 export type ReleaseCatalogGateway = {
-    getArtistReleases(artistId: string): Promise<Release[]>;
+    getArtistReleases(artistId: string): Promise<ReleaseGroupForSettings[]>;
 };
 
 export type UserSettingsNotifier = {

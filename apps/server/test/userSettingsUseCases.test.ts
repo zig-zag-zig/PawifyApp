@@ -36,10 +36,17 @@ describe('user settings use cases', () => {
 
         assert.deepEqual(result, nextSettings);
         assert.deepEqual(state.saveCalls, [nextSettings]);
-        assert.deepEqual(state.replaceCalls, [
-            { userId: 'user-1', artistId: 'artist-1', releaseIds: ['tracked'] },
-            { userId: 'user-1', artistId: 'artist-2', releaseIds: ['older-included'] },
-        ]);
+        assert.deepEqual(
+            state.replaceCalls.map(({ userId, artistId, groupState }) => ({
+                userId,
+                artistId,
+                groupState: Array.from(groupState.entries()),
+            })),
+            [
+                { userId: 'user-1', artistId: 'artist-1', groupState: [['tracked', '']] },
+                { userId: 'user-1', artistId: 'artist-2', groupState: [['older-included', '']] },
+            ],
+        );
         assert.deepEqual(state.removeCalls, [{ userId: 'user-1', settings: nextSettings }]);
         assert.deepEqual(state.notificationCalls.sort(), [
             'releases:push-token-1',

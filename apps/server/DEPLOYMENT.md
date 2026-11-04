@@ -224,8 +224,10 @@ PAWIFY_MUSIC_DB_DIR=/home/deploy/pawify-mb
 MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS=1000
 ```
 
-`PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source; the deploy
-script defaults it to `./music` when unset.
+`PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source. The production
+ deploy wrapper forces it to `/home/<deploy-user>/pawify-mb` and forces
+`MUSIC_DB_PATH=/var/pawify/music/mb.db`, so an older secret env file cannot silently
+switch production back to the MusicBrainz API.
 
 ### Behaviour and failure modes
 

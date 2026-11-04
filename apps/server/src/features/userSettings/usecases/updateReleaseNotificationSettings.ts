@@ -28,11 +28,13 @@ const rebuildKnownReleasesForSettings = async (
         // Known state is a set of release groups: widen or narrow it by each group's
         // own date, so the next scan neither re-notifies an album the user has seen
         // nor keeps one that has fallen outside the window.
-        const groupIds = releaseGroups
-            .filter((group) => releaseDateMatchesNotificationSettings(group.date, settings))
-            .map((group) => group.id);
+        const groupState = new Map(
+            releaseGroups
+                .filter((group) => releaseDateMatchesNotificationSettings(group.date, settings))
+                .map((group) => [group.id, ''] as const),
+        );
 
-        await knownReleaseRepository.replaceArtistReleaseIds(userId, artistId, groupIds);
+        await knownReleaseRepository.replaceArtistReleaseGroupState(userId, artistId, groupState);
     });
 
     await newReleaseRepository.removeReleasesOutsideSettings(userId, settings);

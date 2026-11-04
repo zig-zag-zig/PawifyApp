@@ -28,6 +28,7 @@ export const installFirebaseServiceFake = (): void => {
     installModuleFake('../../src/services/firebase/knownReleasesStore.js', {
         getKnownArtistReleaseIdsFromDb: unexpectedFirebaseCall('getKnownArtistReleaseIdsFromDb'),
         getKnownReleasesFromDb: unexpectedFirebaseCall('getKnownReleasesFromDb'),
+        getKnownReleaseGroupStateFromDb: unexpectedFirebaseCall('getKnownReleaseGroupStateFromDb'),
     });
     installModuleFake('../../src/services/firebase/newReleasesStore.js', {
         getNewReleasesSnapshotFromDb: unexpectedFirebaseCall('getNewReleasesSnapshotFromDb'),
@@ -112,7 +113,9 @@ export const installFirebaseStoreFakes = (): void => {
     installModuleFake('../../src/services/firebase/knownReleasesStore.js', {
         getKnownArtistReleaseIdsFromDb: async () => [],
         getKnownReleasesFromDb: async () => ({}),
+        getKnownReleaseGroupStateFromDb: async () => ({}),
         deleteKnownArtistReleasesFromDb: async () => {},
+        deleteKnownArtistReleaseGroupStateFromDb: async () => {},
     });
     installModuleFake('../../src/services/firebase/newReleasesStore.js', {
         getNewReleasesSnapshotFromDb: async () => ({ newReleasesMap: {}, coverPageEntries: [] }),
