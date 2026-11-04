@@ -13,8 +13,10 @@ interface SearchInputProps {
 // The placeholder names what the active tab searches, so it is never wrong
 // about what typing here will look for.
 const PLACEHOLDER_BY_SCOPE: Record<SearchScope, string> = {
+    all: 'Search everywhere',
     artists: 'Search artists',
     releases: 'Search releases',
+    tracks: 'Search tracks',
 };
 
 const SearchInput = ({ query, scope, onChangeText, onSubmitEditing }: SearchInputProps) => {

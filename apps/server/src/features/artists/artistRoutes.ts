@@ -12,6 +12,7 @@ export const createArtistRoutes = (
     router.get('/getFollowing', handlers.getFollowingHandler);
     router.post('/getArtistDetails', handlers.getArtistDetailsHandler);
     router.post('/searchArtists', handlers.searchArtistsHandler);
+    router.post('/searchAll', handlers.searchAllHandler);
     router.post('/searchReleaseGroups', handlers.searchReleaseGroupsHandler);
     router.post('/followArtist', handlers.followArtistHandler);
     router.post('/unfollowArtist', handlers.unfollowArtistHandler);

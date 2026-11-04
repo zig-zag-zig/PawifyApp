@@ -3,6 +3,7 @@ import {
     optionalIntegerInRange,
     optionalNonNegativeInteger,
     optionalString,
+    requireSearchQuery,
     requireString,
     requireStringArray,
 } from '../../../common/http/validation.js';
@@ -18,6 +19,7 @@ export type ArtistWirePresenters = {
     searchReleaseGroups: (
         result: Awaited<ReturnType<ArtistUseCases['searchReleaseGroups']>>,
     ) => unknown;
+    searchAll: (result: Awaited<ReturnType<ArtistUseCases['searchAll']>>) => unknown;
 };
 
 /** v1 exact old contract: task ids always present, no immediate maps. */
@@ -40,6 +42,7 @@ export const artistPresentersV1: ArtistWirePresenters = {
         count: result.count,
         releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
     }),
+    searchAll: (result) => result,
 };
 
 /** v2: full cache-first response with immediate maps and nullable task ids. */
@@ -48,6 +51,7 @@ export const artistPresentersV2: ArtistWirePresenters = {
     getArtistDetails: (result) => result,
     searchArtists: (result) => result,
     searchReleaseGroups: (result) => result,
+    searchAll: (result) => result,
 };
 
 export const createArtistHandlers = (
@@ -75,7 +79,7 @@ export const createArtistHandlers = (
     const searchArtistsHandler = authenticatedHandler(
         '/searchArtists',
         async ({ req, res, userId }) => {
-            const query = requireString(req.body, 'query');
+            const query = requireSearchQuery(req.body);
             const limit = optionalIntegerInRange(req.body, 'limit', 25, 1, 100);
             const offset = optionalNonNegativeInteger(req.body, 'offset', 0);
 
@@ -87,10 +91,20 @@ export const createArtistHandlers = (
         },
     );
 
+    const searchAllHandler = authenticatedHandler(
+        '/searchAll',
+        async ({ req, res, userId }) => {
+            const query = requireSearchQuery(req.body);
+            const limit = optionalIntegerInRange(req.body, 'limit', 25, 1, 100);
+            const offset = optionalNonNegativeInteger(req.body, 'offset', 0);
+            res.status(200).send(await artistUseCases.searchAll(userId, query, offset, limit));
+        },
+    );
+
     const searchReleaseGroupsHandler = authenticatedHandler(
         '/searchReleaseGroups',
         async ({ req, res, userId }) => {
-            const query = requireString(req.body, 'query');
+            const query = requireSearchQuery(req.body);
             const limit = optionalIntegerInRange(req.body, 'limit', 25, 1, 100);
             const offset = optionalNonNegativeInteger(req.body, 'offset', 0);
 
@@ -140,6 +154,7 @@ export const createArtistHandlers = (
         getArtistDetailsHandler,
         searchArtistsHandler,
         searchReleaseGroupsHandler,
+        searchAllHandler,
         followArtistHandler,
         unfollowArtistHandler,
         unfollowArtistsHandler,

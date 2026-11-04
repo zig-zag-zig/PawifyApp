@@ -4,6 +4,7 @@ import { useApiClient } from '../../../hooks/useApiClient';
 import type {
     SearchArtistsResponse,
     SearchReleaseGroupsResponse,
+    UnifiedSearchResponse,
 } from '../../../types/apiTypes';
 
 export function useSearchApi() {
@@ -18,6 +19,10 @@ export function useSearchApi() {
                 }),
             searchReleaseGroups: async (query: string, limit: number, offset = 0) =>
                 await apiClient.request<SearchReleaseGroupsResponse>('searchReleaseGroups', {
+                    body: { query, offset, limit },
+                }),
+            searchAll: async (query: string, limit: number, offset = 0) =>
+                await apiClient.request<UnifiedSearchResponse>('searchAll', {
                     body: { query, offset, limit },
                 }),
             waitForTaskResultById: apiClient.waitForTaskResultById,

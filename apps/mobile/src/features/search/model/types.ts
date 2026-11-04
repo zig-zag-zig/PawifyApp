@@ -15,10 +15,12 @@ export interface SearchPageState {
 
 export interface SearchPageUiState {
     query: string;
+    submittedQuery: string;
     artists: Artist[];
     artistProfileImages: Record<string, string | null | undefined>;
     pendingArtistImageIds: string[];
     isLoading: boolean;
+    allResultsFetched: boolean;
     canLoadMore: boolean;
 }
 

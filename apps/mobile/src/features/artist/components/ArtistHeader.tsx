@@ -3,6 +3,11 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
+import type { ExternalLinkService } from '@pawify/shared';
+import {
+    loadPreferredStreamingService,
+    savePreferredStreamingService,
+} from '../../../services/preferredStreamingService';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
 import type { Artist } from '@pawify/shared';
 import { formatDate } from '@pawify/shared';
@@ -37,6 +42,24 @@ const ArtistHeader = ({
     onRelationshipsExpanded
 }: ArtistHeaderProps) => {
     const styles = useMemo(() => getStyles(), []);
+    const [preferredService, setPreferredService] = React.useState<ExternalLinkService | null>(null);
+
+    React.useEffect(() => {
+        let isCancelled = false;
+        void loadPreferredStreamingService().then(service => {
+            if (!isCancelled) {
+                setPreferredService(service);
+            }
+        });
+        return () => {
+            isCancelled = true;
+        };
+    }, []);
+
+    const onPreferredServiceChange = React.useCallback((service: ExternalLinkService) => {
+        setPreferredService(service);
+        void savePreferredStreamingService(service);
+    }, []);
 
     if (!artist) return null;
 
@@ -136,7 +159,11 @@ const ArtistHeader = ({
                     </SelectableText>
                 )}
 
-                <ExternalLinksGrid links={artist.externalLinks} />
+                <ExternalLinksGrid
+                    links={artist.externalLinks}
+                    preferredService={preferredService}
+                    onPreferredServiceChange={onPreferredServiceChange}
+                />
 
                 <ArtistRelationships
                     artist={artist}

@@ -18,6 +18,7 @@ import { sendDataOnlyNotification } from '../../../services/notifications/dataNo
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
 import { searchForArtist } from '../../../services/musicbrainz/artistSearch.js';
 import { searchReleaseGroups } from '../../../services/musicbrainz/releaseGroupSearch.js';
+import { searchRecordings as searchRecordingsFromApi } from '../../../services/musicbrainz/recordingSearch.js';
 import {
     getArtistDetailsFromMirror,
     getArtistReleaseGroupIdsFromMirror,
@@ -107,6 +108,8 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
                 () => searchArtistsFromMirror(query, offset, limit),
                 async () => await searchForArtist(userId, query, offset, limit),
             )) ?? { artists: [], count: 0 },
+        searchRecordings: async (query, offset, limit) =>
+            await searchRecordingsFromApi(query, offset, limit),
         searchReleaseGroups: async (userId, query, offset, limit) =>
             (await withMusicDb(
                 'searchReleaseGroups',
