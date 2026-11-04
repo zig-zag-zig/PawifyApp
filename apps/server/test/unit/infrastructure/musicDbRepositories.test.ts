@@ -663,7 +663,8 @@ describe('musicDb repositories', () => {
         it('returns nothing when the mirror has no search index', () => {
             const noSearchPath = createMusicDbFixture({ artists: seed.artists });
             const db = new Database(noSearchPath);
-            db.exec('DROP TABLE search_fts');
+            db.exec('DROP TABLE search_fts_artist');
+            db.exec('DROP TABLE search_fts_release_group');
             db.close();
             useMirror(noSearchPath);
 

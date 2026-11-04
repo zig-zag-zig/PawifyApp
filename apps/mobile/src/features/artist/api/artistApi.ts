@@ -25,9 +25,18 @@ export function useArtistApi() {
                 await apiClient.request<ArtistDetailsResponse>('getArtistDetails', {
                     body: { artistId },
                 }),
-            getArtistReleases: async (artistId: string) =>
+            getArtistReleases: async (
+                artistId: string,
+                options?: { limit?: number; cursor?: string | null },
+            ) =>
                 await apiClient.request<ArtistReleasesResponse>('getArtistReleases', {
-                    body: { artistId },
+                    // Omitting both keeps the old "give me everything" behaviour, which
+                    // is what older servers expect.
+                    body: {
+                        artistId,
+                        ...(options?.limit ? { limit: options.limit } : {}),
+                        ...(options?.cursor ? { cursor: options.cursor } : {}),
+                    },
                 }),
             getReleaseGroupReleases: async (releaseGroupId: string) =>
                 await apiClient.request<ReleaseGroupReleasesResponse>('getReleaseGroupReleases', {

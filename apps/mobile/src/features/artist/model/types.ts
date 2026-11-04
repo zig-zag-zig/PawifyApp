@@ -8,6 +8,9 @@ interface ArtistPendingTasks {
 export interface ArtistPageState {
     artist: Artist | undefined;
     allReleaseGroups: ArtistReleaseGroup[];
+    /** Keyset cursor for the next page of release groups, when the server paged. */
+    releaseGroupsNextCursor: string | null;
+    hasMoreReleaseGroups: boolean;
     membersWithoutCachedPicture: string[];
     pendingArtistImageIds: string[];
     pendingReleaseGroupCoverIds: string[];
@@ -15,6 +18,7 @@ export interface ArtistPageState {
     isLoadingArtist: boolean;
     isLoadingReleases: boolean;
     isLoadingReleaseGroup: boolean;
+    isLoadingMoreReleases: boolean;
     isFollowLoading: boolean;
     error: string | null;
     pendingTasks: ArtistPendingTasks;

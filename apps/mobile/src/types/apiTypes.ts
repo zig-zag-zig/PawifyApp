@@ -47,6 +47,10 @@ export interface ArtistReleasesResponse {
   releaseGroups: ArtistReleaseGroup[];
   releaseGroupCoverTaskId: string | null;
   releaseGroupCovers: Record<string, string | null>;
+  /** Opaque keyset cursor for the next page; null when there is none. */
+  nextCursor?: string | null;
+  /** True when another page exists. Absent on older servers. */
+  hasMore?: boolean;
 }
 
 export interface ReleaseGroupReleasesResponse {

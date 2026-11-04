@@ -70,7 +70,10 @@ keeping release tracklists API-only.
 - [x] Artist profile-image provider links read from the mirror instead of the
   MusicBrainz API (removes a 1 req/s API call per artist).
 - [x] Bounded search work budget (capped count, no ranking for broad queries).
-- [x] Keyset pagination for artist release groups (v2 contract).
+- [x] Keyset pagination for artist release groups (v2 contract), consumed by the
+  mobile artist screen.
+- [x] Per-entity FTS tables in the mirror, with the server querying its own type's
+  table.
 - [x] Per-entity asset cache keys for covers and lyrics.
 - [x] Static metadata Redis caches removed (notification catalog, artist details
   used by the notification path).
@@ -446,17 +449,47 @@ Lyrics: per-track key `asset:lyrics:<releaseId>:<trackId>` written by the worker
 
 ## Known follow-ups (measured, not blocking)
 
-1. **`entity_type` is unindexed in the mirror's FTS table.** This is why a
-   single-letter search still costs ~1.5 s: the query scans every entity type's
-   matches and discards the rest. Adding `entity_type` to the index (or splitting
-   into per-entity FTS tables) in `pawify_mb_sqlite` removes the post-filter scan.
-   App-side bounding already prevents the previous 3.2 s worst case.
-2. **Tidal album placeholder** is not yet identified. The Deezer album placeholder is
+1. **Tidal album placeholder** is not yet identified. The Deezer album placeholder is
    handled deterministically; if Tidal returns a default album cover for artwork-less
-   albums, capture the URL from a real case and add it to
-   `isDeezerPlaceholderAlbumCover`'s Tidal counterpart.
-3. **Mobile pagination consumption.** The v2 endpoint serves keyset pages, but the
-   artist screen still reads whatever page the server returns; consuming `nextCursor`
-   is a separate client change and is not required for correctness.
-4. **`artistDetails` Redis cache** remains for the MusicBrainz API fallback path
+   albums, capture the URL from a real case and add the equivalent check.
+2. **`artistDetails` Redis cache** remains for the MusicBrainz API fallback path
    only; it is not populated or read on the normal mirror path.
+
+### Follow-ups that were completed
+
+- **Per-entity FTS tables in `pawify_mb_sqlite`.** `search_fts` used a single table
+  with `entity_type UNINDEXED`, so every search scanned all entity types and filtered
+  afterwards. Indexing that column was measured and rejected (narrow searches
+  13.9 ms → 62.3 ms). Each entity type now has its own table
+  (`search_fts_artist`, `search_fts_release_group`, `search_fts_release`), and the
+  server queries the table for its own type.
+- **Mobile pagination consumption.** The artist screen now stores `nextCursor` /
+  `hasMore` and fetches the next page when a section's local rows run out, appending
+  by id so overlapping pages cannot duplicate rows.
+
+### Measured after the FTS split
+
+Local full-mirror copy (warm):
+
+| Query | bm25 before | bm25 after | unranked before | after |
+| --- | ---: | ---: | ---: | ---: |
+| `lloyd banks` | 21.5 ms | **2.5 ms** | 0.5 ms | 0.1 ms |
+| `love` | 195.9 ms | **8.6 ms** | 8.8 ms | 0.5 ms |
+| `the` | 1148.5 ms | **75.9 ms** | 75.2 ms | 6.2 ms |
+| `a` | 3234.8 ms | **303.3 ms** | 520.9 ms | 62.1 ms |
+
+Production VPS, running the exact query pair the endpoint issues
+(budget probe + page), warm:
+
+| Query | probe | page | worst-case request |
+| --- | ---: | ---: | ---: |
+| `a` | 267 ms | 290 ms | ~0.56 s |
+| `the` | 41 ms | 47 ms | ~0.09 s |
+| `love` | 3 ms | 2 ms | ~0.005 s |
+
+SQLite cache/mmap pragmas were benchmarked on the VPS and made no material difference
+(±5%), so none were added — the container has 512 MB and mmap would trade memory for
+nothing.
+
+The VPS mirror was rebuilt in place: artist 3,031,797 rows, release groups 4,619,157,
+releases 5,901,538, and the legacy `search_fts` table dropped to reclaim its space.

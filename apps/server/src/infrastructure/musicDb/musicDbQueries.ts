@@ -503,6 +503,24 @@ export const readReleaseGroupArtists = (db: MusicDb, releaseGroupId: string): Ar
 export type SearchRow = { mbid: string; title: string };
 
 /**
+ * FTS table per entity type.
+ *
+ * A single table with `entity_type UNINDEXED` scanned every entity type's matches
+ * and filtered afterwards; indexing that column instead tripled bm25 time on normal
+ * queries. Separate tables remove the post-filter and keep ranking fast (measured
+ * against the full mirror: `a` 3235ms → 303ms, `lloyd banks` 22ms → 2.5ms).
+ *
+ * Names come from this map, never from user input.
+ */
+const SEARCH_TABLES = {
+    artist: 'search_fts_artist',
+    release_group: 'search_fts_release_group',
+} as const;
+
+export const searchTableFor = (entityType: keyof typeof SEARCH_TABLES): string =>
+    SEARCH_TABLES[entityType];
+
+/**
  * How many matches a search is allowed to rank and count.
  *
  * Ranked search costs time proportional to the number of matches: `"the"*` finds
@@ -525,15 +543,14 @@ export const countSearchResultsUpTo = (
     matchQuery: string,
     cap: number,
 ): number => {
+    const table = searchTableFor(entityType);
     const row = db
         .prepare(
             `SELECT COUNT(*) AS total FROM (
-                 SELECT 1 FROM search_fts
-                 WHERE entity_type = ? AND search_fts MATCH ?
-                 LIMIT ?
+                 SELECT 1 FROM ${table} WHERE ${table} MATCH ? LIMIT ?
              )`,
         )
-        .get(entityType, matchQuery, cap) as { total: number } | undefined;
+        .get(matchQuery, cap) as { total: number } | undefined;
     return row?.total ?? 0;
 };
 
@@ -543,16 +560,18 @@ export const searchEntities = (
     matchQuery: string,
     limit: number,
     offset: number,
-): SearchRow[] =>
-    db
+): SearchRow[] => {
+    const table = searchTableFor(entityType);
+    return db
         .prepare(
             `SELECT entity_mbid AS mbid, heading AS title
-             FROM search_fts
-             WHERE entity_type = ? AND search_fts MATCH ?
-             ORDER BY bm25(search_fts) ASC, entity_mbid ASC
+             FROM ${table}
+             WHERE ${table} MATCH ?
+             ORDER BY bm25(${table}) ASC, entity_mbid ASC
              LIMIT ? OFFSET ?`,
         )
-        .all(entityType, matchQuery, limit, offset) as SearchRow[];
+        .all(matchQuery, limit, offset) as SearchRow[];
+};
 
 export type SearchBudgetResult = {
     rows: SearchRow[];
@@ -595,19 +614,15 @@ export const searchEntitiesWithBudget = (
         return { rows: [], count: SEARCH_MAX_MATCHES, capped: true };
     }
 
+    const table = searchTableFor(entityType);
     const rows = db
         .prepare(
             `SELECT entity_mbid AS mbid, heading AS title
-             FROM search_fts
-             WHERE entity_type = ? AND search_fts MATCH ?
+             FROM ${table}
+             WHERE ${table} MATCH ?
              LIMIT ? OFFSET ?`,
         )
-        .all(
-            entityType,
-            matchQuery,
-            Math.min(limit, SEARCH_MAX_MATCHES - offset),
-            offset,
-        ) as SearchRow[];
+        .all(matchQuery, Math.min(limit, SEARCH_MAX_MATCHES - offset), offset) as SearchRow[];
 
     return { rows, count: SEARCH_MAX_MATCHES, capped: true };
 };

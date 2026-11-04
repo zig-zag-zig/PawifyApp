@@ -53,8 +53,11 @@ const READER_CONTRACT: Record<string, string[]> = {
     _meta: ['key', 'value'],
 };
 
-/** Present only when the mirror's search index was built; search degrades to no results. */
-const SEARCH_TABLE = 'search_fts';
+/**
+ * Present only when the mirror's search index was built; without it search falls
+ * back to the API. One table per entity type — see `musicDbQueries.SEARCH_TABLES`.
+ */
+const SEARCH_TABLES = ['search_fts_artist', 'search_fts_release_group'] as const;
 
 const readColumns = (db: MusicDb, table: string): Set<string> => {
     const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
@@ -85,10 +88,10 @@ const assertReaderContract = (db: MusicDb): void => {
 };
 
 const hasSearchIndex = (db: MusicDb): boolean => {
-    const row = db
-        .prepare(`SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name=?`)
-        .get(SEARCH_TABLE);
-    return row !== undefined;
+    const statement = db.prepare(
+        `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name=?`,
+    );
+    return SEARCH_TABLES.every((table) => statement.get(table) !== undefined);
 };
 
 const openReadonly = (): MusicDb => {

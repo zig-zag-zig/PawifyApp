@@ -79,8 +79,17 @@ CREATE TABLE _meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-CREATE VIRTUAL TABLE search_fts USING fts5(
-    entity_type UNINDEXED,
+CREATE VIRTUAL TABLE search_fts_artist USING fts5(
+    entity_mbid UNINDEXED,
+    heading,
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+CREATE VIRTUAL TABLE search_fts_release_group USING fts5(
+    entity_mbid UNINDEXED,
+    heading,
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+CREATE VIRTUAL TABLE search_fts_release USING fts5(
     entity_mbid UNINDEXED,
     heading,
     tokenize = 'unicode61 remove_diacritics 2'
@@ -143,11 +152,13 @@ export const createMusicDbFixture = (seed: MusicDbSeed = {}): string => {
     }
 
     if (seed.search) {
-        const statement = db.prepare(
-            'INSERT INTO search_fts (entity_type, entity_mbid, heading) VALUES (?, ?, ?)',
-        );
         for (const row of seed.search) {
-            statement.run(row.entityType, row.entityId, row.heading);
+            const table =
+                row.entityType === 'artist' ? 'search_fts_artist' : 'search_fts_release_group';
+            db.prepare(`INSERT INTO ${table} (entity_mbid, heading) VALUES (?, ?)`).run(
+                row.entityId,
+                row.heading,
+            );
         }
     }
 
