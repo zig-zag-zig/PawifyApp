@@ -390,6 +390,8 @@ prepare_runtime_files() {
   # application container runs as the separate pawify user, so this must not use
   # /home/$APP_USER: that directory exists but is empty on the production host.
   replace_or_append_env "$env_path" "PAWIFY_MUSIC_DB_DIR" "/home/deploy/pawify-mb"
+  replace_or_append_env "$env_path" "PAWIFY_APP_UID" "1000"
+  replace_or_append_env "$env_path" "PAWIFY_APP_GID" "1000"
   replace_or_append_env "$env_path" "ASSET_CACHE_SUCCESS_TTL_HOURS" "720"
   replace_or_append_env "$env_path" "ASSET_CACHE_MISS_TTL_HOURS" "168"
   replace_or_append_env "$env_path" "PAWIFY_HOST_BIND_ADDRESS" "127.0.0.1"
