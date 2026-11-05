@@ -3,6 +3,7 @@ import { FlatList, ListRenderItem, Pressable, StyleSheet, Text, View } from 'rea
 import { InlineLink, Spinner } from '../../../components/ui';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { useContentReady } from '../../../hooks/useContentReady';
+import ScrollButtons, { useScrollAffordance } from '../../../components/ScrollAffordance';
 import type { ReleaseGroupSearchResultItem } from '../../../types/apiTypes';
 import { theme } from '../../../styles/theme';
 
@@ -101,6 +102,8 @@ const ReleaseGroupSearchResults = ({
             : []),
     ], [releaseGroups, canLoadMore, isLoading]);
 
+    const listRef = React.useRef<FlatList<ListItem> | null>(null);
+    const scroll = useScrollAffordance();
     const isInitialLoading = isLoading && releaseGroups.length === 0;
     const { isWaitingForContent, onContentReady } = useContentReady(
         isInitialLoading,
@@ -127,7 +130,11 @@ const ReleaseGroupSearchResults = ({
         return (
             <ReleaseGroupResultItem
                 releaseGroup={item.releaseGroup}
-                coverUrl={releaseGroupCovers?.[item.releaseGroup.id]}
+                coverUrl={
+                    pendingCoverIdSet.has(item.releaseGroup.id)
+                        ? undefined
+                        : releaseGroupCovers?.[item.releaseGroup.id]
+                }
                 isCoverPending={pendingCoverIdSet.has(item.releaseGroup.id)}
                 onReleaseGroupPress={onReleaseGroupPress}
             />
@@ -137,7 +144,10 @@ const ReleaseGroupSearchResults = ({
     return (
         <View style={styles.results}>
             <FlatList
+                ref={listRef}
                 data={listData}
+                onScroll={scroll.onScroll}
+                scrollEventThrottle={scroll.scrollEventThrottle}
                 keyExtractor={(item) =>
                     item.type === 'footer' ? 'release-search-load-more-footer' : item.releaseGroup.id
                 }
@@ -155,6 +165,13 @@ const ReleaseGroupSearchResults = ({
                 windowSize={11}
                 removeClippedSubviews={false}
                 onContentSizeChange={onContentReady}
+            />
+            <ScrollButtons
+                showScrollToTop={scroll.showScrollToTop}
+                showScrollToBottom={scroll.showScrollToBottom}
+                onScrollToTop={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+                onScrollToBottom={() => listRef.current?.scrollToEnd({ animated: true })}
+                bottomOffset={96}
             />
             <Spinner isLoading={isInitialLoading || isWaitingForContent} backdropVariant="strong" />
         </View>

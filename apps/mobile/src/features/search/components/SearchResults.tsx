@@ -3,6 +3,7 @@ import { FlatList, ListRenderItem, StyleSheet, View } from 'react-native';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
 import { InlineLink, Spinner } from '../../../components/ui';
 import { useContentReady } from '../../../hooks/useContentReady';
+import ScrollButtons, { useScrollAffordance } from '../../../components/ScrollAffordance';
 import { Artist } from '@pawify/shared';
 
 interface SearchResultsProps {
@@ -66,6 +67,8 @@ const SearchResults = ({
         ...artists.map((artist): SearchListItem => ({ type: 'artist', artist })),
         ...(canLoadMore || (isLoading && artists.length > 0) ? [{ type: 'footer' as const }] : []),
     ], [artists, canLoadMore, isLoading]);
+    const listRef = React.useRef<FlatList<SearchListItem> | null>(null);
+    const scroll = useScrollAffordance();
     const isInitialLoading = isLoading && artists.length === 0;
     const { isWaitingForContent, onContentReady } = useContentReady(
         isInitialLoading,
@@ -92,7 +95,14 @@ const SearchResults = ({
         return (
             <SearchResultItem
                 artist={item.artist}
-                profileImageUrl={artistProfileImages[item.artist.id]}
+                // While a profile-image task is still running, a cached `null` is not
+                // final: the worker may still find artwork. Passing undefined shows the
+                // pulsing placeholder instead of the app's generic no-image art.
+                profileImageUrl={
+                    pendingArtistImageIdSet.has(item.artist.id)
+                        ? undefined
+                        : artistProfileImages[item.artist.id]
+                }
                 isProfileImagePending={pendingArtistImageIdSet.has(item.artist.id)}
                 onArtistPress={onArtistPress}
             />
@@ -102,7 +112,10 @@ const SearchResults = ({
     return (
         <View style={styles.results}>
             <FlatList
+                ref={listRef}
                 data={listData}
+                onScroll={scroll.onScroll}
+                scrollEventThrottle={scroll.scrollEventThrottle}
                 keyExtractor={(item) => item.type === 'footer' ? 'search-load-more-footer' : item.artist.id}
                 extraData={{
                     artistProfileImages,
@@ -123,6 +136,13 @@ const SearchResults = ({
                 windowSize={11}
                 removeClippedSubviews={false}
                 onContentSizeChange={onContentReady}
+            />
+            <ScrollButtons
+                showScrollToTop={scroll.showScrollToTop}
+                showScrollToBottom={scroll.showScrollToBottom}
+                onScrollToTop={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+                onScrollToBottom={() => listRef.current?.scrollToEnd({ animated: true })}
+                bottomOffset={96}
             />
             <Spinner isLoading={isInitialLoading || isWaitingForContent} backdropVariant="strong" />
         </View>

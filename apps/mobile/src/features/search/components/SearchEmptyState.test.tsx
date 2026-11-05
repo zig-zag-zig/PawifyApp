@@ -21,12 +21,12 @@ import SearchEmptyState from './SearchEmptyState';
 describe('SearchEmptyState', () => {
     it('tells the user what the artists tab searches', () => {
         render(React.createElement(SearchEmptyState, { scope: 'artists' as SearchScope }));
-        expect(screen.getByText('Find an artist to follow')).toBeTruthy();
+        expect(screen.getByText('Search artists, releases, and tracks')).toBeTruthy();
     });
 
     it('tells the user what the releases tab searches', () => {
         render(React.createElement(SearchEmptyState, { scope: 'releases' as SearchScope }));
-        expect(screen.getByText('Find a release to explore')).toBeTruthy();
+        expect(screen.getByText('Search artists, releases, and tracks')).toBeTruthy();
     });
 
     it('renders the same guidance in compact mode (used above the history list)', () => {
@@ -36,6 +36,6 @@ describe('SearchEmptyState', () => {
                 compact: true,
             }),
         );
-        expect(screen.getByText('Find an artist to follow')).toBeTruthy();
+        expect(screen.getByText('Search artists, releases, and tracks')).toBeTruthy();
     });
 });

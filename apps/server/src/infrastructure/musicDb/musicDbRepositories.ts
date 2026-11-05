@@ -40,6 +40,7 @@ import {
     readReleaseToGroupIds,
     readReleaseRow,
     searchEntitiesWithBudget,
+    toFtsHeadingPhrase,
     toFtsQuery,
     type ExternalLinkRow,
 } from './musicDbQueries.js';
@@ -212,7 +213,15 @@ export const searchArtistsFromMirror = (
         return { artists: [], count: 0 };
     }
 
-    const result = searchEntitiesWithBudget(db, 'artist', matchQuery, limit, offset);
+    const result = searchEntitiesWithBudget(
+        db,
+        'artist',
+        matchQuery,
+        limit,
+        offset,
+        toFtsHeadingPhrase(query),
+        query,
+    );
     return {
         artists: result.rows.map((row) => ({ id: row.mbid, name: row.title })),
         count: result.count,
@@ -233,7 +242,14 @@ export const searchReleaseGroupsFromMirror = (
         return { releaseGroups: [], count: 0 };
     }
 
-    const result = searchEntitiesWithBudget(db, 'release_group', matchQuery, limit, offset);
+    const result = searchEntitiesWithBudget(
+        db,
+        'release_group',
+        matchQuery,
+        limit,
+        offset,
+        toFtsHeadingPhrase(query),
+    );
     return {
         releaseGroups: result.rows.map((row) => {
             const group = readReleaseGroupRow(db, row.mbid);

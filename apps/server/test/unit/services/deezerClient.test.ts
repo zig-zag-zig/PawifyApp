@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 
 import { installFetch } from '../../helpers/daprTestHelpers.js';
 
@@ -499,4 +499,11 @@ describe('deezerClient', () => {
             assert.equal(called, false);
         });
     });
+});
+
+// The quota test pauses the process-wide Deezer bucket; without clearing it every
+// later lookup in this file short-circuits as transient.
+afterEach(async () => {
+    const { getRateLimiter } = await import('../../../src/services/musicApi/rateLimiter.js');
+    getRateLimiter('deezer').resetBackoff();
 });

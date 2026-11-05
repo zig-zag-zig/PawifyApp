@@ -16,6 +16,11 @@ export type UnifiedSearchState = {
     trackCount: number;
     artistProfileImages: Record<string, string | null | undefined>;
     releaseGroupCovers: Record<string, string | null | undefined>;
+    trackCovers: Record<string, string | null | undefined>;
+    pendingTrackCoverIds: string[];
+    pendingArtistImageIds: string[];
+    pendingReleaseGroupCoverIds: string[];
+    hasSubmittedSearch: boolean;
     isLoading: boolean;
     offset: number;
     allResultsFetched: boolean;
@@ -32,6 +37,11 @@ export const createInitialUnifiedSearchState = (): UnifiedSearchState => ({
     trackCount: 0,
     artistProfileImages: {},
     releaseGroupCovers: {},
+    trackCovers: {},
+    pendingTrackCoverIds: [],
+    pendingArtistImageIds: [],
+    pendingReleaseGroupCoverIds: [],
+    hasSubmittedSearch: false,
     isLoading: false,
     offset: 0,
     allResultsFetched: false,

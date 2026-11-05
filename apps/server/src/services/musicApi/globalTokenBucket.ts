@@ -150,6 +150,22 @@ export class GlobalTokenBucket {
     }
 
     /**
+     * How long this provider is paused for, in ms (0 when it is not).
+     *
+     * Callers use this to fail fast instead of sitting inside `acquire` for the whole
+     * pause: a provider that just told us to back off cannot answer a new lookup, and
+     * waiting only delays the fallback that would have answered instead.
+     */
+    backoffRemainingMs(now = Date.now()): number {
+        return Math.max(0, this.backoffUntil - now);
+    }
+
+    /** Clears a pause. Only used by tests, which share one process-wide bucket. */
+    resetBackoff(): void {
+        this.backoffUntil = 0;
+    }
+
+    /**
      * Pauses only this instance, without publishing to shared state.
      *
      * Used when a provider asks for a pause longer than the cap: we do not want to

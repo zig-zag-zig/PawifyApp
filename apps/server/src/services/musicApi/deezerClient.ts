@@ -71,6 +71,10 @@ const lookupDeezerAlbumCover = async (
     deezerUrl: string,
     signal?: AbortSignal,
 ): Promise<DeezerAlbumLookup> => {
+    if (isDeezerPaused()) {
+        return { kind: 'transient' };
+    }
+
     const albumId = extractDeezerAlbumId(deezerUrl);
     if (!albumId) {
         return { kind: 'miss' };
@@ -359,10 +363,25 @@ type DeezerCandidate = {
     albums: number;
 };
 
+/**
+ * True while Deezer is paused after a quota error.
+ *
+ * Deezer's quota is per IP and returns HTTP 200 with error code 4, after which every
+ * call fails anyway. Sitting in the shared bucket for the whole pause serialised the
+ * fallback chain: one quota trip turned 30 cover lookups into 30 x 5s waits. Failing
+ * fast lets Tidal/CAA/Discogs answer immediately; the pause still applies to the next
+ * real attempt because the bucket keeps its backoff.
+ */
+const isDeezerPaused = (): boolean => getRateLimiter('deezer').backoffRemainingMs() > 0;
+
 const lookupDeezerArtist = async (
     deezerUrl: string,
     signal?: AbortSignal,
 ): Promise<DeezerLookup> => {
+    if (isDeezerPaused()) {
+        return { kind: 'transient' };
+    }
+
     const artistId = extractDeezerArtistId(deezerUrl);
     if (!artistId) {
         // Not a Deezer artist link at all, so there is nothing to retry.
