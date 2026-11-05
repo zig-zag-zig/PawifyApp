@@ -24,14 +24,14 @@ export const createGetNewReleasesUseCase =
     async (userId: string): Promise<GetNewReleasesResult> => {
         const snapshot = await newReleasesRepository.getNewReleasesSnapshot(userId);
         const releases = sortNewReleasesNewestFirst(flattenNewReleasesMap(snapshot.newReleasesMap));
-        const plan = await assetPlanner.planNewReleaseCovers({
-            userId,
-            pageEntries: snapshot.coverPageEntries,
-        });
+        // Cached covers only: the feed can be long, and planning here queued artwork
+        // for every entry before the screen was even opened. The client requests the
+        // page it is about to show via resolveNewReleaseCovers.
+        const releaseCovers = await assetPlanner.peekNewReleaseCovers(snapshot.coverPageEntries);
 
         return {
             releases,
-            releaseCovers: plan.resolved,
-            releaseCoverTaskId: plan.taskId,
+            releaseCovers,
+            releaseCoverTaskId: null,
         };
     };

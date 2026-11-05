@@ -76,6 +76,7 @@ const mocks = vi.hoisted(() => {
         // artistsApi object identity, and the real hook memoizes it.
         artistsApi: {
             getFollowing: vi.fn(),
+            resolveFollowingArtistImages: vi.fn(),
             waitForTaskResult: vi.fn(),
         },
     };
@@ -163,6 +164,10 @@ describe('useFollowingController (characterization)', () => {
         mocks.auth.user = { uid: 'user-1' };
         mocks.artistProfileImages = {};
         mocks.artistsApi.getFollowing.mockReset();
+        mocks.artistsApi.resolveFollowingArtistImages.mockReset().mockResolvedValue({
+            profileImageTaskId: null,
+            profileImages: {},
+        });
         mocks.artistsApi.waitForTaskResult.mockReset();
         EventService.resetForTesting();
     });
@@ -332,5 +337,41 @@ describe('useFollowingController (characterization)', () => {
 
         expect(result.current.followingArtists).toEqual([]);
         expect(result.current.hasLoadedFollowingOnce).toBe(false);
+    });
+
+    it('resolves artwork only for the requested page', async () => {
+        mocks.artistsApi.getFollowing.mockResolvedValue({
+            artists: [artistA, artistB],
+            profileImageTaskId: null,
+            profileImages: {},
+        });
+        mocks.artistsApi.resolveFollowingArtistImages.mockResolvedValueOnce({
+            profileImageTaskId: null,
+            profileImages: { 'artist-a': 'https://img.example/a.jpg' },
+        });
+
+        const { result } = await renderFollowing();
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(mocks.artistsApi.resolveFollowingArtistImages).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await result.current.requestArtistImages(['artist-a', 'artist-b']);
+        });
+
+        expect(mocks.artistsApi.resolveFollowingArtistImages).toHaveBeenCalledWith([
+            'artist-a',
+            'artist-b',
+        ]);
+        // artist-b is still unresolved, so it stays pending for its own page task.
+        expect(result.current.pendingArtistImageIds).toEqual(['artist-b']);
+
+        await act(async () => {
+            await result.current.requestArtistImages(['artist-a']);
+        });
+
+        expect(mocks.artistsApi.resolveFollowingArtistImages).toHaveBeenCalledTimes(1);
     });
 });

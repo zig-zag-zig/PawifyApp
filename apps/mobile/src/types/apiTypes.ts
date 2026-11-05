@@ -15,6 +15,11 @@ export interface FollowingResponse {
   profileImages: Record<string, string | null>;
 }
 
+export interface ResolveFollowingArtistImagesResponse {
+  profileImageTaskId: string | null;
+  profileImages: Record<string, string | null>;
+}
+
 export interface ArtistDetailsResponse {
   artist: Artist;
   profileImageTaskId: string | null;
@@ -65,6 +70,11 @@ export interface ReleaseResponse {
   profileImageTaskId: string | null;
   trackLyrics: Record<string, string | null>;
   profileImages: Record<string, string | null>;
+}
+
+export interface ResolveNewReleaseCoversResponse {
+  releaseCoverTaskId: string | null;
+  releaseCovers: Record<string, string | null>;
 }
 
 export interface NewReleasesResponse {

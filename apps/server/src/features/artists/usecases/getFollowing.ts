@@ -2,7 +2,6 @@ import { isArtistMetadataStale } from '../artistMetadataRefresh.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import type { ArtistMinimal } from '@pawify/shared';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
-import { artistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 import type { ArtistProfileImageLookup } from '../../../utils/types/taskTypes.js';
 import { mapArtistSummaryToProfileImageLookup } from '../domain/profileImageLookups.js';
 import type { ArtistReadUseCaseDependencies } from '../ports.js';
@@ -92,16 +91,14 @@ export const createGetFollowingUseCase =
             };
         });
 
-        const plan = await assetPlanner.planArtistProfileImages({
-            userId,
-            scope: 'following',
-            lookups: payload.artistLookups,
-            ttl: artistCacheTtlHours,
-        });
+        // Cached covers only. Planning here fetched artwork for every followed
+        // artist on every cold start, even if the Artists tab was never opened; the
+        // client now asks for the visible page through resolveFollowingArtistImages.
+        const profileImages = await assetPlanner.peekArtistProfileImages(payload.artistLookups);
 
         return {
             artists: payload.artists,
-            profileImages: plan.resolved,
-            profileImageTaskId: plan.taskId,
+            profileImages,
+            profileImageTaskId: null,
         };
     };

@@ -284,7 +284,7 @@ describe('artist use cases', () => {
     });
 
     describe('getFollowing', () => {
-        it('returns artists and queues profile image task', async () => {
+        it('returns artists without queueing profile images', async () => {
             const { createGetFollowingUseCase } =
                 await import('../src/features/artists/usecases/getFollowing.js');
             const fakeRequestDeduper = {
@@ -312,10 +312,15 @@ describe('artist use cases', () => {
                 | 'requestDeduper'
             > = {
                 assetPlanner: createDefaultAssetPlanner({
+                    // The feed must not plan images; resolveFollowingArtistImages does.
                     planArtistProfileImages: async ({ lookups, scope }) => {
                         plannedScope = scope;
                         plannedLookups = lookups;
-                        return { taskId: 'profile-task-1', resolved: {} };
+                        throw new Error('getFollowing must not plan profile images');
+                    },
+                    peekArtistProfileImages: async (lookups) => {
+                        plannedLookups = lookups;
+                        return {};
                     },
                 }),
                 artistDetailsGateway: {
@@ -361,12 +366,13 @@ describe('artist use cases', () => {
             assert.equal(result.artists.length, 2);
             assert.equal(result.artists[0]!.id, 'artist-1');
             assert.equal(result.artists[1]!.id, 'artist-2');
-            assert.equal(result.profileImageTaskId, 'profile-task-1');
-            assert.equal(plannedScope, 'following');
+            assert.equal(result.profileImageTaskId, null);
+            assert.deepEqual(result.profileImages, {});
+            assert.equal(plannedScope, '');
             assert.equal(plannedLookups.length, 2);
         });
 
-        it('returns cached profile images immediately with no task when all are cached', async () => {
+        it('returns cached profile images immediately with no task', async () => {
             const { createGetFollowingUseCase } =
                 await import('../src/features/artists/usecases/getFollowing.js');
             const fakeRequestDeduper = {
@@ -393,12 +399,9 @@ describe('artist use cases', () => {
                 | 'requestDeduper'
             > = {
                 assetPlanner: createDefaultAssetPlanner({
-                    planArtistProfileImages: async () => ({
-                        taskId: null,
-                        resolved: {
-                            'artist-1': 'https://img.example/one.jpg',
-                            'artist-2': 'https://img.example/two.jpg',
-                        },
+                    peekArtistProfileImages: async () => ({
+                        'artist-1': 'https://img.example/one.jpg',
+                        'artist-2': 'https://img.example/two.jpg',
                     }),
                 }),
                 artistDetailsGateway: {

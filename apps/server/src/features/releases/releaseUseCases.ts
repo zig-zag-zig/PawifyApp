@@ -5,6 +5,7 @@ import { releaseDependencies } from './infrastructure/releaseDependencies.js';
 import { createGetArtistReleasesUseCase } from './usecases/getArtistReleases.js';
 import { createGetArtistReleasesPageUseCase } from './usecases/getArtistReleasesPage.js';
 import { createGetNewReleasesUseCase } from './usecases/getNewReleases.js';
+import { createResolveNewReleaseCoversUseCase } from './usecases/resolveNewReleaseCovers.js';
 import { createGetReleaseUseCase } from './usecases/getRelease.js';
 import { createGetReleaseGroupReleasesUseCase } from './usecases/getReleaseGroupReleases.js';
 import { createRemoveNewReleasesUseCase } from './usecases/removeNewReleases.js';
@@ -55,6 +56,18 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
             {
                 getResultMetadata: (result) => ({
                     releaseCount: result.releases.length,
+                    releaseCoverTaskId: result.releaseCoverTaskId,
+                }),
+            },
+        ),
+        resolveNewReleaseCovers: withOperationLogging(
+            logger,
+            'resolveNewReleaseCovers',
+            createResolveNewReleaseCoversUseCase(dependencies),
+            {
+                getMetadata: (_userId, releaseIds) => ({ releaseCount: releaseIds.length }),
+                getResultMetadata: (result) => ({
+                    resolvedCount: Object.keys(result.releaseCovers).length,
                     releaseCoverTaskId: result.releaseCoverTaskId,
                 }),
             },

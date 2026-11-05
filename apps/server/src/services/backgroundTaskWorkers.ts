@@ -5,9 +5,9 @@ import {
 import { createLogger } from '../common/logging/logger.js';
 import { backgroundTaskConfig } from '../config/runtimeConfig.js';
 import { chunkArray, dedupeStrings } from '../common/utils/array.js';
-import { mapWithConcurrency } from '../utils/helpers/promisePool.js';
 import {
     fetchAndUpsertArtistReleaseGroupCovers,
+    fetchAndUpsertNewReleaseGroupCovers,
     fetchAndUpsertReleaseGroupReleaseCovers,
 } from './tasks/workers/coverTaskWorker.js';
 import { fetchAndUpsertTrackLyrics } from './tasks/workers/trackLyricsTaskWorker.js';
@@ -49,6 +49,16 @@ type QueueChunkedTaskOptions<T extends BackgroundTaskResultPayload, TChunk> = {
 };
 
 const SUBTASK_ITEM_LIMIT = backgroundTaskConfig.subtaskItemLimit;
+
+/**
+ * Chunk size for cover pages.
+ *
+ * Every surface now pages its images, so one request's covers should be one task:
+ * splitting a 60-group artist page into 30+30 halved the usable concurrency and
+ * pushed the page into two sequential waves. Cover work is bounded by the worker
+ * timeout, not by this number, so a whole page fits comfortably.
+ */
+const COVER_PAGE_CHUNK_SIZE = 120;
 
 const queueChunkedTask = <T extends BackgroundTaskResultPayload, TChunk>({
     userId,
@@ -109,6 +119,7 @@ const queueChunkedTask = <T extends BackgroundTaskResultPayload, TChunk>({
 
 const chunkReleaseGroupReleasePageEntries = (
     pageEntries: ReleaseGroupReleasesPageEntry[],
+    chunkSize = SUBTASK_ITEM_LIMIT,
 ): ReleaseGroupReleasesPageEntry[][] => {
     const chunks: ReleaseGroupReleasesPageEntry[][] = [];
     let currentChunk: ReleaseGroupReleasesPageEntry[] = [];
@@ -125,13 +136,10 @@ const chunkReleaseGroupReleasePageEntries = (
     };
 
     for (const entry of pageEntries) {
-        for (const releaseIdChunk of chunkArray(
-            dedupeStrings(entry.releaseIds),
-            SUBTASK_ITEM_LIMIT,
-        )) {
+        for (const releaseIdChunk of chunkArray(dedupeStrings(entry.releaseIds), chunkSize)) {
             if (
                 currentItemCount > 0 &&
-                currentItemCount + releaseIdChunk.length > SUBTASK_ITEM_LIMIT
+                currentItemCount + releaseIdChunk.length > chunkSize
             ) {
                 flushCurrentChunk();
             }
@@ -142,7 +150,7 @@ const chunkReleaseGroupReleasePageEntries = (
             });
             currentItemCount += releaseIdChunk.length;
 
-            if (currentItemCount >= SUBTASK_ITEM_LIMIT) {
+            if (currentItemCount >= chunkSize) {
                 flushCurrentChunk();
             }
         }
@@ -185,31 +193,9 @@ const submitNewReleaseCoversPage = (
     pageEntries: ReleaseGroupReleasesPageEntry[],
     ttl: number | undefined,
 ): void => {
-    session.submitPage(async (signal) => {
-        const covers: NewReleaseCoverTaskResult['covers'] = {};
-
-        // One release per entry would nest concurrency (groups x releases), so the
-        // page is flattened into independent (group, release) items and the worker's
-        // own bound applies to the whole list.
-        const items = pageEntries.flatMap((pageEntry) =>
-            dedupeStrings(pageEntry.releaseIds).map((releaseId) => ({
-                releaseGroupId: pageEntry.releaseGroupId,
-                releaseId,
-            })),
-        );
-
-        await mapWithConcurrency(items, 4, async (item) => {
-            const result = await fetchAndUpsertReleaseGroupReleaseCovers(
-                item.releaseGroupId,
-                [item.releaseId],
-                ttl,
-                signal,
-            );
-            Object.assign(covers, result.covers);
-        });
-
-        return { covers };
-    });
+    session.submitPage(
+        async (signal) => await fetchAndUpsertNewReleaseGroupCovers(pageEntries, ttl, signal),
+    );
 };
 
 const submitTrackLyricsPage = (
@@ -250,7 +236,7 @@ export const queueArtistReleaseGroupCoversTask = (
             artistId,
             covers: {},
         },
-        chunks: chunkArray(pageEntries, SUBTASK_ITEM_LIMIT),
+        chunks: chunkArray(pageEntries, COVER_PAGE_CHUNK_SIZE),
         submitChunk: (session, chunk) => {
             submitArtistReleaseGroupCoversPage(session, artistId, chunk, ttl);
         },
@@ -275,7 +261,7 @@ export const queueReleaseGroupReleaseCoversTask = (
             releaseGroupId,
             covers: {},
         },
-        chunks: chunkReleaseGroupReleasePageEntries(pageEntries),
+        chunks: chunkReleaseGroupReleasePageEntries(pageEntries, COVER_PAGE_CHUNK_SIZE),
         submitChunk: (session, chunk) => {
             for (const pageEntry of chunk) {
                 submitReleaseGroupReleaseCoversPage(session, pageEntry, ttl);
@@ -297,7 +283,7 @@ export const queueNewReleaseCoversTask = (
         initialResult: {
             covers: {},
         },
-        chunks: chunkReleaseGroupReleasePageEntries(pageEntries),
+        chunks: chunkReleaseGroupReleasePageEntries(pageEntries, COVER_PAGE_CHUNK_SIZE),
         submitChunk: (session, chunk) => {
             submitNewReleaseCoversPage(session, chunk, ttl);
         },

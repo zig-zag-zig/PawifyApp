@@ -1,7 +1,7 @@
 import React from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
-import { ScreenContainer } from '../../../components/ui';
+import { InlineLink, ScreenContainer } from '../../../components/ui';
 import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 import ReleaseItem from './ReleaseItem';
 
@@ -15,6 +15,7 @@ interface ReleasesViewProps {
     onBannerVisibilityChanged: (visible: boolean) => void;
     onRemoveSelected: (releaseIds: string[]) => void;
     onLoadMore: () => void;
+    hasMore: boolean;
     onReleasePressed: (release: NewReleaseListItem, isInSelectionMode: boolean, onSelect: () => void) => void;
     flatListRef: React.RefObject<FlatList<NewReleaseListItem> | null>;
     selectionManagerRef: React.RefObject<{ clearSelection: () => void } | null>;
@@ -30,6 +31,7 @@ const ReleasesView = ({
     onBannerVisibilityChanged,
     onRemoveSelected,
     onLoadMore,
+    hasMore,
     onReleasePressed,
     flatListRef,
     selectionManagerRef,
@@ -97,10 +99,13 @@ const ReleasesView = ({
             promptMessage="Are you sure you want to remove the selected releases?"
             selectionManagerRef={selectionManagerRef}
             flatListRef={flatListRef}
-            onEndReached={onLoadMore}
-            onEndReachedThreshold={0.5}
             initialNumToRender={10}
             windowSize={10}
+            footer={
+                hasMore ? (
+                    <InlineLink onPress={onLoadMore}>Load more</InlineLink>
+                ) : null
+            }
             promptConfirmText="Remove"
         />
     );

@@ -119,7 +119,9 @@ export const ENV = {
   sentryEnabled: Boolean(sentryDsn) && parseBooleanEnv(rawEnv.EXPO_PUBLIC_SENTRY_ENABLED, true),
   sentryTracesSampleRate: parseFloatEnv(rawEnv.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE, 0, 0, 1),
   taskResultNotificationWaitMs: parseNumberEnv(rawEnv.EXPO_PUBLIC_TASK_NOTIFICATION_WAIT_MS, 30000, 0),
-  taskResultPollIntervalMs: parseNumberEnv(rawEnv.EXPO_PUBLIC_TASK_POLL_INTERVAL_MS, 10000, 1000),
+  // Push is the primary path; this only governs the polling fallback. Batches finish
+    // in 0.25-2.5 s and getTaskResult costs 0-1 ms, so 5-10 s sat on finished work.
+    taskResultPollIntervalMs: parseNumberEnv(rawEnv.EXPO_PUBLIC_TASK_POLL_INTERVAL_MS, 1000, 1000),
   taskResultTimeoutMs: parseNumberEnv(rawEnv.EXPO_PUBLIC_TASK_TIMEOUT_MS, 120000, 0),
   imageCacheTimeoutMaxRetries: parseNumberEnv(rawEnv.EXPO_PUBLIC_IMAGE_CACHE_TIMEOUT_MAX_RETRIES, 3, 0),
   imageCacheTimeoutRetryBaseDelayMs: parseNumberEnv(rawEnv.EXPO_PUBLIC_IMAGE_CACHE_TIMEOUT_RETRY_BASE_DELAY_MS, 300, 0),

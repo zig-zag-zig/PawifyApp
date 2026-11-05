@@ -24,6 +24,7 @@ export function GenericList<T extends { id: string }>({
     onEndReachedThreshold,
     initialNumToRender,
     windowSize,
+    footer,
     promptConfirmText: removeConfirmationText,
 }: {
     items: T[];
@@ -43,6 +44,8 @@ export function GenericList<T extends { id: string }>({
     onEndReachedThreshold?: number;
     initialNumToRender?: number;
     windowSize?: number;
+    /** Rendered under the last row; used for the explicit "Load more" link. */
+    footer?: React.ReactNode;
     promptConfirmText: string;
 }) {
     const { showToast } = useToast();
@@ -78,6 +81,7 @@ export function GenericList<T extends { id: string }>({
                 initialNumToRender={initialNumToRender}
                 windowSize={windowSize}
                 onContentReady={onContentReady}
+                footer={footer}
             />
             <ConfirmationPrompt
                 visible={removeConfirmation.promptVisible}

@@ -31,5 +31,8 @@ export const createDefaultAssetPlanner = (
         taskId: 'task:profile-images',
         resolved: {},
     }),
+    // Nothing cached: feed requests must not queue work on their own.
+    peekArtistProfileImages: async () => ({}),
+    peekNewReleaseCovers: async () => ({}),
     ...overrides,
 });

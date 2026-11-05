@@ -3,10 +3,12 @@ import { FlatList, Text, View } from 'react-native';
 import { GenericList } from '../../../components/GenericList';
 import type { ArtistMinimal } from '@pawify/shared';
 import ArtistMinimalCard from '../../../components/ArtistMinimalCard';
-import { ScreenContainer } from '../../../components/ui';
+import { InlineLink, ScreenContainer } from '../../../components/ui';
 
 interface ArtistsViewProps {
     artists: ArtistMinimal[];
+    onLoadMore: () => void;
+    hasMore: boolean;
     artistProfileImages: Record<string, string | null | undefined>;
     pendingArtistImageIds: string[];
     isLoading: boolean;
@@ -21,6 +23,8 @@ interface ArtistsViewProps {
 
 const ArtistsView = ({
     artists,
+    onLoadMore,
+    hasMore,
     artistProfileImages,
     pendingArtistImageIds,
     isLoading,
@@ -92,6 +96,11 @@ const ArtistsView = ({
             bannerVisible={showBanner}
             setBannerVisible={onBannerVisibilityChanged}
             promptConfirmText="Unfollow"
+            footer={
+                hasMore ? (
+                    <InlineLink onPress={onLoadMore}>Load more</InlineLink>
+                ) : null
+            }
         />
     );
 };

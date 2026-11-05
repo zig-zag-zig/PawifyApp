@@ -26,6 +26,8 @@ export interface NewReleaseFeedContextValue {
   pendingReleaseCoverIds: string[];
   removeNewReleases: (ids: string[]) => void;
   ensureNewReleasesLoaded: () => void;
+  /** Resolves covers for the page currently on screen; never the whole feed. */
+  requestReleaseCovers: (releaseIds: string[]) => Promise<void>;
 }
 
 type RemovedReleaseSnapshot = {
@@ -83,6 +85,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
   const [taskId, setTaskId] = useState<string | null>(null);
   const taskIdRef = useRef<string | null>(null);
   const releaseCoverTaskIdRef = useRef<string | null>(null);
+  const requestedCoverIdsRef = useRef<Set<string>>(new Set());
   const initialLoadRequestedRef = useRef(false);
   const queuedFetchReasonRef = useRef<NewReleaseFeedFetchReason | null>(null);
   const removedReleasesRef = useRef<Map<string, RemovedReleaseSnapshot>>(new Map());
@@ -101,6 +104,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     setNewReleases([]);
     setPendingReleaseCoverIds([]);
     setHasLoadedOnce(false);
+    requestedCoverIdsRef.current.clear();
     setIsLoading(false);
     initialLoadRequestedRef.current = false;
     queuedFetchReasonRef.current = null;
@@ -136,12 +140,6 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     void executeTask(task);
   }, [addTask, executeTask, releaseApi, updateTaskId, userId]);
 
-  const getMissingCoverIds = useCallback((releases: NewReleaseListItem[]) =>
-    releases
-      .filter(release => release.cover_url === undefined)
-      .map(release => release.id),
-    []);
-
   const applyReleaseCovers = useCallback((covers: NullableStringMap) => {
     setNewReleases(prev => {
       const currentCovers = prev.reduce<NullableStringMap>((output, release) => {
@@ -164,40 +162,70 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     });
   }, []);
 
-  const resolveNewReleaseCovers = useCallback(async (
-    releaseCoverTaskId: string,
-    releaseIds: string[]
-  ) => {
-    releaseCoverTaskIdRef.current = releaseCoverTaskId;
-    setPendingReleaseCoverIds(releaseIds);
+  /**
+   * Resolves covers for one page of the feed.
+   *
+   * The feed response only carries covers that are already cached, so opening the
+   * screen does not queue artwork for rows the user may never scroll to.
+   */
+  const requestReleaseCovers = useCallback(async (releaseIds: string[]) => {
+    const idsToRequest = releaseIds.filter(releaseId =>
+      !requestedCoverIdsRef.current.has(releaseId)
+    );
 
-    await resolveNullableTaskMap<NewReleaseCoverTaskResult>({
-      taskId: releaseCoverTaskId,
-      expectedIds: releaseIds,
-      waitForTaskResult: releaseApi.waitForTaskResultById,
-      extractMap: extractNewReleaseCovers,
-      onResolvedValues: (covers, resolvedReleaseIds) => {
-        if (releaseCoverTaskIdRef.current !== releaseCoverTaskId) {
-          return;
-        }
+    if (idsToRequest.length === 0) {
+      return;
+    }
 
+    for (const releaseId of idsToRequest) {
+      requestedCoverIdsRef.current.add(releaseId);
+    }
+    setPendingReleaseCoverIds(prev => Array.from(new Set([...prev, ...idsToRequest])));
+
+    try {
+      const result = await releaseApi.resolveNewReleaseCovers(idsToRequest);
+      const covers = normalizeNullableStringMap(result.releaseCovers);
+
+      if (Object.keys(covers).length > 0) {
         applyReleaseCovers(covers);
+      }
+
+      const settledIds = idsToRequest.filter(releaseId => covers[releaseId] !== undefined);
+      if (settledIds.length > 0) {
         setPendingReleaseCoverIds(prev =>
-          prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
+          prev.filter(releaseId => !settledIds.includes(releaseId))
         );
-      },
-      onError: error => {
-        console.error('new-releases: resolve release cover task failed', error);
-      },
-      recreateTask: async () => {
-        const result = await releaseApi.getNewReleases();
-        // Merge replayed immediate covers so resolved values survive even when
-        // the replayed task id is null (all cached).
-        applyReleaseCovers(normalizeNullableStringMap(result.releaseCovers));
-        return result.releaseCoverTaskId;
-      },
-      recreateTaskDescription: 'getNewReleases.releaseCoverTaskId',
-    });
+      }
+
+      const stillPendingIds = idsToRequest.filter(releaseId => covers[releaseId] === undefined);
+      if (result.releaseCoverTaskId && stillPendingIds.length > 0) {
+        releaseCoverTaskIdRef.current = result.releaseCoverTaskId;
+        await resolveNullableTaskMap<NewReleaseCoverTaskResult>({
+          taskId: result.releaseCoverTaskId,
+          expectedIds: stillPendingIds,
+          waitForTaskResult: releaseApi.waitForTaskResultById,
+          extractMap: extractNewReleaseCovers,
+          onResolvedValues: (resolvedCovers, resolvedReleaseIds) => {
+            applyReleaseCovers(resolvedCovers);
+            setPendingReleaseCoverIds(prev =>
+              prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
+            );
+          },
+          onError: error => {
+            console.error('new-releases: resolve release cover task failed', error);
+          },
+          shouldFillMissingOnCompleted: taskResult => (taskResult.subtaskCount ?? 0) === 0,
+        });
+      }
+    } catch (error) {
+      console.error('new-releases: request release covers failed', error);
+      setPendingReleaseCoverIds(prev =>
+        prev.filter(releaseId => !idsToRequest.includes(releaseId))
+      );
+      for (const releaseId of idsToRequest) {
+        requestedCoverIdsRef.current.delete(releaseId);
+      }
+    }
   }, [applyReleaseCovers, releaseApi]);
 
   useEffect(() => {
@@ -236,13 +264,8 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
           }));
         setNewReleases(releases);
         setHasLoadedOnce(true);
-        const missingCoverIds = getMissingCoverIds(releases);
-        if (result?.releaseCoverTaskId && missingCoverIds.length > 0) {
-          void resolveNewReleaseCovers(result.releaseCoverTaskId, missingCoverIds);
-        } else {
-          releaseCoverTaskIdRef.current = null;
-          setPendingReleaseCoverIds([]);
-        }
+        // Covers arrive per page from the screen, not from this response.
+        releaseCoverTaskIdRef.current = null;
       }
       removeTask(task.id);
       if (taskIdRef.current === task.id) {
@@ -256,16 +279,7 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
         fetchNewReleases(queuedReason);
       }
     }
-  }, [
-    fetchNewReleases,
-    getMissingCoverIds,
-    hasLoadedOnce,
-    removeTask,
-    resolveNewReleaseCovers,
-    taskId,
-    tasks,
-    updateTaskId,
-  ]);
+  }, [fetchNewReleases, hasLoadedOnce, removeTask, taskId, tasks, updateTaskId]);
 
   const removeNewReleases = useCallback(async (ids: string[]) => {
     if (ids.length === 0) {
@@ -381,5 +395,6 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
     pendingReleaseCoverIds,
     removeNewReleases,
     ensureNewReleasesLoaded,
+    requestReleaseCovers,
   };
 }

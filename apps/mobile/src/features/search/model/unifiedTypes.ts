@@ -1,7 +1,7 @@
 import type { Artist } from '@pawify/shared';
 import type { ReleaseGroupSearchResultItem, UnifiedSearchResponse } from '../../../types/apiTypes';
 
-export type SearchFilter = 'all' | 'artists' | 'releases' | 'tracks';
+export type SearchFilter = 'artists' | 'releases' | 'tracks';
 
 export type UnifiedTrackResult = UnifiedSearchResponse['recordings'][number];
 
@@ -22,8 +22,15 @@ export type UnifiedSearchState = {
     pendingReleaseGroupCoverIds: string[];
     hasSubmittedSearch: boolean;
     isLoading: boolean;
-    offset: number;
-    allResultsFetched: boolean;
+    artistOffset: number;
+    releaseGroupOffset: number;
+    trackOffset: number;
+    artistsAllFetched: boolean;
+    releaseGroupsAllFetched: boolean;
+    tracksAllFetched: boolean;
+    isLoadingArtists: boolean;
+    isLoadingReleaseGroups: boolean;
+    isLoadingTracks: boolean;
 };
 
 export const createInitialUnifiedSearchState = (): UnifiedSearchState => ({
@@ -43,6 +50,13 @@ export const createInitialUnifiedSearchState = (): UnifiedSearchState => ({
     pendingReleaseGroupCoverIds: [],
     hasSubmittedSearch: false,
     isLoading: false,
-    offset: 0,
-    allResultsFetched: false,
+    artistOffset: 0,
+    releaseGroupOffset: 0,
+    trackOffset: 0,
+    artistsAllFetched: false,
+    releaseGroupsAllFetched: false,
+    tracksAllFetched: false,
+    isLoadingArtists: false,
+    isLoadingReleaseGroups: false,
+    isLoadingTracks: false,
 });

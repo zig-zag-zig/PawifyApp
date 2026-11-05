@@ -64,6 +64,15 @@ export type ReleaseArtistProfileImagesPlanInput = {
 
 export interface ArtistProfileImagesPlanner {
     planArtistProfileImages(input: ArtistProfileImagePlanInput): Promise<AssetPlanResult>;
+    /**
+     * Cached images only, never queues work.
+     *
+     * Feed requests use this so opening the app does not start provider lookups for
+     * rows the user has not scrolled to; the client asks for the visible page.
+     */
+    peekArtistProfileImages(
+        lookups: ArtistProfileImageLookup[],
+    ): Promise<Record<string, string | null>>;
 }
 
 export interface ArtistReleaseGroupCoversPlanner {
@@ -80,6 +89,10 @@ export interface ReleaseGroupReleaseCoversPlanner {
 
 export interface NewReleaseCoversPlanner {
     planNewReleaseCovers(input: NewReleaseCoversPlanInput): Promise<AssetPlanResult>;
+    /** Cached covers only, never queues work. See peekArtistProfileImages. */
+    peekNewReleaseCovers(
+        pageEntries: ReleaseGroupReleasesPageEntry[],
+    ): Promise<Record<string, string | null>>;
 }
 
 export interface ReleaseTrackLyricsPlanner {

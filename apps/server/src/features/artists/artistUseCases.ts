@@ -4,6 +4,7 @@ import { artistDependencies } from './infrastructure/artistDependencies.js';
 import { createFollowArtistUseCase } from './usecases/followArtist.js';
 import { createGetArtistDetailsUseCase } from './usecases/getArtistDetails.js';
 import { createGetFollowingUseCase } from './usecases/getFollowing.js';
+import { createResolveFollowingArtistImagesUseCase } from './usecases/resolveFollowingArtistImages.js';
 import { createSearchArtistsUseCase } from './usecases/searchArtists.js';
 import { createSearchReleaseGroupsUseCase } from './usecases/searchReleaseGroups.js';
 import { createSearchAllUseCase } from './usecases/searchAll.js';
@@ -60,6 +61,18 @@ export const createArtistUseCases = (
                 }),
             },
         ),
+        resolveFollowingArtistImages: withOperationLogging(
+            logger,
+            'resolveFollowingArtistImages',
+            createResolveFollowingArtistImagesUseCase(dependencies),
+            {
+                getMetadata: (_userId, artistIds) => ({ artistCount: artistIds.length }),
+                getResultMetadata: (result) => ({
+                    resolvedCount: Object.keys(result.profileImages).length,
+                    profileImageTaskId: result.profileImageTaskId,
+                }),
+            },
+        ),
         searchArtists: withOperationLogging(
             logger,
             'searchArtists',
@@ -83,7 +96,7 @@ export const createArtistUseCases = (
             'searchAll',
             createSearchAllUseCase(dependencies),
             {
-                getMetadata: (_userId, query, offset, limit) => ({ query, offset, limit }),
+                getMetadata: (_userId, query, offset, limit, category) => ({ query, offset, limit, category }),
                 getResultMetadata: (result) => ({
                     artistCount: result.artists.length,
                     releaseGroupCount: result.releaseGroups.length,

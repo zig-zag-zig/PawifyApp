@@ -52,25 +52,25 @@ const SearchPage = () => {
             trackCount={search.state.trackCount}
             artistProfileImages={search.state.artistProfileImages}
             pendingArtistImageIds={search.state.pendingArtistImageIds}
-            isArtistsLoading={search.state.isLoading}
-            canLoadMoreArtists={!search.state.allResultsFetched && search.state.artists.length > 0}
+            isArtistsLoading={search.state.isLoadingArtists}
+            canLoadMoreArtists={!search.state.artistsAllFetched && search.state.artists.length > 0}
             releaseGroups={search.state.releaseGroups}
             releaseGroupCovers={search.state.releaseGroupCovers}
             pendingReleaseGroupCoverIds={search.state.pendingReleaseGroupCoverIds}
-            isReleasesLoading={search.state.isLoading}
+            isReleasesLoading={search.state.isLoadingReleaseGroups}
             canLoadMoreReleaseGroups={
-                !search.state.allResultsFetched && search.state.releaseGroups.length > 0
+                !search.state.releaseGroupsAllFetched && search.state.releaseGroups.length > 0
             }
             tracks={search.state.tracks}
             trackCovers={search.state.trackCovers}
             pendingTrackCoverIds={search.state.pendingTrackCoverIds}
-            isTracksLoading={search.state.isLoading}
+            isTracksLoading={search.state.isLoadingTracks}
             onQueryChanged={search.onQueryChanged}
             onScopeChanged={setScope}
             onSubmitSearch={search.onSubmitSearch}
-            onLoadMoreArtists={search.onLoadMore}
-            onLoadMoreReleaseGroups={search.onLoadMore}
-            onLoadMoreTracks={search.onLoadMore}
+            onLoadMoreArtists={search.onLoadMoreArtists}
+            onLoadMoreReleaseGroups={search.onLoadMoreReleaseGroups}
+            onLoadMoreTracks={search.onLoadMoreTracks}
             onArtistPressed={search.onArtistPressed}
             onReleaseGroupPressed={search.onReleaseGroupPressed}
             onTrackPressed={search.onTrackPressed}

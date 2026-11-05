@@ -24,6 +24,9 @@ export type ReleaseWirePresenters = {
     getRelease: (
         result: NonNullable<Awaited<ReturnType<ReleaseUseCases['getRelease']>>>,
     ) => unknown;
+    resolveNewReleaseCovers: (
+        result: Awaited<ReturnType<ReleaseUseCases['resolveNewReleaseCovers']>>,
+    ) => unknown;
 };
 
 /** v1 exact old contract: task ids always present, no immediate maps. */
@@ -45,6 +48,8 @@ export const releasePresentersV1: ReleaseWirePresenters = {
         lyricsTaskId: result.lyricsTaskId,
         profileImageTaskId: result.profileImageTaskId,
     }),
+    // v1 has no page-scoped resolve; the old full-feed task id still drives covers.
+    resolveNewReleaseCovers: () => ({}),
 };
 
 /** v2: full cache-first response with immediate maps and nullable task ids. */
@@ -54,6 +59,7 @@ export const releasePresentersV2: ReleaseWirePresenters = {
     getArtistReleases: (result) => result,
     getReleaseGroupReleases: (result) => result,
     getRelease: (result) => result,
+    resolveNewReleaseCovers: (result) => result,
 };
 
 export const createReleaseHandlers = (
@@ -144,7 +150,22 @@ export const createReleaseHandlers = (
         },
     );
 
+    const resolveNewReleaseCoversHandler = authenticatedHandler(
+        '/resolveNewReleaseCovers',
+        async ({ req, res, userId }) => {
+            // One screen page at a time, capped so a client cannot queue the feed.
+            const releaseIds = requireStringArray(req.body, 'releaseIds', 100);
+
+            res.status(200).send(
+                presenters.resolveNewReleaseCovers(
+                    await releaseUseCases.resolveNewReleaseCovers(userId, releaseIds),
+                ),
+            );
+        },
+    );
+
     return {
+        resolveNewReleaseCoversHandler,
         getNewReleasesHandler,
         removeNewReleasesHandler,
         getArtistReleasesHandler,

@@ -2,6 +2,7 @@ import { useCallback, type RefObject } from 'react';
 import { resolveNullableTaskMap, type ResolveNullableTaskMapPhase } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { extractArtistProfileImages, extractReleaseGroupCovers } from '../../../utils/taskResultMaps';
 import type { TaskResultResponse } from '../../../types/apiTypes';
+import { ENV } from '../../../config/env';
 import type { WaitForTaskResultOptions } from '../../../services/taskResultWaiter';
 import {
     describeError,
@@ -35,8 +36,10 @@ type ArtistPageTaskResolversOptions = {
     ) => void;
 };
 
-const ARTIST_PAGE_TASK_NOTIFICATION_WAIT_MS = 2500;
-const ARTIST_PAGE_TASK_POLL_INTERVAL_MS = 5000;
+// Driven by the same env knobs as every other task wait, so a local build can
+// shorten them without editing code.
+const ARTIST_PAGE_TASK_NOTIFICATION_WAIT_MS = ENV.taskResultNotificationWaitMs;
+const ARTIST_PAGE_TASK_POLL_INTERVAL_MS = ENV.taskResultPollIntervalMs;
 
 function getTaskSource(prefix: string, phase: ResolveNullableTaskMapPhase): string {
     switch (phase) {

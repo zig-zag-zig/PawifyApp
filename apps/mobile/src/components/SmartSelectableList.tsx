@@ -26,6 +26,8 @@ type SmartSelectableListProps<T extends { id: string }> = {
     initialNumToRender?: number;
     windowSize?: number;
     onContentReady: () => void;
+    /** Rendered after the last row, e.g. the explicit "Load more" control. */
+    footer?: React.ReactNode;
 };
 
 /**
@@ -46,6 +48,7 @@ export function SmartSelectableList<T extends { id: string }>(
         initialNumToRender,
         windowSize,
         onContentReady,
+        footer,
     }: SmartSelectableListProps<T>
 ) {
     const {
@@ -104,6 +107,7 @@ export function SmartSelectableList<T extends { id: string }>(
                 scrollEventThrottle={scroll.scrollEventThrottle}
                 keyExtractor={item => item.id}
                 onContentSizeChange={onContentReady}
+                ListFooterComponent={footer ? <>{footer}</> : null}
             />
             {/* Above the action bar (which is ~68px) so a selection cannot hide it. */}
             <ScrollButtons
