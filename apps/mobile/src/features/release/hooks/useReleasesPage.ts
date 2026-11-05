@@ -61,6 +61,7 @@ export function useReleasesPage(): ReleasesPageController {
 
     const uiState: ReleasesPageUiState = {
         displayedReleases,
+        hasMore: canLoadMoreReleases(newReleases, state.page, RELEASES_PAGE_SIZE),
         allReleases: newReleases,
         pendingReleaseCoverIds,
         isLoading: isLoading || (!hasLoadedOnce && !hasRequestedInitialLoad),
@@ -81,6 +82,15 @@ export function useReleasesPage(): ReleasesPageController {
         onReleasePressed: (release: NewReleaseListItem, isInSelectionMode: boolean, onSelect: () => void) => {
             if (isInSelectionMode) {
                 onSelect();
+                return;
+            }
+
+            // A feed entry is a release *group*: one pressing opens straight to the
+            // release, several open the group screen (which lists them). This is the
+            // same rule the artist and search screens follow.
+            const releaseGroupId = release.releaseGroupId ?? null;
+            if (releaseGroupId && (release.releaseCount ?? 1) > 1) {
+                navigation.navigate('ReleaseGroup', { releaseGroupId });
                 return;
             }
 

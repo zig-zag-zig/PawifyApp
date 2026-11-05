@@ -102,7 +102,11 @@ export const createArtistHandlers = (
             const query = requireSearchQuery(req.body);
             const limit = optionalIntegerInRange(req.body, 'limit', 25, 1, 100);
             const offset = optionalNonNegativeInteger(req.body, 'offset', 0);
-            res.status(200).send(await artistUseCases.searchAll(userId, query, offset, limit));
+            const category = req.body && typeof req.body === 'object' &&
+                (req.body.category === 'artists' || req.body.category === 'releaseGroups' || req.body.category === 'tracks')
+                ? req.body.category
+                : undefined;
+            res.status(200).send(await artistUseCases.searchAll(userId, query, offset, limit, category));
         },
     );
 

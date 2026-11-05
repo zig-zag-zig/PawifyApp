@@ -96,7 +96,7 @@ export const createArtistUseCases = (
             'searchAll',
             createSearchAllUseCase(dependencies),
             {
-                getMetadata: (_userId, query, offset, limit) => ({ query, offset, limit }),
+                getMetadata: (_userId, query, offset, limit, category) => ({ query, offset, limit, category }),
                 getResultMetadata: (result) => ({
                     artistCount: result.artists.length,
                     releaseGroupCount: result.releaseGroups.length,

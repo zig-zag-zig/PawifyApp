@@ -10,8 +10,8 @@ import { sortArtistsByDisplayName } from '../domain/sortArtists';
 import type { ArtistsPageController, ArtistsPageUiState } from '../model/types';
 import { artistsReducer, createInitialArtistsState } from '../state/artistsReducer';
 
-/** Rows revealed per scroll, and the unit artwork is requested for. */
-const ARTISTS_PAGE_SIZE = 20;
+/** Rows revealed per "Load more", and the unit artwork is requested for. */
+const ARTISTS_PAGE_SIZE = 10;
 
 function getRemoveArtistsFailureMessage(artistNames: string[]): string {
     return artistNames.length === 1

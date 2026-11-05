@@ -8,6 +8,7 @@ export interface ReleasesPageState {
 export interface ReleasesPageUiState {
     displayedReleases: NewReleaseListItem[];
     allReleases: NewReleaseListItem[];
+    hasMore: boolean;
     pendingReleaseCoverIds: string[];
     isLoading: boolean;
     hasLoadedOnce: boolean;

@@ -28,6 +28,7 @@ const ReleasesPage = () => {
             onBannerVisibilityChanged={releasesPage.onBannerVisibilityChanged}
             onRemoveSelected={releasesPage.onRemoveSelected}
             onLoadMore={releasesPage.onLoadMore}
+            hasMore={releasesPage.state.hasMore}
             onReleasePressed={releasesPage.onReleasePressed}
             flatListRef={flatListRef}
             selectionManagerRef={selectionManagerRef}

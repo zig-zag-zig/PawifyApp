@@ -21,6 +21,7 @@ const ArtistsPage = () => {
         <ArtistsView
             artists={artistsPage.state.visibleArtists}
             onLoadMore={artistsPage.state.onLoadMoreArtists}
+            hasMore={artistsPage.state.hasMoreArtists}
             artistProfileImages={artistsPage.state.artistProfileImages}
             pendingArtistImageIds={artistsPage.state.pendingArtistImageIds}
             isLoading={artistsPage.state.isLoading}

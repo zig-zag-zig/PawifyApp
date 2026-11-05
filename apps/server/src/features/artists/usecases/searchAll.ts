@@ -6,13 +6,23 @@ export const createSearchAllUseCase =
         ArtistReadUseCaseDependencies,
         'artistSearchGateway' | 'assetPlanner' | 'requestDeduper'
     >) =>
-    async (userId: string, query: string, offset: number, limit: number) => {
+    async (
+        userId: string,
+        query: string,
+        offset: number,
+        limit: number,
+        category?: 'artists' | 'releaseGroups' | 'tracks',
+    ) => {
         const result = await requestDeduper.run(
-            `searchAll:${userId}:${query}:${limit}:${offset}`,
+            `searchAll:${userId}:${query}:${limit}:${offset}:${category ?? 'all'}`,
             async () => await Promise.all([
-                artistSearchGateway.searchArtists(userId, query, offset, limit),
-                artistSearchGateway.searchReleaseGroups(userId, query, offset, limit),
-                artistSearchGateway.searchRecordings
+                !category || category === 'artists'
+                    ? artistSearchGateway.searchArtists(userId, query, offset, limit)
+                    : Promise.resolve({ artists: [], count: 0 }),
+                !category || category === 'releaseGroups'
+                    ? artistSearchGateway.searchReleaseGroups(userId, query, offset, limit)
+                    : Promise.resolve({ releaseGroups: [], count: 0 }),
+                (!category || category === 'tracks') && artistSearchGateway.searchRecordings
                     ? artistSearchGateway.searchRecordings(query, offset, limit)
                     : Promise.resolve({ recordings: [], count: 0 }),
             ]),

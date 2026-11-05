@@ -1,5 +1,9 @@
 import { getReleaseCover, getReleaseGroupCover } from '../../coverArtService.js';
-import { aggregateProviderUrls, getReleaseProviderUrls } from '../../coverArt/coverArtLookup.js';
+import {
+    aggregateProviderUrls,
+    getReleaseProviderUrls,
+} from '../../coverArt/coverArtLookup.js';
+import { getReleaseIdsForGroupFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import { dedupeStrings } from '../../../common/utils/array.js';
@@ -8,6 +12,7 @@ import type {
     ReleaseGroupCoverTaskResult,
     ReleaseGroupPageEntry,
     ReleaseGroupReleaseCoverTaskResult,
+    ReleaseGroupReleasesPageEntry,
 } from '../../../utils/types/taskTypes.js';
 
 const logger = createLogger('services.backgroundTasks.coverArt');
@@ -56,6 +61,94 @@ export const fetchAndUpsertReleaseGroupReleaseCovers = async (
     };
 };
 
+/**
+ * New-release feed covers.
+ *
+ * The feed is one entry per release *group* (the representative release id is only
+ * there to open the release screen), so it resolves exactly like the artist screen:
+ * one group cover per entry. It previously called the release-cover worker once per
+ * release, which asked Cover Art Archive for `/release/<id>/front` — a much slower
+ * and less reliable endpoint than the group one, and repeated per pressing.
+ *
+ * The result is keyed by release id because that is what the client asks for when it
+ * wants "covers for these feed rows".
+ */
+export const fetchAndUpsertNewReleaseGroupCovers = async (
+    pageEntries: ReleaseGroupReleasesPageEntry[],
+    ttl: number | undefined,
+    signal?: AbortSignal,
+): Promise<{ covers: { [releaseId: string]: string | null | undefined } }> => {
+    const covers: { [releaseId: string]: string | null | undefined } = {};
+    const startedAt = Date.now();
+    let firstError: unknown;
+
+    const releaseIdsByGroup = new Map(
+        pageEntries.map((entry) => [
+            entry.releaseGroupId,
+            dedupeStrings(entry.releaseIds),
+        ]),
+    );
+    const providerUrlsByRelease = getReleaseProviderUrls(
+        Array.from(releaseIdsByGroup.values()).flat(),
+    );
+
+    logger.debug('new release cover batch started', {
+        releaseGroupCount: pageEntries.length,
+        releaseCount: Array.from(releaseIdsByGroup.values()).reduce(
+            (total, ids) => total + ids.length,
+            0,
+        ),
+        ttlHours: ttl ?? null,
+    });
+
+    await mapWithConcurrency(pageEntries, COVER_ART_REQUEST_CONCURRENCY, async (entry) => {
+        const releaseIds = releaseIdsByGroup.get(entry.releaseGroupId) ?? [];
+
+        try {
+            const cover = await getReleaseGroupCover(
+                undefined,
+                entry.releaseGroupId,
+                releaseIds,
+                ttl,
+                signal,
+                undefined,
+                aggregateProviderUrls(
+                    new Map(
+                        releaseIds.flatMap((releaseId) => {
+                            const urls = providerUrlsByRelease.get(releaseId);
+                            return urls ? [[releaseId, urls] as const] : [];
+                        }),
+                    ),
+                ),
+            );
+
+            // Every release in the group shares the group cover.
+            for (const releaseId of releaseIds) {
+                covers[releaseId] = cover.state.url;
+            }
+        } catch (error) {
+            if (!firstError) {
+                firstError = error;
+            }
+        }
+    });
+
+    if (firstError) {
+        logger.warn('new release cover batch completed with errors', {
+            releaseGroupCount: pageEntries.length,
+            durationMs: Date.now() - startedAt,
+        });
+        throw firstError;
+    }
+
+    logger.debug('new release cover batch completed', {
+        releaseGroupCount: pageEntries.length,
+        durationMs: Date.now() - startedAt,
+    });
+
+    return { covers };
+};
+
 export const fetchAndUpsertArtistReleaseGroupCovers = async (
     artistId: string,
     pageEntries: ReleaseGroupPageEntry[],
@@ -66,11 +159,21 @@ export const fetchAndUpsertArtistReleaseGroupCovers = async (
     const startedAt = Date.now();
     let firstError: unknown;
 
-    // Provider relations for every release on the page, read in one pass. The
-    // group's cover then resolves through Deezer → Tidal → CAA without touching
-    // SQLite per group.
+    // Search pages carry group ids but no release ids. The artist page carries the
+    // ids, which is why it was fast: it could use Deezer/Tidal before CAA. Previously
+    // an empty entry produced an empty provider-url aggregate and silently forced
+    // search straight to CAA for every group. Fill those ids from the mirror once for
+    // the page, exactly as the artist path does.
+    const releaseIdsByGroup = new Map<string, string[]>(
+        pageEntries.map((entry) => [
+            entry.releaseGroupId,
+            entry.releaseIds.length > 0
+                ? entry.releaseIds
+                : getReleaseIdsForGroupFromMirror(entry.releaseGroupId),
+        ]),
+    );
     const providerUrlsByRelease = getReleaseProviderUrls(
-        pageEntries.flatMap((entry) => entry.releaseIds),
+        Array.from(releaseIdsByGroup.values()).flat(),
     );
 
     logger.debug('release-group cover batch started', {
@@ -90,7 +193,7 @@ export const fetchAndUpsertArtistReleaseGroupCovers = async (
                 undefined,
                 aggregateProviderUrls(
                     new Map(
-                        entry.releaseIds.flatMap((releaseId) => {
+                        (releaseIdsByGroup.get(entry.releaseGroupId) ?? []).flatMap((releaseId) => {
                             const urls = providerUrlsByRelease.get(releaseId);
                             return urls ? [[releaseId, urls] as const] : [];
                         }),
