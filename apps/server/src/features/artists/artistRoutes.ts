@@ -14,6 +14,7 @@ export const createArtistRoutes = (
     router.post('/searchArtists', handlers.searchArtistsHandler);
     router.post('/searchAll', handlers.searchAllHandler);
     router.post('/searchReleaseGroups', handlers.searchReleaseGroupsHandler);
+    router.post('/resolveFollowingArtistImages', handlers.resolveFollowingArtistImagesHandler);
     router.post('/followArtist', handlers.followArtistHandler);
     router.post('/unfollowArtist', handlers.unfollowArtistHandler);
     router.post('/unfollowArtists', handlers.unfollowArtistsHandler);

@@ -38,6 +38,17 @@ export const createCacheFirstAssetPlanner = (deps: {
                 : null;
         return { taskId, resolved };
     },
+    peekArtistProfileImages: async (lookups) => {
+        const { resolved } = await deps.cacheAssetPartitioner.partitionArtistProfileImages(
+            lookups,
+        );
+        return resolved;
+    },
+    peekNewReleaseCovers: async (pageEntries) => {
+        const { resolved } =
+            await deps.cacheAssetPartitioner.partitionReleaseGroupReleaseCovers(pageEntries);
+        return resolved;
+    },
     planArtistReleaseGroupCovers: async ({ userId, scope, pageEntries, ttl }) => {
         const { resolved, pending } =
             await deps.cacheAssetPartitioner.partitionArtistReleaseGroupCovers(

@@ -10,6 +10,7 @@ export const createReleaseRoutes = (
     const handlers = createReleaseHandlers(releaseUseCases, presenters);
 
     router.get('/getNewReleases', handlers.getNewReleasesHandler);
+    router.post('/resolveNewReleaseCovers', handlers.resolveNewReleaseCoversHandler);
     router.post('/removeNewReleases', handlers.removeNewReleasesHandler);
     router.post('/getArtistReleases', handlers.getArtistReleasesHandler);
     router.post('/getReleaseGroupReleases', handlers.getReleaseGroupReleasesHandler);

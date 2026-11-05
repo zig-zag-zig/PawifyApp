@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useApiClient } from '../../../hooks/useApiClient';
 import type {
+    ResolveNewReleaseCoversResponse,
     NewReleasesResponse,
     ReleaseGroupReleasesResponse,
     ReleaseResponse,
@@ -23,6 +24,11 @@ export function useReleaseApi() {
                 }),
             getNewReleases: async () =>
                 await apiClient.request<NewReleasesResponse>('getNewReleases', { method: 'GET' }),
+            resolveNewReleaseCovers: async (releaseIds: string[]) =>
+                await apiClient.request<ResolveNewReleaseCoversResponse>(
+                    'resolveNewReleaseCovers',
+                    { body: { releaseIds } }
+                ),
             removeNewReleases: async (releaseIds: string[]) =>
                 await apiClient.requestText('removeNewReleases', {
                     body: await apiClient.withSourcePushToken({ releaseIds }),

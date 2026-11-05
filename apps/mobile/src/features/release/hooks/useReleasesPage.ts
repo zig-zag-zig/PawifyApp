@@ -25,6 +25,7 @@ export function useReleasesPage(): ReleasesPageController {
         pendingEventUpdateRef,
         eventVersion,
         pendingReleaseCoverIds,
+        requestReleaseCovers,
     } = useNewReleaseFeed();
     const [showBanner, setShowBanner] = useEventDrivenBanner(pendingEventUpdateRef, eventVersion);
     const [hasRequestedInitialLoad, setHasRequestedInitialLoad] = useState(false);
@@ -48,6 +49,15 @@ export function useReleasesPage(): ReleasesPageController {
     const displayedReleases = useMemo(() => {
         return paginateReleases(newReleases, state.page, RELEASES_PAGE_SIZE);
     }, [newReleases, state.page]);
+
+    // Covers are requested for the visible page only; the controller dedupes, so
+    // scrolling back does not re-fetch.
+    useEffect(() => {
+        if (displayedReleases.length === 0) {
+            return;
+        }
+        void requestReleaseCovers(displayedReleases.map(release => release.id));
+    }, [displayedReleases, requestReleaseCovers]);
 
     const uiState: ReleasesPageUiState = {
         displayedReleases,

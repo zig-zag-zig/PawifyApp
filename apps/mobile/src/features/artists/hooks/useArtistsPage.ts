@@ -1,5 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { useCache } from '../../../contexts/CacheContext';
 import { useFollowing } from '../state/FollowingContext';
@@ -9,6 +9,9 @@ import { useArtistsApi } from '../api/artistsApi';
 import { sortArtistsByDisplayName } from '../domain/sortArtists';
 import type { ArtistsPageController, ArtistsPageUiState } from '../model/types';
 import { artistsReducer, createInitialArtistsState } from '../state/artistsReducer';
+
+/** Rows revealed per scroll, and the unit artwork is requested for. */
+const ARTISTS_PAGE_SIZE = 20;
 
 function getRemoveArtistsFailureMessage(artistNames: string[]): string {
     return artistNames.length === 1
@@ -26,12 +29,16 @@ export function useArtistsPage(): ArtistsPageController {
         pendingEventUpdateRef,
         eventVersion,
         setFollowedArtist,
+        requestArtistImages,
     } = useFollowing();
     const { artistProfileImages } = useCache();
     const [showBanner, setShowBanner] = useEventDrivenBanner(pendingEventUpdateRef, eventVersion);
     const { unfollowArtists } = useArtistsApi();
     const { showToast } = useToast();
     const isRemovingRef = useRef(false);
+    // Client-side paging: the feed is fetched whole, but only a page is rendered and
+    // only the rendered page asks for artwork.
+    const [page, setPage] = useState(1);
 
     const [state, dispatch] = useReducer(
         artistsReducer,
@@ -48,7 +55,31 @@ export function useArtistsPage(): ArtistsPageController {
             type: 'artistsLoaded',
             artists: sortedArtists,
         });
+        setPage(1);
     }, [sortedArtists]);
+
+    const pageSize = ARTISTS_PAGE_SIZE;
+    const visibleArtists = useMemo(
+        () => state.artists.slice(0, page * pageSize),
+        [state.artists, page, pageSize]
+    );
+    const hasMoreArtists = visibleArtists.length < state.artists.length;
+
+    const onLoadMoreArtists = useCallback(() => {
+        if (!hasMoreArtists) {
+            return;
+        }
+        setPage(current => current + 1);
+    }, [hasMoreArtists]);
+
+    // Ask for artwork for what is on screen (plus the page just revealed). The
+    // controller dedupes, so re-running this on every render is harmless.
+    useEffect(() => {
+        if (visibleArtists.length === 0) {
+            return;
+        }
+        void requestArtistImages(visibleArtists.map(artist => artist.id));
+    }, [requestArtistImages, visibleArtists]);
 
     useEffect(() => {
         dispatch({
@@ -91,6 +122,9 @@ export function useArtistsPage(): ArtistsPageController {
 
     const uiState: ArtistsPageUiState = {
         artists: state.artists,
+        visibleArtists,
+        hasMoreArtists,
+        onLoadMoreArtists,
         artistProfileImages,
         pendingArtistImageIds,
         isLoading: state.isLoading && state.artists.length === 0,

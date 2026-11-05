@@ -13,7 +13,7 @@ import type {
 } from '../src/features/releases/ports.js';
 
 describe('release use cases', () => {
-    it('sorts new releases by date before queueing cover tasks', async () => {
+    it('sorts new releases by date and never plans covers in the feed request', async () => {
         let plannedEntries: Array<{ releaseGroupId: string; releaseIds: string[] }> = [];
         const state = createGetNewReleasesDependencies(
             {
@@ -39,8 +39,9 @@ describe('release use cases', () => {
             createDefaultAssetPlanner({
                 planNewReleaseCovers: async ({ pageEntries }) => {
                     plannedEntries = pageEntries;
-                    return { taskId: 'cover-task-1', resolved: {} };
+                    throw new Error('getNewReleases must not plan covers');
                 },
+                peekNewReleaseCovers: async () => ({}),
             }),
         );
         const useCase = createGetNewReleasesUseCase(state.dependencies);
@@ -51,13 +52,12 @@ describe('release use cases', () => {
             result.releases.map((release) => release.id),
             ['exact', 'older', 'unknown'],
         );
-        assert.equal(result.releaseCoverTaskId, 'cover-task-1');
-        assert.deepEqual(plannedEntries, [
-            { releaseGroupId: 'group-1', releaseIds: ['exact', 'older'] },
-        ]);
+        assert.equal(result.releaseCoverTaskId, null);
+        assert.deepEqual(result.releaseCovers, {});
+        assert.deepEqual(plannedEntries, []);
     });
 
-    it('returns cached covers immediately with a null task when all covers are cached', async () => {
+    it('returns cached covers immediately with a null task', async () => {
         const snapshot = {
             newReleasesMap: {
                 exact: createNewRelease({
@@ -71,9 +71,8 @@ describe('release use cases', () => {
         const state = createGetNewReleasesDependencies(
             snapshot,
             createDefaultAssetPlanner({
-                planNewReleaseCovers: async () => ({
-                    taskId: null,
-                    resolved: { exact: 'https://cover.example/exact.jpg' },
+                peekNewReleaseCovers: async () => ({
+                    exact: 'https://cover.example/exact.jpg',
                 }),
             }),
         );
@@ -85,7 +84,7 @@ describe('release use cases', () => {
         assert.equal(result.releaseCoverTaskId, null);
     });
 
-    it('returns cached covers immediately and queues only pending covers', async () => {
+    it('returns cached covers only, leaving pending covers to the page resolver', async () => {
         const snapshot = {
             newReleasesMap: {
                 exact: createNewRelease({
@@ -104,9 +103,8 @@ describe('release use cases', () => {
         const state = createGetNewReleasesDependencies(
             snapshot,
             createDefaultAssetPlanner({
-                planNewReleaseCovers: async () => ({
-                    taskId: 'cover-task-1',
-                    resolved: { exact: 'https://cover.example/exact.jpg' },
+                peekNewReleaseCovers: async () => ({
+                    exact: 'https://cover.example/exact.jpg',
                 }),
             }),
         );
@@ -115,7 +113,7 @@ describe('release use cases', () => {
         const result = await useCase('user-1');
 
         assert.deepEqual(result.releaseCovers, { exact: 'https://cover.example/exact.jpg' });
-        assert.equal(result.releaseCoverTaskId, 'cover-task-1');
+        assert.equal(result.releaseCoverTaskId, null);
     });
 
     it('fetches artist releases, queues cover tasks, and adds task user', async () => {

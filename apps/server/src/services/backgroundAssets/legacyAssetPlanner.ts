@@ -22,6 +22,10 @@ export const createLegacyAssetPlanner = (deps: {
         ),
         resolved: {},
     }),
+    // The legacy planner has no cache partitioner, so it cannot resolve anything
+    // without queueing; peeks return nothing and the caller queues explicitly.
+    peekArtistProfileImages: async () => ({}),
+    peekNewReleaseCovers: async () => ({}),
     planArtistReleaseGroupCovers: async ({ userId, scope, pageEntries, ttl }) => ({
         taskId: deps.releaseTaskQueue.queueArtistReleaseGroupCovers(
             userId,

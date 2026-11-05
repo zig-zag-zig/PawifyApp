@@ -20,6 +20,9 @@ export type ArtistWirePresenters = {
         result: Awaited<ReturnType<ArtistUseCases['searchReleaseGroups']>>,
     ) => unknown;
     searchAll: (result: Awaited<ReturnType<ArtistUseCases['searchAll']>>) => unknown;
+    resolveFollowingArtistImages: (
+        result: Awaited<ReturnType<ArtistUseCases['resolveFollowingArtistImages']>>,
+    ) => unknown;
 };
 
 /** v1 exact old contract: task ids always present, no immediate maps. */
@@ -43,6 +46,7 @@ export const artistPresentersV1: ArtistWirePresenters = {
         releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
     }),
     searchAll: (result) => result,
+    resolveFollowingArtistImages: (result) => result,
 };
 
 /** v2: full cache-first response with immediate maps and nullable task ids. */
@@ -52,6 +56,7 @@ export const artistPresentersV2: ArtistWirePresenters = {
     searchArtists: (result) => result,
     searchReleaseGroups: (result) => result,
     searchAll: (result) => result,
+    resolveFollowingArtistImages: (result) => result,
 };
 
 export const createArtistHandlers = (
@@ -116,6 +121,21 @@ export const createArtistHandlers = (
         },
     );
 
+    const resolveFollowingArtistImagesHandler = authenticatedHandler(
+        '/resolveFollowingArtistImages',
+        async ({ req, res, userId }) => {
+            // One screen page at a time; the cap keeps a client from queueing the
+            // whole follow list in a single request.
+            const artistIds = requireStringArray(req.body, 'artistIds', 100);
+
+            res.status(200).send(
+                presenters.resolveFollowingArtistImages(
+                    await artistUseCases.resolveFollowingArtistImages(userId, artistIds),
+                ),
+            );
+        },
+    );
+
     const followArtistHandler = authenticatedHandler(
         '/followArtist',
         async ({ req, res, userId }) => {
@@ -155,6 +175,7 @@ export const createArtistHandlers = (
         searchArtistsHandler,
         searchReleaseGroupsHandler,
         searchAllHandler,
+        resolveFollowingArtistImagesHandler,
         followArtistHandler,
         unfollowArtistHandler,
         unfollowArtistsHandler,

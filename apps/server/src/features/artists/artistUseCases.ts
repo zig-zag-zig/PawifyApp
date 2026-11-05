@@ -4,6 +4,7 @@ import { artistDependencies } from './infrastructure/artistDependencies.js';
 import { createFollowArtistUseCase } from './usecases/followArtist.js';
 import { createGetArtistDetailsUseCase } from './usecases/getArtistDetails.js';
 import { createGetFollowingUseCase } from './usecases/getFollowing.js';
+import { createResolveFollowingArtistImagesUseCase } from './usecases/resolveFollowingArtistImages.js';
 import { createSearchArtistsUseCase } from './usecases/searchArtists.js';
 import { createSearchReleaseGroupsUseCase } from './usecases/searchReleaseGroups.js';
 import { createSearchAllUseCase } from './usecases/searchAll.js';
@@ -56,6 +57,18 @@ export const createArtistUseCases = (
             {
                 getResultMetadata: (result) => ({
                     artistCount: result.artists.length,
+                    profileImageTaskId: result.profileImageTaskId,
+                }),
+            },
+        ),
+        resolveFollowingArtistImages: withOperationLogging(
+            logger,
+            'resolveFollowingArtistImages',
+            createResolveFollowingArtistImagesUseCase(dependencies),
+            {
+                getMetadata: (_userId, artistIds) => ({ artistCount: artistIds.length }),
+                getResultMetadata: (result) => ({
+                    resolvedCount: Object.keys(result.profileImages).length,
                     profileImageTaskId: result.profileImageTaskId,
                 }),
             },

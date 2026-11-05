@@ -23,6 +23,8 @@ export interface FollowingContextValue {
   eventVersion: number;
   refreshFollowing: () => void;
   setFollowedArtist: (artist: ArtistMinimal, isFollowing: boolean) => void;
+  /** Resolves artwork for the page currently on screen; never the whole list. */
+  requestArtistImages: (artistIds: string[]) => Promise<void>;
 }
 
 type FollowingFetchReason = 'user-change' | 'event' | 'foreground-resume' | 'manual-refresh';
@@ -45,6 +47,7 @@ export function useFollowingController(): FollowingContextValue {
   const followOverridesRef = useRef<Map<string, FollowingOverride>>(new Map());
   const overrideVersionRef = useRef(0);
   const fetchVersionsRef = useRef<Map<string, number>>(new Map());
+  const requestedImageIdsRef = useRef<Set<string>>(new Set());
   const userId = user?.uid ?? null;
 
   useEffect(() => {
@@ -96,36 +99,72 @@ export function useFollowingController(): FollowingContextValue {
     }
   }, [addTask, executeTask, artistsApi, removeTask, updateTaskId, userId]);
 
-  const resolveFollowingArtistImages = useCallback(async (
-    profileImageTaskId: string,
-    artistIds: string[]
-  ) => {
-    await resolveNullableTaskMap({
-      taskId: profileImageTaskId,
-      expectedIds: artistIds,
-      waitForTaskResult: artistsApi.waitForTaskResultById,
-      extractMap: extractArtistProfileImages,
-      onResolvedValues: (artistProfileImages, resolvedArtistIds) => {
-        setArtistProfileImages(prev => mergeNullableStringMaps(prev, artistProfileImages));
-        removePendingArtistImages(resolvedArtistIds);
-      },
-      onError: error => {
-        console.error('follow-context: resolve artist profile image task failed', error);
-      },
-      shouldFillMissingOnCompleted: taskResult => (taskResult.subtaskCount ?? 0) === 0,
-      recreateTask: async () => {
-        const result = await artistsApi.getFollowing();
-        // Merge replayed immediate maps so resolved values survive even when
-        // the replayed task id is null (all cached).
-        setArtistProfileImages(prev => mergeNullableStringMaps(
-          prev,
-          normalizeNullableStringMap(result.profileImages)
-        ));
-        return result.profileImageTaskId;
-      },
-      recreateTaskDescription: 'getFollowing.profileImageTaskId',
-    });
-  }, [artistsApi, removePendingArtistImages, setArtistProfileImages]);
+  /**
+   * Resolves artwork for one page of the list.
+   *
+   * The feed response only carries covers that are already cached, so nothing is
+   * fetched until the Artists screen asks for the rows it is about to render.
+   */
+  const requestArtistImages = useCallback(async (artistIds: string[]) => {
+    const current = artistProfileImagesRef.current;
+    const idsToRequest = artistIds.filter(artistId =>
+      current[artistId] === undefined && !requestedImageIdsRef.current.has(artistId)
+    );
+
+    if (idsToRequest.length === 0) {
+      return;
+    }
+
+    for (const artistId of idsToRequest) {
+      requestedImageIdsRef.current.add(artistId);
+    }
+    setPendingArtistImageIds(prev => mergeUniqueIds(prev, idsToRequest));
+
+    try {
+      const result = await artistsApi.resolveFollowingArtistImages(idsToRequest);
+      const resolved = normalizeNullableStringMap(result.profileImages);
+
+      if (Object.keys(resolved).length > 0) {
+        setArtistProfileImages(prev => mergeNullableStringMaps(prev, resolved));
+      }
+
+      const stillPendingIds = idsToRequest.filter(
+        artistId => resolved[artistId] === undefined
+      );
+      const settledIds = idsToRequest.filter(artistId => resolved[artistId] !== undefined);
+      if (settledIds.length > 0) {
+        removePendingArtistImages(settledIds);
+      }
+
+      if (result.profileImageTaskId && stillPendingIds.length > 0) {
+        await resolveNullableTaskMap({
+          taskId: result.profileImageTaskId,
+          expectedIds: stillPendingIds,
+          waitForTaskResult: artistsApi.waitForTaskResultById,
+          extractMap: extractArtistProfileImages,
+          onResolvedValues: (artistProfileImages, resolvedArtistIds) => {
+            setArtistProfileImages(prev => mergeNullableStringMaps(prev, artistProfileImages));
+            removePendingArtistImages(resolvedArtistIds);
+          },
+          onError: error => {
+            console.error('follow-context: resolve artist profile image task failed', error);
+          },
+          shouldFillMissingOnCompleted: taskResult => (taskResult.subtaskCount ?? 0) === 0,
+        });
+      }
+    } catch (error) {
+      console.error('follow-context: request artist images failed', error);
+      removePendingArtistImages(idsToRequest);
+      // Allow a later scroll to retry; nothing was resolved.
+      for (const artistId of idsToRequest) {
+        requestedImageIdsRef.current.delete(artistId);
+      }
+    }
+  }, [
+    artistsApi,
+    removePendingArtistImages,
+    setArtistProfileImages,
+  ]);
 
   const handleFollowingEvent = useCallback((eventName: string, options?: { force?: boolean }) => {
     if (eventName !== 'following') {
@@ -165,6 +204,7 @@ export function useFollowingController(): FollowingContextValue {
     setFollowingArtists([]);
     setHasLoadedFollowingOnce(false);
     setPendingArtistImageIds([]);
+    requestedImageIdsRef.current.clear();
     setIsLoadingFollowing(userId !== null);
 
     if (taskIdRef.current) {
@@ -242,7 +282,6 @@ export function useFollowingController(): FollowingContextValue {
 
           const result = task.result as {
             artists: ArtistMinimal[];
-            profileImageTaskId?: string | null;
             profileImages?: Record<string, string | null>;
           } | undefined;
           const appliedVersion = fetchVersionsRef.current.get(task.id) ?? overrideVersionRef.current;
@@ -261,24 +300,6 @@ export function useFollowingController(): FollowingContextValue {
             setArtistProfileImages(prev => mergeNullableStringMaps(prev, immediateProfileImages));
           }
 
-          if (result?.profileImageTaskId) {
-            const missingImageIds = artists
-              .map(artist => artist.id)
-              .filter(artistId => {
-                const currentValue = artistProfileImagesRef.current[artistId];
-                return currentValue === undefined && immediateProfileImages[artistId] === undefined;
-              });
-
-            if (missingImageIds.length > 0) {
-              setPendingArtistImageIds(prev => mergeUniqueIds(prev, missingImageIds));
-              void resolveFollowingArtistImages(result.profileImageTaskId, missingImageIds);
-            } else {
-              setPendingArtistImageIds([]);
-            }
-          } else {
-            setPendingArtistImageIds([]);
-          }
-
           const queuedReason = queuedFetchReasonRef.current;
           queuedFetchReasonRef.current = null;
           if (queuedReason) {
@@ -289,7 +310,7 @@ export function useFollowingController(): FollowingContextValue {
     }
 
     void checkTasks();
-  }, [fetchArtists, removeTask, resolveFollowingArtistImages, taskId, tasks, updateTaskId]);
+  }, [fetchArtists, removeTask, taskId, tasks, updateTaskId]);
 
   return {
     followingArtists,
@@ -300,5 +321,6 @@ export function useFollowingController(): FollowingContextValue {
     eventVersion,
     refreshFollowing,
     setFollowedArtist,
+    requestArtistImages,
   };
 }

@@ -76,6 +76,7 @@ const mocks = vi.hoisted(() => {
         // releaseApi object identity, and the real hook memoizes it.
         releaseApi: {
             getNewReleases: vi.fn(),
+            resolveNewReleaseCovers: vi.fn(),
             waitForTaskResult: vi.fn(),
             removeNewReleases: vi.fn(),
         },
@@ -175,6 +176,10 @@ describe('useNewReleaseFeedController (characterization)', () => {
         mocks.config.autoExecute = false;
         mocks.auth.user = { uid: 'user-1' };
         mocks.releaseApi.getNewReleases.mockReset();
+        mocks.releaseApi.resolveNewReleaseCovers.mockReset().mockResolvedValue({
+            releaseCoverTaskId: null,
+            releaseCovers: {},
+        });
         mocks.releaseApi.waitForTaskResult.mockReset();
         mocks.releaseApi.removeNewReleases.mockReset().mockResolvedValue(undefined);
         EventService.resetForTesting();
@@ -366,5 +371,34 @@ describe('useNewReleaseFeedController (characterization)', () => {
 
         expect(hook.result.current.newReleases).toEqual([]);
         expect(hook.result.current.hasLoadedOnce).toBe(false);
+    });
+
+    it('loads covers per page and does not re-request resolved rows', async () => {
+        const hook = await renderFeed();
+        await loadInitialReleases(hook);
+        const { result } = hook;
+        mocks.releaseApi.resolveNewReleaseCovers.mockResolvedValueOnce({
+            releaseCoverTaskId: null,
+            releaseCovers: { 'release-a': 'https://cover.example/a.jpg' },
+        });
+
+        await act(async () => {
+            await result.current.requestReleaseCovers(['release-a', 'release-b']);
+        });
+
+        expect(mocks.releaseApi.resolveNewReleaseCovers).toHaveBeenCalledWith([
+            'release-a',
+            'release-b',
+        ]);
+        expect(result.current.newReleases[0]?.cover_url).toBe('https://cover.example/a.jpg');
+        // release-b had no cached cover and no task id in this stub, so it stays
+        // pending: the client keeps its placeholder instead of rendering a miss.
+        expect(result.current.pendingReleaseCoverIds).toEqual(['release-b']);
+
+        await act(async () => {
+            await result.current.requestReleaseCovers(['release-a']);
+        });
+
+        expect(mocks.releaseApi.resolveNewReleaseCovers).toHaveBeenCalledTimes(1);
     });
 });

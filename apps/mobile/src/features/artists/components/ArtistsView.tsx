@@ -7,6 +7,7 @@ import { ScreenContainer } from '../../../components/ui';
 
 interface ArtistsViewProps {
     artists: ArtistMinimal[];
+    onLoadMore: () => void;
     artistProfileImages: Record<string, string | null | undefined>;
     pendingArtistImageIds: string[];
     isLoading: boolean;
@@ -21,6 +22,7 @@ interface ArtistsViewProps {
 
 const ArtistsView = ({
     artists,
+    onLoadMore,
     artistProfileImages,
     pendingArtistImageIds,
     isLoading,
@@ -92,6 +94,8 @@ const ArtistsView = ({
             bannerVisible={showBanner}
             setBannerVisible={onBannerVisibilityChanged}
             promptConfirmText="Unfollow"
+            onEndReached={onLoadMore}
+            onEndReachedThreshold={0.6}
         />
     );
 };
