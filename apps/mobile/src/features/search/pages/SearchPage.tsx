@@ -11,21 +11,30 @@ import {
 
 const SearchPage = () => {
     const search = useUnifiedSearch();
-    const [scope, setScope] = useState<SearchScope>('all');
+    const [scope, setScope] = useState<SearchScope>('artists');
     const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
 
     const refreshHistory = useCallback(async () => setHistory(await loadSearchHistory()), []);
-    useEffect(() => { void refreshHistory(); }, [refreshHistory]);
 
-    const onHistoryEntryPressed = useCallback((entry: SearchHistoryEntry) => {
-        setScope(entry.scope);
-        search.onQueryChanged(entry.query);
-        void search.onSubmitSearch(entry.query);
-    }, [search]);
-
-    const onHistoryEntryRemoved = useCallback((entry: SearchHistoryEntry) => {
-        void removeSearchHistoryEntry(entry.query, entry.scope).then(refreshHistory);
+    useEffect(() => {
+        void refreshHistory();
     }, [refreshHistory]);
+
+    const onHistoryEntryPressed = useCallback(
+        (entry: SearchHistoryEntry) => {
+            setScope(entry.scope);
+            search.onQueryChanged(entry.query);
+            void search.onSubmitSearch(entry.query);
+        },
+        [search],
+    );
+
+    const onHistoryEntryRemoved = useCallback(
+        (entry: SearchHistoryEntry) => {
+            void removeSearchHistoryEntry(entry.query, entry.scope).then(refreshHistory);
+        },
+        [refreshHistory],
+    );
 
     const onClearHistory = useCallback(() => {
         void clearSearchHistory(scope).then(refreshHistory);
@@ -35,34 +44,41 @@ const SearchPage = () => {
         <SearchView
             query={search.state.query}
             scope={scope}
+            hasSubmittedSearch={search.state.hasSubmittedSearch}
             history={history}
             artists={search.state.artists}
             artistCount={search.state.artistCount}
+            releaseGroupCount={search.state.releaseGroupCount}
+            trackCount={search.state.trackCount}
             artistProfileImages={search.state.artistProfileImages}
-            pendingArtistImageIds={[]}
+            pendingArtistImageIds={search.state.pendingArtistImageIds}
             isArtistsLoading={search.state.isLoading}
             canLoadMoreArtists={!search.state.allResultsFetched && search.state.artists.length > 0}
             releaseGroups={search.state.releaseGroups}
-            releaseGroupCount={search.state.releaseGroupCount}
             releaseGroupCovers={search.state.releaseGroupCovers}
-            pendingReleaseGroupCoverIds={[]}
+            pendingReleaseGroupCoverIds={search.state.pendingReleaseGroupCoverIds}
             isReleasesLoading={search.state.isLoading}
-            canLoadMoreReleaseGroups={!search.state.allResultsFetched && search.state.releaseGroups.length > 0}
+            canLoadMoreReleaseGroups={
+                !search.state.allResultsFetched && search.state.releaseGroups.length > 0
+            }
             tracks={search.state.tracks}
-            trackCount={search.state.trackCount}
+            trackCovers={search.state.trackCovers}
+            pendingTrackCoverIds={search.state.pendingTrackCoverIds}
             isTracksLoading={search.state.isLoading}
             onQueryChanged={search.onQueryChanged}
             onScopeChanged={setScope}
             onSubmitSearch={search.onSubmitSearch}
             onLoadMoreArtists={search.onLoadMore}
             onLoadMoreReleaseGroups={search.onLoadMore}
+            onLoadMoreTracks={search.onLoadMore}
             onArtistPressed={search.onArtistPressed}
             onReleaseGroupPressed={search.onReleaseGroupPressed}
+            onTrackPressed={search.onTrackPressed}
             onHistoryEntryPressed={onHistoryEntryPressed}
             onHistoryEntryRemoved={onHistoryEntryRemoved}
             onClearHistory={onClearHistory}
             hasSubmittedNoResults={
-                search.state.submittedQuery.trim().length >= 2 &&
+                search.state.hasSubmittedSearch &&
                 !search.state.isLoading &&
                 search.state.artists.length === 0 &&
                 search.state.releaseGroups.length === 0 &&

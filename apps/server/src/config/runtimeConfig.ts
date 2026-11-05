@@ -132,7 +132,9 @@ export const rateLimitConfig = {
     ),
     discogsStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_DISCOGS_STAGGER_MS, 50),
 
-    deezerBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_BURST, 40),
+    // Deezer allows 50 requests per 5s per IP (~10/s). A 40-request burst tripped it
+    // during cold cache fills, and each trip pauses the provider for 5s.
+    deezerBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_BURST, 10),
     deezerRefillPerSecond: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_REFILL_PER_SECOND, 8),
     deezerStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_STAGGER_MS, 0),
 

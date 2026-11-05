@@ -86,6 +86,49 @@ export const disambiguationValue = (value: string | null | undefined): string =>
 export const nullIfEmpty = (value: string | null | undefined): string | null =>
     value && value.length > 0 ? value : null;
 
+/**
+ * Exact heading-phrase form of a query, used as a ranking tier above bm25.
+ *
+ * bm25 only knows how rare a term is, so "jay z" ranked `Jay Ziskrout` and
+ * `Jay-Zeezer` above `JAŸ-Z` — the local index has no popularity signal to lean on.
+ * Matching the query as an adjacent phrase *in the heading* is the cheap stand-in:
+ * `heading:"jay z"` matches `Jay Z`, `JAY-Z` and `JAŸ-Z` (ÿ folds to y), while
+ * requiring the tokens to be a name in order rather than scattered across subtitle
+ * and relation text. Deliberately not prefix-matched: `heading:"jay z"*` also pulls
+ * in `Jay-Zeezer`, because the trailing token would match any `z…` word.
+ */
+/** Lower case, no diacritics, no punctuation: `JAŸ-Z` and `Jay Z` both become `jayz`. */
+export const normalizeHeading = (value: string): string =>
+    value
+        .normalize('NFD')
+        .replace(/\p{M}+/gu, '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '');
+
+/** Ranks a phrase match by how much of the query its heading actually is. */
+const headingTierScore = (heading: string, query: string): number => {
+    const normalised = normalizeHeading(heading);
+    const target = normalizeHeading(query);
+
+    if (target.length === 0) return 2;
+    if (normalised === target) return 0;
+    if (normalised.startsWith(target)) return 1;
+    return 2;
+};
+
+export const toFtsHeadingPhrase = (query: string): string => {
+    const tokens = query
+        .split(/[^\p{L}\p{N}]+/u)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 0);
+
+    if (tokens.length < 2) {
+        return '';
+    }
+
+    return `heading:"${tokens.join(' ').replace(/"/g, '""')}"`;
+};
+
 export const readArtistRow = (db: MusicDb, artistId: string) =>
     db
         .prepare(
@@ -560,17 +603,42 @@ export const searchEntities = (
     matchQuery: string,
     limit: number,
     offset: number,
+    phraseQuery = '',
+    rawQuery = '',
 ): SearchRow[] => {
     const table = searchTableFor(entityType);
-    return db
-        .prepare(
-            `SELECT entity_mbid AS mbid, heading AS title
-             FROM ${table}
-             WHERE ${table} MATCH ?
-             ORDER BY bm25(${table}) ASC, entity_mbid ASC
-             LIMIT ? OFFSET ?`,
-        )
-        .all(matchQuery, limit, offset) as SearchRow[];
+    const runQuery = (match: string, rowLimit: number, rowOffset: number): SearchRow[] =>
+        db
+            .prepare(
+                `SELECT entity_mbid AS mbid, heading AS title
+                 FROM ${table}
+                 WHERE ${table} MATCH ?
+                 ORDER BY bm25(${table}) ASC, entity_mbid ASC
+                 LIMIT ? OFFSET ?`,
+            )
+            .all(match, rowLimit, rowOffset) as SearchRow[];
+
+    // Offset paging stays on the recall query; the phrase tier only reorders the
+    // first page, so page 2 does not repeat or skip rows.
+    if (!phraseQuery || offset > 0) {
+        return runQuery(matchQuery, limit, offset);
+    }
+
+    // Pull more phrase hits than the page needs: bm25 orders them by term rarity,
+    // so the artist literally named `JAŸ-Z` can trail `Jay-Z & Ja Rule`. Re-sorting
+    // the (small) phrase set by how much of the query the heading is puts the real
+    // name first.
+    const phraseRows = fetchRankedPhraseRows(db, entityType, phraseQuery, rawQuery, limit * 3);
+    if (phraseRows.length === 0) {
+        return runQuery(matchQuery, limit, offset);
+    }
+
+    const seen = new Set(phraseRows.map((row) => row.mbid));
+    const rest = runQuery(matchQuery, limit + phraseRows.length, 0).filter(
+        (row) => !seen.has(row.mbid),
+    );
+
+    return [...phraseRows, ...rest].slice(0, limit);
 };
 
 export type SearchBudgetResult = {
@@ -592,18 +660,57 @@ export type SearchBudgetResult = {
  *   natural (rowid) order, which is deterministic for an unchanged index, so
  *   pagination stays consistent.
  */
+/** Phrase-tier hits for the first page, best "is this the name?" match first. */
+const fetchRankedPhraseRows = (
+    db: MusicDb,
+    entityType: 'artist' | 'release_group',
+    phraseQuery: string,
+    rawQuery: string,
+    rowLimit: number,
+): SearchRow[] => {
+    if (!phraseQuery) return [];
+
+    const table = searchTableFor(entityType);
+    const rankTarget = rawQuery.length > 0 ? rawQuery : phraseQuery;
+
+    return (
+        db
+            .prepare(
+                `SELECT entity_mbid AS mbid, heading AS title
+                 FROM ${table}
+                 WHERE ${table} MATCH ?
+                 ORDER BY bm25(${table}) ASC, entity_mbid ASC
+                 LIMIT ?`,
+            )
+            .all(phraseQuery, rowLimit) as SearchRow[]
+    ).sort(
+        (left, right) =>
+            headingTierScore(left.title, rankTarget) - headingTierScore(right.title, rankTarget),
+    );
+};
+
 export const searchEntitiesWithBudget = (
     db: MusicDb,
     entityType: 'artist' | 'release_group',
     matchQuery: string,
     limit: number,
     offset: number,
+    phraseQuery = '',
+    rawQuery = '',
 ): SearchBudgetResult => {
     const probed = countSearchResultsUpTo(db, entityType, matchQuery, SEARCH_COUNT_PROBE);
 
     if (probed < SEARCH_COUNT_PROBE) {
         return {
-            rows: searchEntities(db, entityType, matchQuery, limit, offset),
+            rows: searchEntities(
+                db,
+                entityType,
+                matchQuery,
+                limit,
+                offset,
+                phraseQuery,
+                rawQuery,
+            ),
             count: probed,
             capped: false,
         };
@@ -615,6 +722,15 @@ export const searchEntitiesWithBudget = (
     }
 
     const table = searchTableFor(entityType);
+    // The heading tier still applies here. `jay z` matches >10k artists on the recall
+    // query, so it lands in this branch, and skipping ranking returned Zooey-esque
+    // noise instead of Jay-Z purely because the query was broad.
+    const phraseRows = fetchRankedPhraseRows(db, entityType, phraseQuery, rawQuery, limit * 3);
+    const seen = new Set(phraseRows.map((row) => row.mbid));
+    const remaining = Math.min(
+        limit + phraseRows.length,
+        Math.max(0, SEARCH_MAX_MATCHES - offset),
+    );
     const rows = db
         .prepare(
             `SELECT entity_mbid AS mbid, heading AS title
@@ -622,7 +738,14 @@ export const searchEntitiesWithBudget = (
              WHERE ${table} MATCH ?
              LIMIT ? OFFSET ?`,
         )
-        .all(matchQuery, Math.min(limit, SEARCH_MAX_MATCHES - offset), offset) as SearchRow[];
+        .all(matchQuery, remaining, offset)
+        .filter((row) => !seen.has((row as SearchRow).mbid)) as SearchRow[];
 
-    return { rows, count: SEARCH_MAX_MATCHES, capped: true };
+    return {
+        // Page one leads with the phrase tier; later pages exclude what it already
+        // showed instead of repeating it.
+        rows: offset === 0 ? [...phraseRows, ...rows].slice(0, limit) : rows.slice(0, limit),
+        count: SEARCH_MAX_MATCHES,
+        capped: true,
+    };
 };

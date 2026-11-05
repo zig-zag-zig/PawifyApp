@@ -26,28 +26,37 @@ export const InlineLink = ({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={1}
-      style={[
-        styles.inlineLink,
-        centered && { alignItems: 'center' },
-        isLoading && localStyles.loading,
-      ]}
+      style={[styles.inlineLink, centered && localStyles.centered]}
     >
-      <Text style={[styles.inlineLinkText, style, isLoading && localStyles.loadingText]}>
-        {children}
-      </Text>
-      {isLoading && <ActivityIndicator size="small" color={inlineLinkColor} />}
+      {/* The spinner is positioned outside the text's layout box, so the label stays
+          exactly where it is whether or not a page is being fetched. Appending it to
+          the row pushed the centred label left. */}
+      <View style={localStyles.row}>
+        <Text style={[styles.inlineLinkText, style]}>{children}</Text>
+        {isLoading && (
+          <View style={localStyles.spinnerSlot} pointerEvents="none">
+            <ActivityIndicator size="small" color={inlineLinkColor} />
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 };
 
 const localStyles = StyleSheet.create({
-  loading: {
+  centered: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
   },
-  loadingText: {
-    marginLeft: 14,
-    marginRight: 8,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  spinnerSlot: {
+    position: 'absolute',
+    left: '100%',
+    top: 0,
+    bottom: 0,
+    marginLeft: 8,
+    justifyContent: 'center',
   },
 });

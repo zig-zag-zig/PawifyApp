@@ -17,11 +17,14 @@ interface SearchEmptyStateProps {
  * of rendering an empty screen. Deliberately plain: a muted icon and a single
  * line. With history above it, it centres in the space that is left over.
  */
+/**
+ * Empty-state copy is deliberately not per-tab: tabs are hidden until a search has
+ * run, and the search itself is type-agnostic.
+ */
 const CONTENT_BY_SCOPE: Record<SearchScope, { icon: React.ComponentProps<typeof MaterialIcons>['name']; label: string }> = {
-    all: { icon: 'search', label: 'Search artists, releases, and tracks' },
-    artists: { icon: 'person-search', label: 'Find an artist to follow' },
-    releases: { icon: 'album', label: 'Find a release to explore' },
-    tracks: { icon: 'music-note', label: 'Find a track to play' },
+    artists: { icon: 'search', label: 'Search artists, releases, and tracks' },
+    releases: { icon: 'search', label: 'Search artists, releases, and tracks' },
+    tracks: { icon: 'search', label: 'Search artists, releases, and tracks' },
 };
 
 const SearchEmptyState = ({ scope, compact = false, noResults = false }: SearchEmptyStateProps) => {

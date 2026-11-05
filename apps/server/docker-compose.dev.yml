@@ -4,6 +4,10 @@ services:
             context: ../..
             dockerfile: apps/server/Dockerfile
             target: build
+        # The dev image keeps /repo/packages/shared owned by root, and the predev hook
+        # runs `npm install` there. Run the dev container as root so local `npm run dev`
+        # works; production uses the non-root runtime image.
+        user: root
         working_dir: /repo/apps/server
         command: npm run dev
         volumes:
@@ -15,9 +19,13 @@ services:
             - ../../packages/shared/src:/repo/packages/shared/src
             - ../../packages/shared/index.ts:/repo/packages/shared/index.ts
             - ${PAWIFY_SECRETS_DIR:-./secrets/local}:/var/pawify/secrets:ro
+            # Local mirror so dev behaves like prod (writable: SQLite WAL needs the
+            # -shm/-wal side files).
+            - ${PAWIFY_MUSIC_DB_DIR:-/var/tmp/mbforge}:/var/pawify/music
         environment:
             NODE_ENV: development
             PORT: 10000
+            MUSIC_DB_PATH: ${MUSIC_DB_PATH:-/var/pawify/music/fts-test.db}
         depends_on:
             pawify-dapr:
                 condition: service_started

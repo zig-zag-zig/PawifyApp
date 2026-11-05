@@ -24,13 +24,13 @@ const renderPlaceholder = (scope: SearchScope): string | null => {
 };
 
 describe('SearchInput', () => {
-    it('prompts for artists on the artists tab', () => {
-        expect(renderPlaceholder('artists')).toBe('Search artists');
+    it('prompts for every searchable type, because search is type-agnostic', () => {
+        expect(renderPlaceholder('artists')).toBe('Search artists, releases, tracks');
     });
 
     it('prompts for releases on the releases tab', () => {
         // The input is shared by both tabs, so the placeholder must follow the
         // active tab instead of always saying "Search artists".
-        expect(renderPlaceholder('releases')).toBe('Search releases');
+        expect(renderPlaceholder('releases')).toBe('Search artists, releases, tracks');
     });
 });

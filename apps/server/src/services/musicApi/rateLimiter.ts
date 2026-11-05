@@ -85,6 +85,16 @@ export class RateLimiter {
         this.backoffUntil = Math.max(this.backoffUntil, Date.now() + ms);
     }
 
+    /** This pool only backs off locally, so the remaining pause is purely local. */
+    backoffRemainingMs(now = Date.now()): number {
+        return Math.max(0, this.backoffUntil - now);
+    }
+
+    /** Clears a pause. Only used by tests, which share one process-wide pool. */
+    resetBackoff(): void {
+        this.backoffUntil = 0;
+    }
+
     /** Mirrors GlobalTokenBucket.setLocalBackoff; this pool is already per-process. */
     setLocalBackoff(ms: number) {
         this.setBackoff(ms);

@@ -103,6 +103,16 @@ export interface UnifiedSearchResponse {
     id: string;
     title: string;
     'artist-credit': ArtistCredit[];
+    /** One release the recording appears on, used for its cover and the tap target. */
+    release: {
+      id: string;
+      title: string;
+      releaseGroupId: string | null;
+      date: string | null;
+    } | null;
   }>;
   recordingCount: number;
+  /** Covers for the releases the track results sit on, keyed by release id. */
+  releaseCovers?: Record<string, string | null>;
+  releaseCoverTaskId?: string | null;
 }

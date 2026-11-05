@@ -2,6 +2,7 @@ import type { RequestDeduperPort } from '../../common/request/requestDeduper.js'
 import type {
     ArtistProfileImagesPlanner,
     ArtistReleaseGroupCoversPlanner,
+    ReleaseGroupReleaseCoversPlanner,
 } from '../../services/backgroundAssets/plannerTypes.js';
 import type { Artist } from '@pawify/shared';
 import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
@@ -102,8 +103,13 @@ type ArtistSharedUseCaseDependencies = {
 };
 
 export type ArtistReadUseCaseDependencies = ArtistSharedUseCaseDependencies & {
-    /** Search needs profile images; release-group search needs group covers. */
-    assetPlanner: ArtistProfileImagesPlanner & ArtistReleaseGroupCoversPlanner;
+    /**
+     * Search needs profile images, group covers, and — for track results — the
+     * cover of the release each recording sits on.
+     */
+    assetPlanner: ArtistProfileImagesPlanner &
+        ArtistReleaseGroupCoversPlanner &
+        ReleaseGroupReleaseCoversPlanner;
     requestDeduper: RequestDeduperPort;
 };
 

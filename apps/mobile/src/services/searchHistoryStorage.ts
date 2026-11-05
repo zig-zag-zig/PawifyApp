@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const STORAGE_KEY = 'pawify.searchHistory.v1';
 const MAX_ENTRIES = 15;
 
-export type SearchScope = 'all' | 'artists' | 'releases' | 'tracks';
+export type SearchScope = 'artists' | 'releases' | 'tracks';
 
 export interface SearchHistoryEntry {
     query: string;

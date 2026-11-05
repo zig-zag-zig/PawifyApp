@@ -12,11 +12,12 @@ interface SearchInputProps {
 
 // The placeholder names what the active tab searches, so it is never wrong
 // about what typing here will look for.
+// Search is type-agnostic: one query covers artists, release groups and tracks, and
+// the tabs only filter results afterwards. The placeholder must not promise otherwise.
 const PLACEHOLDER_BY_SCOPE: Record<SearchScope, string> = {
-    all: 'Search everywhere',
-    artists: 'Search artists',
-    releases: 'Search releases',
-    tracks: 'Search tracks',
+    artists: 'Search artists, releases, tracks',
+    releases: 'Search artists, releases, tracks',
+    tracks: 'Search artists, releases, tracks',
 };
 
 const SearchInput = ({ query, scope, onChangeText, onSubmitEditing }: SearchInputProps) => {

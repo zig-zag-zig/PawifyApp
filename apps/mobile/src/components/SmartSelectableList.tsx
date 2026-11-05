@@ -3,6 +3,7 @@ import { Animated, FlatList } from 'react-native';
 import { useAnimatedDelete } from '../hooks/useAnimatedDelete';
 import { useSelectionManager } from '../hooks/useSelectionManager';
 import AnimatedActionBar from './AnimatedActionBar';
+import ScrollButtons, { useScrollAffordance } from './ScrollAffordance';
 
 export type SelectableCardRenderProps<T extends { id: string }> = {
     item: T;
@@ -57,6 +58,7 @@ export function SmartSelectableList<T extends { id: string }>(
         animationRefs,
         handleRemoveSelected,
     } = useAnimatedDelete(items, onRemoveSelected);
+    const scroll = useScrollAffordance();
 
     useImperativeHandle(selectionManagerRef, () => ({
         clearSelection,
@@ -98,9 +100,18 @@ export function SmartSelectableList<T extends { id: string }>(
                 windowSize={windowSize}
                 contentContainerStyle={{ paddingBottom: 14 }}
                 showsVerticalScrollIndicator={false}
-                scrollEventThrottle={16}
+                onScroll={scroll.onScroll}
+                scrollEventThrottle={scroll.scrollEventThrottle}
                 keyExtractor={item => item.id}
                 onContentSizeChange={onContentReady}
+            />
+            {/* Above the action bar (which is ~68px) so a selection cannot hide it. */}
+            <ScrollButtons
+                showScrollToTop={scroll.showScrollToTop}
+                showScrollToBottom={scroll.showScrollToBottom}
+                onScrollToTop={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}
+                onScrollToBottom={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                bottomOffset={isInSelectionMode ? 96 : 28}
             />
         </>
     );

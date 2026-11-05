@@ -12,12 +12,15 @@ import type { ArtistUseCaseDependencies } from './ports.js';
 import type {
     ArtistProfileImagesPlanner,
     ArtistReleaseGroupCoversPlanner,
+    ReleaseGroupReleaseCoversPlanner,
 } from '../../services/backgroundAssets/plannerTypes.js';
 
 const logger = createLogger('features.artists');
 
 export const createArtistUseCases = (
-    assetPlanner: ArtistProfileImagesPlanner & ArtistReleaseGroupCoversPlanner,
+    assetPlanner: ArtistProfileImagesPlanner &
+        ArtistReleaseGroupCoversPlanner &
+        ReleaseGroupReleaseCoversPlanner,
 ) => {
     const dependencies: ArtistUseCaseDependencies = {
         ...artistDependencies,

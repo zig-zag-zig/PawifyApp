@@ -32,6 +32,34 @@ export const createSearchAllUseCase =
             ttl: transientArtistCacheTtlHours,
         });
 
+        // Track results have no artwork of their own, so the release each recording
+        // sits on is resolved through the same release-cover task: one grouped plan
+        // for the whole page instead of a lookup per track.
+        const trackReleasesByGroup = new Map<string, string[]>();
+        for (const recording of recordings.recordings) {
+            const release = recording.release;
+            if (!release?.releaseGroupId) {
+                continue;
+            }
+
+            const releaseIds = trackReleasesByGroup.get(release.releaseGroupId) ?? [];
+            releaseIds.push(release.id);
+            trackReleasesByGroup.set(release.releaseGroupId, releaseIds);
+        }
+
+        const trackCoverPlan =
+            trackReleasesByGroup.size === 0
+                ? { resolved: {}, taskId: null }
+                : await assetPlanner.planReleaseGroupReleaseCovers({
+                      userId,
+                      releaseGroupId: `searchAll:${query}:${limit}:${offset}`,
+                      pageEntries: Array.from(trackReleasesByGroup, ([releaseGroupId, releaseIds]) => ({
+                          releaseGroupId,
+                          releaseIds,
+                      })),
+                      ttl: transientArtistCacheTtlHours,
+                  });
+
         return {
             artists: artists.artists,
             artistCount: artists.count,
@@ -43,5 +71,7 @@ export const createSearchAllUseCase =
             releaseGroupCoverTaskId: releasePlan.taskId,
             recordings: recordings.recordings,
             recordingCount: recordings.count,
+            releaseCovers: trackCoverPlan.resolved,
+            releaseCoverTaskId: trackCoverPlan.taskId,
         };
     };
