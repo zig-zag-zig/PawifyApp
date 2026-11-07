@@ -317,7 +317,6 @@ export const getTidalArtistImage = async (
     return (named ?? candidates[0]!).url;
 };
 
-
 /** Extracts the numeric Tidal album id from a MusicBrainz url-rel. */
 export const extractTidalAlbumId = (url: string): string | null => {
     try {
@@ -332,10 +331,7 @@ export const extractTidalAlbumId = (url: string): string | null => {
     }
 };
 
-type TidalAlbumLookup =
-    | { kind: 'image'; url: string }
-    | { kind: 'miss' }
-    | { kind: 'transient' };
+type TidalAlbumLookup = { kind: 'image'; url: string } | { kind: 'miss' } | { kind: 'transient' };
 
 const lookupTidalAlbumCover = async (
     tidalUrl: string,

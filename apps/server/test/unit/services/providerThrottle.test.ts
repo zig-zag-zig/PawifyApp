@@ -52,7 +52,10 @@ describe('providers that publish no rate-limit headers', () => {
         const { RateLimiter, applyRateLimitHeaders } = await importRateLimiter();
         const limiter = new RateLimiter(1, 0);
 
-        assert.equal(applyRateLimitHeaders(new Response(null, { status: 200 }), limiter, 'tidal'), 0);
+        assert.equal(
+            applyRateLimitHeaders(new Response(null, { status: 200 }), limiter, 'tidal'),
+            0,
+        );
         assert.equal(limiter.backoffUntil, 0);
     });
 
@@ -82,7 +85,8 @@ describe('tidal throttle fast-fail', () => {
             return new Response(null, { status: 404 });
         }) as typeof fetch;
 
-        const { getTidalAlbumImage } = await import('../../../src/services/musicApi/tidalClient.js');
+        const { getTidalAlbumImage } =
+            await import('../../../src/services/musicApi/tidalClient.js');
         const { getRateLimiter } = await importRateLimiter();
 
         assert.equal(await getTidalAlbumImage(['https://tidal.com/album/566586812']), undefined);

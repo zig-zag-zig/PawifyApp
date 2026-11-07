@@ -33,7 +33,7 @@ export const MAX_TIMEOUT_MS = 2 ** 31 - 1;
  *   quota errors, and the window cleared in ~6s.
  * - Tidal (`api.tidal.com`): a throttle is HTTP 429 with `content-length: 0` and
  *   only CloudFront headers — again no `Retry-After` and no `X-RateLimit-*`.
- * 
+ *
  * Reading those headers for these providers can therefore only ever return
  * nothing, so the reads are skipped and the body/status fallbacks below are the
  * authoritative signal. This is what keeps a quota trip from silently disabling
@@ -75,7 +75,10 @@ const RATE_LIMIT_CONFIG = {
     // token and returns no Retry-After to recover gracefully. The default 10
     // req/s is the fastest rate proven clean and sits at 50% of the measured
     // ceiling, leaving headroom for a burst arriving on top of steady traffic.
-    tidal: { maxConcurrent: rateLimitConfig.tidalMaxConcurrent, delayMs: rateLimitConfig.tidalDelayMs },
+    tidal: {
+        maxConcurrent: rateLimitConfig.tidalMaxConcurrent,
+        delayMs: rateLimitConfig.tidalDelayMs,
+    },
     // Artwork HEAD probes hit resources.tidal.com, a different host with its own
     // limits. A separate pool stops them queueing behind artist API calls.
     // Measured: 200 HEADs at concurrency 20 (~175/s) returned zero non-200s, so
