@@ -34,6 +34,12 @@ beforeEach(async () => {
     const { clearDaprSecretCache } =
         await import('../../../src/infrastructure/dapr/daprSecrets.js');
     clearDaprSecretCache();
+
+    // A Tidal 429 now pauses the process-wide pool for a minute, because the real
+    // API blocks the shared token for minutes and sends no Retry-After to wait
+    // out. Tests share that one pool, so each one must start unpaused.
+    const { getRateLimiter } = await import('../../../src/services/musicApi/rateLimiter.js');
+    getRateLimiter('tidal').resetBackoff();
 });
 
 describe('tidalClient', () => {

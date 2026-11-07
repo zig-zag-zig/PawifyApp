@@ -21,20 +21,65 @@ export type ExternalService =
 // oversized wait into a tight timer storm. Never schedule beyond this.
 export const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
+/**
+ * Providers whose responses were measured to carry no rate-limit headers at all.
+ *
+ * Measured 2026-11-07 from a residential IP against the real APIs:
+ *
+ * - Deezer (`api.deezer.com`): a tripped quota is HTTP 200 with
+ *   `{"error":{"code":4,"message":"Quota limit exceeded"}}`. The complete
+ *   response header set for that reply is Apache/CORS/cookie headers only — no
+ *   `Retry-After`, no `X-RateLimit-*`. 80 requests at concurrency 40 produced 26
+ *   quota errors, and the window cleared in ~6s.
+ * - Tidal (`api.tidal.com`): a throttle is HTTP 429 with `content-length: 0` and
+ *   only CloudFront headers — again no `Retry-After` and no `X-RateLimit-*`.
+ * 
+ * Reading those headers for these providers can therefore only ever return
+ * nothing, so the reads are skipped and the body/status fallbacks below are the
+ * authoritative signal. This is what keeps a quota trip from silently disabling
+ * backoff through a header that never arrives.
+ */
+const SERVICES_WITHOUT_RATE_LIMIT_HEADERS: ReadonlySet<ExternalService> = new Set([
+    'deezer',
+    'deezerimages',
+    'tidal',
+    'tidalimages',
+]);
+
+/**
+ * Backoff applied from a response status alone, for providers that publish no
+ * reset time anywhere in the response.
+ *
+ * Tidal: a 429 is not a per-request throttle. Once tripped the token is blocked
+ * for minutes and every further request 429s, so continuing to fire requests
+ * both wastes them and risks extending the block. Measured: 40 req/s tripped it
+ * after ~103 successful requests, and the block had still not cleared after a
+ * cumulative 78s of probing. 60s is a floor — if the block outlasts it the next
+ * 429 re-arms another window, so the loop self-heals without extending a ban.
+ */
+const STATUS_THROTTLE_BACKOFF_MS: Partial<Record<ExternalService, number>> = {
+    tidal: 60_000,
+};
+
 const RATE_LIMIT_CONFIG = {
     // Default pool for services without a dedicated limiter below (expo, other).
     // MusicBrainz, Discogs and Deezer use the shared token buckets instead.
     default: { maxConcurrent: 1, delayMs: musicApiConfig.musicBrainzDelayMs },
     genius: { maxConcurrent: 30, delayMs: 0 },
     coverartarchive: { maxConcurrent: 40, delayMs: 0 },
-    // The Tidal API is reached with a shared community token, so serialize it.
-    // The Tidal API is reached with a shared community token. Measured headroom
-    // is high (76 req/sec returned no 429s), but the token is not ours, so this
-    // stays deliberately modest while still allowing more than one call in
-    // flight. One-at-a-time serialized every Tidal fallback in a batch.
-    tidal: { maxConcurrent: 3, delayMs: 50 },
+    // The Tidal API is reached with a shared community token. Measured headroom:
+    // 10 req/s sustained for 10s and 20 req/s sustained for 10s both completed
+    // with zero 429s; 40 req/s tripped it after ~103 requests and then stayed
+    // blocked for minutes. A tripped Tidal limit is therefore far more expensive
+    // than a slow one: it takes the whole Tidal source offline for the shared
+    // token and returns no Retry-After to recover gracefully. The default 10
+    // req/s is the fastest rate proven clean and sits at 50% of the measured
+    // ceiling, leaving headroom for a burst arriving on top of steady traffic.
+    tidal: { maxConcurrent: rateLimitConfig.tidalMaxConcurrent, delayMs: rateLimitConfig.tidalDelayMs },
     // Artwork HEAD probes hit resources.tidal.com, a different host with its own
     // limits. A separate pool stops them queueing behind artist API calls.
+    // Measured: 200 HEADs at concurrency 20 (~175/s) returned zero non-200s, so
+    // this pool has large headroom and needs no throttle.
     tidalimages: { maxConcurrent: 5, delayMs: 0 },
     // Deezer artwork probes hit cdn-images.dzcdn.net, another separate host.
     deezerimages: { maxConcurrent: 10, delayMs: 0 },
@@ -350,37 +395,44 @@ export const applyRateLimitHeaders = (
 ): number => {
     let backoffMs = 0;
 
-    const retryAfter = response.headers.get('retry-after');
-    if (retryAfter) {
-        const retryAfterMsRaw = /^\d+$/.test(retryAfter) ? parseInt(retryAfter, 10) * 1000 : 0;
-        const retryAfterMs =
-            service === 'musicbrainz' && retryAfterMsRaw > 0
-                ? retryAfterMsRaw + musicApiConfig.musicBrainzRetryAfterBufferMs
-                : retryAfterMsRaw;
-        if (retryAfterMs > 0) {
-            backoffMs = Math.max(backoffMs, retryAfterMs);
+    if (!SERVICES_WITHOUT_RATE_LIMIT_HEADERS.has(service)) {
+        const retryAfter = response.headers.get('retry-after');
+        if (retryAfter) {
+            const retryAfterMsRaw = /^\d+$/.test(retryAfter) ? parseInt(retryAfter, 10) * 1000 : 0;
+            const retryAfterMs =
+                service === 'musicbrainz' && retryAfterMsRaw > 0
+                    ? retryAfterMsRaw + musicApiConfig.musicBrainzRetryAfterBufferMs
+                    : retryAfterMsRaw;
+            if (retryAfterMs > 0) {
+                backoffMs = Math.max(backoffMs, retryAfterMs);
+            }
         }
+
+        const discogsRemaining = response.headers.get('x-discogs-ratelimit-remaining');
+        const discogsReset = response.headers.get('x-ratelimit-reset');
+        backoffMs = addRemainingBackoff(
+            'discogs',
+            rateLimiter,
+            discogsRemaining,
+            discogsReset,
+            backoffMs,
+        );
+
+        const genericRemaining = response.headers.get('x-ratelimit-remaining');
+        const genericReset = response.headers.get('x-ratelimit-reset');
+        backoffMs = addRemainingBackoff(
+            service,
+            rateLimiter,
+            genericRemaining,
+            genericReset,
+            backoffMs,
+        );
     }
 
-    const discogsRemaining = response.headers.get('x-discogs-ratelimit-remaining');
-    const discogsReset = response.headers.get('x-ratelimit-reset');
-    backoffMs = addRemainingBackoff(
-        'discogs',
-        rateLimiter,
-        discogsRemaining,
-        discogsReset,
-        backoffMs,
-    );
-
-    const genericRemaining = response.headers.get('x-ratelimit-remaining');
-    const genericReset = response.headers.get('x-ratelimit-reset');
-    backoffMs = addRemainingBackoff(
-        service,
-        rateLimiter,
-        genericRemaining,
-        genericReset,
-        backoffMs,
-    );
+    const statusBackoffMs = STATUS_THROTTLE_BACKOFF_MS[service] ?? 0;
+    if (statusBackoffMs > 0 && response.status === 429) {
+        backoffMs = Math.max(backoffMs, statusBackoffMs);
+    }
 
     if (service === 'musicbrainz' && isMusicBrainzRateLimitedStatus(response.status)) {
         backoffMs = Math.max(backoffMs, musicApiConfig.musicBrainzMinRateLimitWaitMs);
