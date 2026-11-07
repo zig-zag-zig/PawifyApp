@@ -2,7 +2,7 @@ import { createLogger } from '../../common/logging/logger.js';
 import { getDeezerAlbumImage } from './deezerClient.js';
 import { getTidalAlbumImage } from './tidalClient.js';
 import { getCoverArtArchiveUrl } from './coverArtArchiveClient.js';
-import { lookupMirrorImage, type MirrorImage } from './mirrorEntityImages.js';
+import { lookupMirrorReleaseCover } from './mirrorEntityImages.js';
 import type { EntityImageService } from '../../infrastructure/musicDb/entityImageRepository.js';
 import type { ProviderValueState, ReleaseImageProvider } from './types.js';
 
@@ -59,9 +59,10 @@ const mirroredSource = (service: EntityImageService): ReleaseImageProvider | und
     return undefined;
 };
 
-const resolvedMirrorResolution = (
-    mirrored: Extract<MirrorImage, { kind: 'resolved' }>,
-): ReleaseImageResolution | null => {
+const resolvedMirrorResolution = (mirrored: {
+    url: string;
+    service: EntityImageService;
+}): ReleaseImageResolution | null => {
     const source = mirroredSource(mirrored.service);
     if (!source) {
         return null;
@@ -84,29 +85,16 @@ const missingMirrorResolution = (): ReleaseImageResolution => ({
 /**
  * Artwork the mirror already answered for this release, or null to run the chain.
  *
- * The release's own row wins; its group's row is the same fallback the live chain
- * gets from the Cover Art Archive group endpoint. A confirmed miss on one of them
- * is only returned when the other has nothing better, so an artist pressing with
- * no art still inherits its group cover.
+ * Shares the release/group precedence with `fetchReleaseCover`, so the two paths
+ * cannot drift: a release with no art still inherits its group's cover.
  */
 const resolveMirroredReleaseImage = (lookup: ReleaseImageLookup): ReleaseImageResolution | null => {
-    const releaseMirror = lookupMirrorImage('release', lookup.releaseId);
-    const groupMirror = lookupMirrorImage('release_group', lookup.releaseGroupId);
+    const mirrored = lookupMirrorReleaseCover(lookup.releaseId, lookup.releaseGroupId);
 
-    if (releaseMirror.kind === 'resolved') {
-        return resolvedMirrorResolution(releaseMirror);
+    if (mirrored.kind === 'resolved') {
+        return resolvedMirrorResolution(mirrored);
     }
-    if (groupMirror.kind === 'resolved') {
-        return resolvedMirrorResolution(groupMirror);
-    }
-
-    // A confirmed miss is only authoritative together with the group verdict: a
-    // pressing with no art inherits its group's cover, so an absent group row must
-    // still let the chain probe the group endpoint once.
-    if (releaseMirror.kind === 'missing' && groupMirror.kind !== 'none') {
-        return missingMirrorResolution();
-    }
-    if (releaseMirror.kind === 'none' && groupMirror.kind === 'missing') {
+    if (mirrored.kind === 'missing') {
         return missingMirrorResolution();
     }
 

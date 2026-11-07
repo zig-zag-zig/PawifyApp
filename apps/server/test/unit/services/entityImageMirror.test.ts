@@ -305,6 +305,45 @@ describe('mirrored release artwork', () => {
         assert.equal(result.source, 'deezer');
         assert.equal(calls.length > 0, true);
     });
+
+    it('inherits the group cover for a release with no art of its own', async () => {
+        // The production path (`getReleaseCover` → `fetchReleaseCover`) used to
+        // return null as soon as the release row said miss, which dropped a group
+        // cover the live chain would have found. Both verdicts must agree instead.
+        useMirror({
+            entityImages: [
+                imageRow('release', RELEASE_ID, 0, '', nowSeconds()),
+                imageRow('release_group', GROUP_ID, 3, GROUP_ID, 0),
+            ],
+        });
+        const calls = forbidProviderCalls();
+
+        const { fetchReleaseCover } =
+            await import('../../../src/services/coverArt/coverArtLookup.js');
+        const image = await fetchReleaseCover(RELEASE_ID, GROUP_ID);
+
+        assert.equal(image, `https://coverartarchive.org/release-group/${GROUP_ID}-500`);
+        assert.deepEqual(calls, []);
+    });
+
+    it('does not re-probe the release endpoint for a confirmed release miss', async () => {
+        // The mirror already asked the release endpoint and it had nothing, so a
+        // pending group row must not turn that verdict back into a network call.
+        useMirror({
+            entityImages: [
+                imageRow('release', RELEASE_ID, 0, '', nowSeconds()),
+                imageRow('release_group', GROUP_ID, 1, '', 0),
+            ],
+        });
+        const calls = forbidProviderCalls();
+
+        const { fetchReleaseCover } =
+            await import('../../../src/services/coverArt/coverArtLookup.js');
+        const image = await fetchReleaseCover(RELEASE_ID, GROUP_ID);
+
+        assert.equal(image, null);
+        assert.deepEqual(calls, []);
+    });
 });
 
 describe('mirrored artist artwork', () => {

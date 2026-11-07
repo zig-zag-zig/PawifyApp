@@ -39,7 +39,7 @@ export type MirrorImage =
  */
 export const lookupMirrorImage = (
     entityType: EntityImageEntityType,
-    mbid: string | undefined,
+    mbid: string | null | undefined,
 ): MirrorImage => {
     if (!mbid) {
         return { kind: 'none' };
@@ -78,4 +78,42 @@ export const lookupMirrorImage = (
     }
 
     return { kind: 'resolved', url: record.url, service: record.service };
+};
+
+/**
+ * Combined artwork verdict for a release and its release group.
+ *
+ * A release owns its own artwork, but a pressing with none still inherits the
+ * group's cover — that is the fallback the live chain gets from the Cover Art
+ * Archive group endpoint. So the release row wins, the group row is next, and a
+ * miss is only authoritative when *both* verdicts are recorded.
+ *
+ * An absent release row is not a miss: the release may simply be newer than the
+ * snapshot, or still `pending` in the image worker, and both cases must fall
+ * through to the live chain.
+ */
+export type MirrorCoverVerdict =
+    | { kind: 'resolved'; url: string; service: EntityImageService }
+    | { kind: 'missing' }
+    | { kind: 'none' };
+
+export const lookupMirrorReleaseCover = (
+    releaseId: string | null | undefined,
+    releaseGroupId: string | null | undefined,
+): MirrorCoverVerdict => {
+    const release = lookupMirrorImage('release', releaseId);
+    if (release.kind === 'resolved') {
+        return release;
+    }
+
+    const group = lookupMirrorImage('release_group', releaseGroupId);
+    if (group.kind === 'resolved') {
+        return group;
+    }
+
+    if (release.kind === 'missing' && group.kind === 'missing') {
+        return { kind: 'missing' };
+    }
+
+    return { kind: 'none' };
 };

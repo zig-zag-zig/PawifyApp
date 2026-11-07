@@ -121,14 +121,18 @@ export const fetchReleaseCover = async (
     providerUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<RemoteValueState> => {
     // Mirror first: the artwork was already resolved by the mirror builder, so this
-    // is one primary-key lookup instead of a provider chain. Checked before any
-    // url-rel discovery, because that discovery is itself a rate-limited call.
-    const mirrored = lookupMirrorImage('release', releaseId);
-    if (mirrored.kind === 'resolved') {
-        return mirrored.url;
+    // is one primary-key lookup instead of a provider chain, and it is checked
+    // before url-rel discovery because that discovery is itself a rate-limited
+    // call. A confirmed release miss is authoritative for the release endpoint, so
+    // it must not be re-probed; the group row is still consulted because that is
+    // the cover a pressing without its own art inherits.
+    const releaseMirror = lookupMirrorImage('release', releaseId);
+    if (releaseMirror.kind === 'resolved') {
+        return releaseMirror.url;
     }
-    if (mirrored.kind === 'missing') {
-        return null;
+    if (releaseMirror.kind === 'missing') {
+        const groupMirror = lookupMirrorImage('release_group', releaseGroupId);
+        return groupMirror.kind === 'resolved' ? groupMirror.url : null;
     }
 
     let urls = providerUrls ?? getReleaseProviderUrlsForOne(releaseId);
