@@ -50,7 +50,10 @@ describe('search heading tier', () => {
         // ordering is deliberately not asserted here because the complete MB-like
         // ordering is covered by the real-corpus audit rather than a 4-row fixture.
         assert.deepEqual(
-            rows.map((row) => row.mbid).slice(0, 2).sort(),
+            rows
+                .map((row) => row.mbid)
+                .slice(0, 2)
+                .sort(),
             ['a2', 'a3'],
         );
         db.close();
@@ -84,7 +87,10 @@ describe('search heading tier', () => {
             'jay z',
         );
 
-        assert.deepEqual(first.map((row) => row.mbid), ['a1']);
+        assert.deepEqual(
+            first.map((row) => row.mbid),
+            ['a1'],
+        );
         assert.equal(second.length, 1);
         assert.notEqual(second[0]?.mbid, first[0]?.mbid);
         db.close();

@@ -1,6 +1,7 @@
 import { musicApiConfig, rateLimitConfig } from '../../config/runtimeConfig.js';
 import { createLogger } from '../../common/logging/logger.js';
-import { GlobalTokenBucket } from './globalTokenBucket.js';
+import { createAbortError } from './abortableDelay.js';
+import { GlobalTokenBucket, RateLimitUnavailableError } from './globalTokenBucket.js';
 import type { MusicBrainzPriority } from './types.js';
 
 const logger = createLogger('services.musicApi.rateLimit');
@@ -72,9 +73,9 @@ const RATE_LIMIT_CONFIG = {
     // with zero 429s; 40 req/s tripped it after ~103 requests and then stayed
     // blocked for minutes. A tripped Tidal limit is therefore far more expensive
     // than a slow one: it takes the whole Tidal source offline for the shared
-    // token and returns no Retry-After to recover gracefully. The default 10
-    // req/s is the fastest rate proven clean and sits at 50% of the measured
-    // ceiling, leaving headroom for a burst arriving on top of steady traffic.
+    // token and returns no Retry-After to recover gracefully. The default paces
+    // dispatch at ~18 req/s (4 concurrent, 55ms spacing), just under the measured
+    // ceiling, so the budget is used in full without tripping it.
     tidal: {
         maxConcurrent: rateLimitConfig.tidalMaxConcurrent,
         delayMs: rateLimitConfig.tidalDelayMs,
@@ -88,19 +89,44 @@ const RATE_LIMIT_CONFIG = {
     deezerimages: { maxConcurrent: 10, delayMs: 0 },
 };
 
+export type RateLimiterOptions = {
+    /** Label used in logs and in the error queued callers receive. */
+    name?: string;
+    /**
+     * Reject queued callers when the pool pauses, instead of parking them.
+     *
+     * Some providers (Tidal) answer a throttle with a pause measured in minutes and
+     * no `Retry-After`. Waiting out that pause inside `acquire` holds a batch slot on
+     * a request that is certain to fail, so a fail-fast pool reports it as a transient
+     * miss instead. Disabled by default: for providers whose pause is short and whose
+     * answers matter, waiting is the better trade.
+     */
+    failQueueOnBackoff?: boolean;
+};
+
+/** One waiting `acquire` call, with the abort listener attached to it. */
+type QueuedAcquisition = {
+    resolve: (release: () => void) => void;
+    reject: (error: Error) => void;
+    signal?: AbortSignal;
+    onAbort?: () => void;
+};
+
 export class RateLimiter {
     maxConcurrent: number;
     delayMs: number;
-    queue: Array<() => void>;
+    queue: QueuedAcquisition[];
     activeRequests: number;
     lastDispatchTime: number;
     processing: boolean;
     backoffUntil: number;
+    name: string;
+    failQueueOnBackoff: boolean;
     /** Mirrors GlobalTokenBucket's shared timestamp; unused by this in-memory pool. */
     lastDispatchAt = 0;
     pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
-    constructor(maxConcurrent: number, delayMs: number) {
+    constructor(maxConcurrent: number, delayMs: number, options: RateLimiterOptions = {}) {
         this.maxConcurrent = maxConcurrent;
         this.delayMs = delayMs;
         this.queue = [];
@@ -108,14 +134,38 @@ export class RateLimiter {
         this.lastDispatchTime = 0;
         this.processing = false;
         this.backoffUntil = 0;
+        this.name = options.name ?? 'rate-limiter';
+        this.failQueueOnBackoff = options.failQueueOnBackoff ?? false;
         this.pendingTimer = undefined;
     }
 
-    async acquire(): Promise<() => void> {
-        return new Promise<() => void>((resolve) => {
-            this.queue.push(() => {
-                resolve(() => this.release());
-            });
+    async acquire(signal?: AbortSignal): Promise<() => void> {
+        if (signal?.aborted) {
+            throw createAbortError();
+        }
+
+        // A fail-fast pool never parks a caller for the length of a provider pause:
+        // the provider cannot answer, so the caller is told to retry later and its
+        // batch slot stays free for a provider that can.
+        if (this.failQueueOnBackoff && this.backoffRemainingMs() > 0) {
+            throw new RateLimitUnavailableError(this.name, this.backoffRemainingMs());
+        }
+
+        return new Promise<() => void>((resolve, reject) => {
+            const waiter: QueuedAcquisition = { resolve, reject, signal };
+
+            if (signal) {
+                waiter.onAbort = () => {
+                    const index = this.queue.indexOf(waiter);
+                    if (index !== -1) {
+                        this.queue.splice(index, 1);
+                    }
+                    reject(createAbortError());
+                };
+                signal.addEventListener('abort', waiter.onAbort, { once: true });
+            }
+
+            this.queue.push(waiter);
             if (!this.processing) {
                 this.processQueue();
             }
@@ -128,9 +178,55 @@ export class RateLimiter {
     }
 
     setBackoff(ms: number) {
+        const waitMs = Math.max(0, ms);
+        if (waitMs === 0) {
+            return;
+        }
+
         // Concurrent responses can finish out of order; never let a shorter
         // remaining wait override a longer deadline already in effect.
-        this.backoffUntil = Math.max(this.backoffUntil, Date.now() + ms);
+        this.backoffUntil = Math.max(this.backoffUntil, Date.now() + waitMs);
+
+        if (this.failQueueOnBackoff) {
+            this.failQueuedAcquisitions(
+                new RateLimitUnavailableError(this.name, this.backoffRemainingMs()),
+            );
+        }
+    }
+
+    /**
+     * Rejects everyone waiting in the queue with `error`.
+     *
+     * Used when a pool pauses hard enough that any queued request would just sit
+     * there: the caller learns it should retry later and the slot is freed now.
+     */
+    private failQueuedAcquisitions(error: Error): void {
+        if (this.queue.length === 0) {
+            return;
+        }
+
+        const waiters = this.queue.splice(0, this.queue.length);
+        // Nothing is queued any more, so no timer is needed to serve the pause.
+        this.clearPendingTimer();
+        this.processing = false;
+
+        for (const waiter of waiters) {
+            this.detachAbortListener(waiter);
+            waiter.reject(error);
+        }
+    }
+
+    private detachAbortListener(waiter: QueuedAcquisition): void {
+        if (waiter.signal && waiter.onAbort) {
+            waiter.signal.removeEventListener('abort', waiter.onAbort);
+        }
+    }
+
+    private clearPendingTimer(): void {
+        if (this.pendingTimer !== undefined) {
+            clearTimeout(this.pendingTimer);
+            this.pendingTimer = undefined;
+        }
     }
 
     /** This pool only backs off locally, so the remaining pause is purely local. */
@@ -141,6 +237,11 @@ export class RateLimiter {
     /** Clears a pause. Only used by tests, which share one process-wide pool. */
     resetBackoff(): void {
         this.backoffUntil = 0;
+        this.clearPendingTimer();
+        this.processing = false;
+        if (this.queue.length > 0) {
+            this.processQueue();
+        }
     }
 
     /** Mirrors GlobalTokenBucket.setLocalBackoff; this pool is already per-process. */
@@ -177,7 +278,11 @@ export class RateLimiter {
         this.activeRequests++;
         this.lastDispatchTime = now;
         const next = this.queue.shift();
-        if (next) next();
+        if (next) {
+            // Dispatched waiters are no longer cancellable through the queue.
+            this.detachAbortListener(next);
+            next.resolve(() => this.release());
+        }
 
         if (this.queue.length > 0 && this.activeRequests < this.maxConcurrent) {
             this.scheduleProcessQueue(this.delayMs);
@@ -262,7 +367,14 @@ const rateLimiters = {
         RATE_LIMIT_CONFIG.deezerimages.maxConcurrent,
         RATE_LIMIT_CONFIG.deezerimages.delayMs,
     ),
-    tidal: new RateLimiter(RATE_LIMIT_CONFIG.tidal.maxConcurrent, RATE_LIMIT_CONFIG.tidal.delayMs),
+    // Fail-fast on purpose: a Tidal 429 pauses the shared token for minutes and
+    // sends no Retry-After, so a queued caller that waits it out just holds a slot.
+    // Rejecting the queue turns the pause into a transient miss the cover chain can
+    // answer from the next provider.
+    tidal: new RateLimiter(RATE_LIMIT_CONFIG.tidal.maxConcurrent, RATE_LIMIT_CONFIG.tidal.delayMs, {
+        name: 'tidal',
+        failQueueOnBackoff: true,
+    }),
     tidalimages: new RateLimiter(
         RATE_LIMIT_CONFIG.tidalimages.maxConcurrent,
         RATE_LIMIT_CONFIG.tidalimages.delayMs,

@@ -81,7 +81,10 @@ describe('search pagination', () => {
         );
 
         assert.equal(first.capped, false);
-        assert.equal(first.count, rankSearchEntities(db as never, 'artist', '"song"*', '', 'song').available);
+        assert.equal(
+            first.count,
+            rankSearchEntities(db as never, 'artist', '"song"*', '', 'song').available,
+        );
         // Recall is bounded by design; the count must not claim rows past that bound.
         assert.ok(first.count <= 900);
     });

@@ -3,6 +3,7 @@ import {
     getProviderUrlsForReleasesFromMirror,
     getReleaseIdsForGroupFromMirror,
     releaseExistsInMirror,
+    releaseGroupExistsInMirror,
 } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import {
     getReleaseGroupLinksFromApi,
@@ -90,12 +91,16 @@ const providerUrlsForUnknownRelease = async (
  *
  * Same idea as the release fallback: only a group absent from SQLite can be missing
  * from it, so groups the mirror knows are never re-probed against the 1 req/s API.
+ * A group can be known while its release rows are not, so both checks are needed.
  */
 const providerUrlsForUnknownGroup = async (
     releaseGroupId: string,
     signal?: AbortSignal,
 ): Promise<ProviderUrls> => {
-    if (getReleaseIdsForGroupFromMirror(releaseGroupId).length > 0) {
+    if (
+        releaseGroupExistsInMirror(releaseGroupId) === true ||
+        getReleaseIdsForGroupFromMirror(releaseGroupId).length > 0
+    ) {
         return { deezerUrls: [], tidalUrls: [] };
     }
     const links = await getReleaseGroupLinksFromApi(releaseGroupId, signal);

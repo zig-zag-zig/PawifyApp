@@ -47,9 +47,8 @@ const musicBrainzCall = (calls: Call[]) =>
 
 describe('providerUrlsFromLinks', () => {
     it('classifies Deezer and Tidal links and ignores everything else', async () => {
-        const { providerUrlsFromLinks } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { providerUrlsFromLinks } =
+            await import('../../../src/services/coverArt/providerLinks.js');
 
         const urls = providerUrlsFromLinks([
             { service: 'spotify', url: 'https://open.spotify.com/album/x' },
@@ -62,9 +61,8 @@ describe('providerUrlsFromLinks', () => {
     });
 
     it('falls back to the host when a relation was not classified', async () => {
-        const { providerUrlsFromLinks } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { providerUrlsFromLinks } =
+            await import('../../../src/services/coverArt/providerLinks.js');
 
         const urls = providerUrlsFromLinks([
             { service: 'official', url: 'https://www.deezer.com/album/42' },
@@ -78,9 +76,8 @@ describe('providerUrlsFromLinks', () => {
     });
 
     it('returns empty buckets for undefined links', async () => {
-        const { providerUrlsFromLinks } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { providerUrlsFromLinks } =
+            await import('../../../src/services/coverArt/providerLinks.js');
 
         assert.deepEqual(providerUrlsFromLinks(undefined), { deezerUrls: [], tidalUrls: [] });
     });
@@ -88,9 +85,8 @@ describe('providerUrlsFromLinks', () => {
 
 describe('getReleaseGroupLinksFromApi', () => {
     beforeEach(async () => {
-        const { resetProviderLinkCachesForTests } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { resetProviderLinkCachesForTests } =
+            await import('../../../src/services/coverArt/providerLinks.js');
         resetProviderLinkCachesForTests();
     });
 
@@ -98,7 +94,11 @@ describe('getReleaseGroupLinksFromApi', () => {
         const calls = stubFetch((call) => {
             if (call.url.includes(`/ws/2/release-group/${GROUP_ID}`)) {
                 // The real Czarface single: the group has no url-rels at all.
-                return jsonResponse({ id: GROUP_ID, relations: [], releases: [{ id: RELEASE_ID }] });
+                return jsonResponse({
+                    id: GROUP_ID,
+                    relations: [],
+                    releases: [{ id: RELEASE_ID }],
+                });
             }
             if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
                 return jsonResponse({
@@ -113,9 +113,8 @@ describe('getReleaseGroupLinksFromApi', () => {
             throw new Error(`unexpected call ${call.url}`);
         });
 
-        const { getReleaseGroupLinksFromApi } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { getReleaseGroupLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
         const links = await getReleaseGroupLinksFromApi(GROUP_ID);
 
         assert.deepEqual(links, {
@@ -138,9 +137,8 @@ describe('getReleaseGroupLinksFromApi', () => {
             throw new Error(`unexpected call ${call.url}`);
         });
 
-        const { getReleaseGroupLinksFromApi } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { getReleaseGroupLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
         const links = await getReleaseGroupLinksFromApi(GROUP_ID);
 
         assert.deepEqual(links.deezerUrls, [DEEZER_ALBUM]);
@@ -157,14 +155,16 @@ describe('getReleaseGroupLinksFromApi', () => {
                 });
             }
             if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
-                return jsonResponse({ id: RELEASE_ID, relations: [{ url: { resource: DEEZER_ALBUM } }] });
+                return jsonResponse({
+                    id: RELEASE_ID,
+                    relations: [{ url: { resource: DEEZER_ALBUM } }],
+                });
             }
             throw new Error(`unexpected call ${call.url}`);
         });
 
-        const { getReleaseGroupLinksFromApi } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { getReleaseGroupLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
         await getReleaseGroupLinksFromApi(GROUP_ID);
         const before = musicBrainzCall(calls).length;
         const second = await getReleaseGroupLinksFromApi(GROUP_ID);
@@ -189,9 +189,8 @@ describe('getReleaseGroupLinksFromApi', () => {
             throw new Error(`unexpected call ${call.url}`);
         });
 
-        const { getReleaseGroupLinksFromApi } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { getReleaseGroupLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
 
         const failed = await getReleaseGroupLinksFromApi(GROUP_ID);
         assert.deepEqual(failed, { deezerUrls: [], tidalUrls: [], releaseIds: [] });
@@ -206,11 +205,69 @@ describe('getReleaseGroupLinksFromApi', () => {
     it('degrades to no links when the API answers with an error', async () => {
         stubFetch(() => new Response(null, { status: 503 }));
 
-        const { getReleaseGroupLinksFromApi } = await import(
-            '../../../src/services/coverArt/providerLinks.js'
-        );
+        const { getReleaseGroupLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
         const links = await getReleaseGroupLinksFromApi(GROUP_ID);
 
         assert.deepEqual(links, { deezerUrls: [], tidalUrls: [], releaseIds: [] });
+    });
+});
+describe('getReleaseLinksFromApi', () => {
+    beforeEach(async () => {
+        const { resetProviderLinkCachesForTests } =
+            await import('../../../src/services/coverArt/providerLinks.js');
+        resetProviderLinkCachesForTests();
+    });
+
+    it('caches a confirmed empty answer instead of re-probing the API', async () => {
+        // A release that genuinely has no streaming relations still answered: the
+        // empty result is a fact, and re-asking on every page load costs one
+        // rate-limited MusicBrainz request per load for the same nothing.
+        const calls = stubFetch((call) => {
+            if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
+                return jsonResponse({ id: RELEASE_ID, relations: [] });
+            }
+            throw new Error(`unexpected call ${call.url}`);
+        });
+
+        const { getReleaseLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
+
+        const first = await getReleaseLinksFromApi(RELEASE_ID);
+        const second = await getReleaseLinksFromApi(RELEASE_ID);
+
+        assert.deepEqual(first, { deezerUrls: [], tidalUrls: [] });
+        assert.deepEqual(second, { deezerUrls: [], tidalUrls: [] });
+        assert.equal(musicBrainzCall(calls).length, 1);
+    });
+
+    it('does not cache a transient API failure', async () => {
+        let failNext = true;
+        const calls = stubFetch((call) => {
+            if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
+                if (failNext) {
+                    return new Response(null, { status: 503 });
+                }
+                return jsonResponse({
+                    id: RELEASE_ID,
+                    relations: [{ url: { resource: DEEZER_ALBUM } }],
+                });
+            }
+            throw new Error(`unexpected call ${call.url}`);
+        });
+
+        const { getReleaseLinksFromApi } =
+            await import('../../../src/services/coverArt/providerLinks.js');
+
+        assert.deepEqual(await getReleaseLinksFromApi(RELEASE_ID), {
+            deezerUrls: [],
+            tidalUrls: [],
+        });
+
+        failNext = false;
+        const retried = await getReleaseLinksFromApi(RELEASE_ID);
+
+        assert.deepEqual(retried.deezerUrls, [DEEZER_ALBUM]);
+        assert.equal(musicBrainzCall(calls).length, 2);
     });
 });

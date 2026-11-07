@@ -1,9 +1,6 @@
 import { getReleaseCover, getReleaseGroupCover } from '../../coverArtService.js';
 import { writeReleaseCoverState } from '../../coverArt/coverArtCache.js';
-import {
-    aggregateProviderUrls,
-    getReleaseProviderUrls,
-} from '../../coverArt/coverArtLookup.js';
+import { aggregateProviderUrls, getReleaseProviderUrls } from '../../coverArt/coverArtLookup.js';
 import { getReleaseIdsForGroupFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
@@ -100,13 +97,19 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
         }
     }
 
-    const providerUrlsByRelease = getReleaseProviderUrls(
-        groupEntries.flatMap((entry) => entry.releaseIds),
-    );
+    // Deduped up front so the batch mirror query below covers every release the
+    // task will resolve, including the group-less legacy feed rows. Looking them up
+    // one release at a time here would run one SQLite query per standalone row.
+    const uniqueStandaloneReleaseIds = dedupeStrings(standaloneReleaseIds);
+
+    const providerUrlsByRelease = getReleaseProviderUrls([
+        ...groupEntries.flatMap((entry) => entry.releaseIds),
+        ...uniqueStandaloneReleaseIds,
+    ]);
 
     logger.debug('new release cover batch started', {
         releaseGroupCount: groupEntries.length,
-        standaloneReleaseCount: dedupeStrings(standaloneReleaseIds).length,
+        standaloneReleaseCount: uniqueStandaloneReleaseIds.length,
         releaseCount: groupEntries.reduce((total, entry) => total + entry.releaseIds.length, 0),
         ttlHours: ttl ?? null,
     });
@@ -148,11 +151,17 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
     });
 
     await mapWithConcurrency(
-        dedupeStrings(standaloneReleaseIds),
+        uniqueStandaloneReleaseIds,
         COVER_ART_REQUEST_CONCURRENCY,
         async (releaseId) => {
             try {
-                const cover = await getReleaseCover(releaseId, null, ttl, signal);
+                const cover = await getReleaseCover(
+                    releaseId,
+                    null,
+                    ttl,
+                    signal,
+                    providerUrlsByRelease.get(releaseId),
+                );
                 covers[releaseId] = cover.state.url;
             } catch (error) {
                 if (!firstError) {

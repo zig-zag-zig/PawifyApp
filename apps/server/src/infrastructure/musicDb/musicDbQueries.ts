@@ -363,7 +363,10 @@ export const readArtistReleaseIds = (db: MusicDb, artistId: string): string[] =>
  * Unknown ids are simply absent from the result, which is what makes the
  * translation idempotent: a group id is not a release, so it misses and is kept.
  */
-export const readReleaseToGroupIds = (db: MusicDb, releaseIds: readonly string[]): Map<string, string> => {
+export const readReleaseToGroupIds = (
+    db: MusicDb,
+    releaseIds: readonly string[],
+): Map<string, string> => {
     const result = new Map<string, string>();
     if (releaseIds.length === 0) {
         return result;
@@ -379,8 +382,7 @@ export const readReleaseToGroupIds = (db: MusicDb, releaseIds: readonly string[]
     for (let index = 0; index < releaseIds.length; index += CHUNK_SIZE) {
         for (const releaseId of releaseIds.slice(index, index + CHUNK_SIZE)) {
             const row = statement.get(releaseId) as
-                | { mbid: string; release_group_mbid: string }
-                | undefined;
+                { mbid: string; release_group_mbid: string } | undefined;
             if (row) {
                 result.set(row.mbid, row.release_group_mbid);
             }
@@ -612,6 +614,61 @@ export const countSearchResultsUpTo = (
         .get(matchQuery, cap) as { total: number } | undefined;
     return row?.total ?? 0;
 };
+
+/**
+ * Match count for the work-budget decision, cheap form first.
+ *
+ * Counting a prefix query is the expensive case: FTS5 has to walk every posting that
+ * shares the prefix, so counting `"the"*` costs ~35 ms where counting `"the"` costs
+ * 0.4 ms. Dropping a trailing `*` always yields a subset of the same query (each
+ * `"tok"*` becomes `"tok"`), so when the cheaper exact form already reaches the budget
+ * the prefix form, a superset, certainly does too and the expensive count is skipped.
+ *
+ * The return value is `SEARCH_COUNT_PROBE` in that short-circuited case: callers only
+ * compare it against the budget, never report it as an exact match count.
+ */
+const countMatchesForBudget = (
+    db: MusicDb,
+    entityType: 'artist' | 'release_group',
+    query: string,
+    counts: Map<string, number>,
+): number => {
+    const exactQuery = query.endsWith('*') ? query.slice(0, -1) : query;
+
+    if (
+        exactQuery !== query &&
+        countForBudgetCached(db, entityType, exactQuery, counts) >= SEARCH_COUNT_PROBE
+    ) {
+        return SEARCH_COUNT_PROBE;
+    }
+
+    return countForBudgetCached(db, entityType, query, counts);
+};
+
+/** `countSearchResultsUpTo`, memoized per probe so siblings do not repeat the scan. */
+const countForBudgetCached = (
+    db: MusicDb,
+    entityType: 'artist' | 'release_group',
+    query: string,
+    counts: Map<string, number>,
+): number => {
+    const cached = counts.get(query);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const count = countSearchResultsUpTo(db, entityType, query, SEARCH_COUNT_PROBE);
+    counts.set(query, count);
+    return count;
+};
+
+/** Whether one candidate probe matches more rows than the work budget. */
+const probeExceedsSearchBudget = (
+    db: MusicDb,
+    entityType: 'artist' | 'release_group',
+    probe: string,
+    exactCounts: Map<string, number>,
+): boolean => countMatchesForBudget(db, entityType, probe, exactCounts) >= SEARCH_COUNT_PROBE;
 
 /**
  * Column weights mirroring MusicBrainz's own search config (`metabrainz/mbsssss`,
@@ -887,7 +944,20 @@ const buildCandidateProbes = (
     return Array.from(new Set(probes.filter((probe) => probe.length > 0)));
 };
 
-const resolveReleaseGroupArtistAliasProbes = (db: MusicDb, rawQuery: string): string[] => {
+/**
+ * Artist-name probes derived from the artists a release-group query matches.
+ *
+ * `ordered` ranks the matching artists with bm25, which is what makes the expansion
+ * meaningful for a normal query. A query already known to be over the work budget
+ * passes `false`: the ORDER BY then scans every matching artist ("the" matches ~176k)
+ * to keep 10 rows, which is the single most expensive part of a stopword search, and
+ * the ranking of three arbitrary stopword artists is not worth half a second.
+ */
+const resolveReleaseGroupArtistAliasProbes = (
+    db: MusicDb,
+    rawQuery: string,
+    ordered = true,
+): string[] => {
     const tokens = tokenizeSearchValue(rawQuery).map((token) => `"${token.replace(/"/g, '""')}"`);
     if (tokens.length === 0) {
         return [];
@@ -901,13 +971,15 @@ const resolveReleaseGroupArtistAliasProbes = (db: MusicDb, rawQuery: string): st
         `alias:${phrase}`,
     ].join(' OR ');
 
+    const orderBy = ordered ? `ORDER BY ${searchOrderBy('artist', 'search_fts_artist')}` : '';
+
     try {
         const rows = db
             .prepare(
                 `SELECT heading, sortname
                  FROM search_fts_artist
                  WHERE search_fts_artist MATCH ?
-                 ORDER BY ${searchOrderBy('artist', 'search_fts_artist')}
+                 ${orderBy}
                  LIMIT 10`,
             )
             .all(artistProbe) as { heading: string; sortname?: string }[];
@@ -957,6 +1029,8 @@ export const rankSearchEntities = (
     phraseQuery = '',
     rawQuery = '',
     skipOrOrderBy = false,
+    /** `matchQuery`'s count, or `SEARCH_COUNT_PROBE` when it is known to exceed it. */
+    matchQueryBudgetCount?: number,
 ): RankedSearchPage => {
     const table = searchTableFor(entityType);
     const columns =
@@ -1002,13 +1076,28 @@ export const rankSearchEntities = (
     const probes = [
         ...buildCandidateProbes(entityType, effectiveQuery, phraseQuery),
         ...(entityType === 'release_group'
-            ? resolveReleaseGroupArtistAliasProbes(db, effectiveQuery)
+            ? resolveReleaseGroupArtistAliasProbes(db, effectiveQuery, !skipOrOrderBy)
             : []),
     ];
 
+    // Reuse the count already computed by `searchEntitiesWithBudget` for the identical
+    // probe, and reuse the exact-form counts derived while checking each prefix probe.
+    const exactCounts = new Map<string, number>();
+    if (matchQueryBudgetCount !== undefined) {
+        exactCounts.set(matchQuery, matchQueryBudgetCount);
+    }
+
     for (const probe of probes) {
         try {
-            addRows(runQuery(probe, 300, 0));
+            // A broad probe can match hundreds of thousands of rows. Scoring all of
+            // them with bm25 just to keep the best 300 is the most expensive part of
+            // a stopword query ("the" took 4.4s on release groups this way), and the
+            // JS ranker re-sorts the probe rows anyway, so SQLite only has to skip
+            // that work once the whole query is already over budget. Narrow probes
+            // stay ordered: their order is genuinely informative for ranking.
+            const probeIsBroad =
+                skipOrOrderBy && probeExceedsSearchBudget(db, entityType, probe, exactCounts);
+            addRows(runQuery(probe, 300, 0, probeIsBroad));
         } catch {
             // Ignore malformed probe syntax and rely on the main recall query.
         }
@@ -1032,8 +1121,10 @@ export const searchEntities = (
     rawQuery = '',
     skipOrOrderBy = false,
 ): SearchRow[] =>
-    rankSearchEntities(db, entityType, matchQuery, phraseQuery, rawQuery, skipOrOrderBy)
-        .rows.slice(offset, offset + limit);
+    rankSearchEntities(db, entityType, matchQuery, phraseQuery, rawQuery, skipOrOrderBy).rows.slice(
+        offset,
+        offset + limit,
+    );
 
 export type SearchBudgetResult = {
     rows: SearchRow[];
@@ -1055,8 +1146,10 @@ export const searchEntitiesWithBudget = (
     phraseQuery = '',
     rawQuery = '',
 ): SearchBudgetResult => {
-    const countQuery = rawQuery.trim().length > 0 ? toFastCountMatchQuery(rawQuery, matchQuery) : matchQuery;
-    const probed = countSearchResultsUpTo(db, entityType, countQuery, SEARCH_COUNT_PROBE);
+    const countQuery =
+        rawQuery.trim().length > 0 ? toFastCountMatchQuery(rawQuery, matchQuery) : matchQuery;
+    const counts = new Map<string, number>();
+    const probed = countMatchesForBudget(db, entityType, countQuery, counts);
     const capped = probed >= SEARCH_COUNT_PROBE;
 
     // The ranked candidate set is the pageable universe. Reporting the FTS match
@@ -1069,6 +1162,7 @@ export const searchEntitiesWithBudget = (
         phraseQuery,
         rawQuery,
         capped,
+        probed,
     );
 
     return {

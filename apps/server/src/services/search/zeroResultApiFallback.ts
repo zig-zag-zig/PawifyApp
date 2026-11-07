@@ -51,8 +51,12 @@ export type SearchWithApiFallbackDependencies = {
     writeCache<T>(key: string, value: T): Promise<void>;
 };
 
-const cacheKey = (kind: 'artist' | 'release-group', query: string, offset: number, limit: number): string =>
-    `search-fallback:${kind}:${query.trim().toLowerCase()}:${offset}:${limit}`;
+const cacheKey = (
+    kind: 'artist' | 'release-group',
+    query: string,
+    offset: number,
+    limit: number,
+): string => `search-fallback:${kind}:${query.trim().toLowerCase()}:${offset}:${limit}`;
 
 const hasSearchableTokens = (query: string): boolean => toFtsQuery(query).length > 0;
 
@@ -100,12 +104,15 @@ export const createSearchWithZeroResultFallback = (deps: SearchWithApiFallbackDe
             return apiResult;
         } catch (error) {
             if (mirrorResult) {
-                logger.warn('MusicBrainz artist typo-fallback failed; returning empty local result', {
-                    query,
-                    offset,
-                    limit,
-                    error: error instanceof Error ? error.message : String(error),
-                });
+                logger.warn(
+                    'MusicBrainz artist typo-fallback failed; returning empty local result',
+                    {
+                        query,
+                        offset,
+                        limit,
+                        error: error instanceof Error ? error.message : String(error),
+                    },
+                );
                 return mirrorResult;
             }
             throw error;

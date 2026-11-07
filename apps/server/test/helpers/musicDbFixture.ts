@@ -195,7 +195,13 @@ export const createMusicDbFixture = (seed: MusicDbSeed = {}): string => {
             db.prepare(
                 `INSERT INTO search_fts_release_group (entity_mbid, heading, releases, artistname, comment, aux, ref_count)
                  VALUES (?, ?, ?, ?, '', '', ?)`,
-            ).run(row.entityId, row.heading, row.releases ?? '', row.artistName ?? '', row.refCount ?? 1);
+            ).run(
+                row.entityId,
+                row.heading,
+                row.releases ?? '',
+                row.artistName ?? '',
+                row.refCount ?? 1,
+            );
         }
     }
 

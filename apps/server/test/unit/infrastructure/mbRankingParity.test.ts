@@ -7,7 +7,8 @@ import { searchEntities } from '../../../src/infrastructure/musicDb/musicDbQueri
 
 type SearchRow = NonNullable<Parameters<typeof createMusicDbFixture>[0]>['search'];
 
-const open = (search: SearchRow) => new Database(createMusicDbFixture({ search }), { readonly: true });
+const open = (search: SearchRow) =>
+    new Database(createMusicDbFixture({ search }), { readonly: true });
 
 describe('MusicBrainz-equivalent ranking', () => {
     it('ranks JAŸ-Z first for "jay", as the MusicBrainz search server does', () => {
@@ -17,7 +18,13 @@ describe('MusicBrainz-equivalent ranking', () => {
             { entityType: 'artist', entityId: 'a-jayjay', heading: 'Jay-Jay', refCount: 30 },
             { entityType: 'artist', entityId: 'a-ziskrout', heading: 'Jay Ziskrout', refCount: 40 },
             // The real one: sort name "Jay Z" and a reference count to match.
-            { entityType: 'artist', entityId: 'a-jayz', heading: 'JAŸ-Z', sortName: 'Jay Z', refCount: 40000 },
+            {
+                entityType: 'artist',
+                entityId: 'a-jayz',
+                heading: 'JAŸ-Z',
+                sortName: 'Jay Z',
+                refCount: 40000,
+            },
         ]);
 
         const rows = searchEntities(db as never, 'artist', '"jay"*', 5, 0, '', 'jay');
@@ -41,7 +48,13 @@ describe('MusicBrainz-equivalent ranking', () => {
     it('finds an artist by its sort name when the name itself does not match', () => {
         const db = open([
             // "Jay Z" as sort name is exactly how MusicBrainz finds JAŸ-Z.
-            { entityType: 'artist', entityId: 'a-jayz', heading: 'JAŸ-Z', sortName: 'Jay Z', refCount: 40000 },
+            {
+                entityType: 'artist',
+                entityId: 'a-jayz',
+                heading: 'JAŸ-Z',
+                sortName: 'Jay Z',
+                refCount: 40000,
+            },
             { entityType: 'artist', entityId: 'a-other', heading: 'Someone Else', refCount: 10 },
         ]);
 
@@ -64,7 +77,15 @@ describe('MusicBrainz-equivalent ranking', () => {
 
         const all = searchEntities(db as never, 'artist', '"radiohead"*', 20, 0, '', 'radiohead');
         const page1 = searchEntities(db as never, 'artist', '"radiohead"*', 10, 0, '', 'radiohead');
-        const page2 = searchEntities(db as never, 'artist', '"radiohead"*', 10, 10, '', 'radiohead');
+        const page2 = searchEntities(
+            db as never,
+            'artist',
+            '"radiohead"*',
+            10,
+            10,
+            '',
+            'radiohead',
+        );
 
         assert.equal(page1[0]?.mbid, 'a-15');
         assert.deepEqual(
@@ -77,7 +98,12 @@ describe('MusicBrainz-equivalent ranking', () => {
 
     it('treats & and "and" interchangeably like MBCharEquivToChar', () => {
         const db = open([
-            { entityType: 'artist', entityId: 'a-band', heading: 'Simon & Garfunkel', refCount: 5000 },
+            {
+                entityType: 'artist',
+                entityId: 'a-band',
+                heading: 'Simon & Garfunkel',
+                refCount: 5000,
+            },
             { entityType: 'artist', entityId: 'a-solo', heading: 'Paul Simon', refCount: 8000 },
         ]);
 
@@ -147,9 +173,8 @@ describe('MusicBrainz-equivalent ranking', () => {
         );
         writable.close();
 
-        const { closeMusicDb, musicDbHasSearchIndex } = await import(
-            '../../../src/infrastructure/musicDb/musicDbClient.js'
-        );
+        const { closeMusicDb, musicDbHasSearchIndex } =
+            await import('../../../src/infrastructure/musicDb/musicDbClient.js');
         closeMusicDb();
         process.env.MUSIC_DB_PATH = path;
         try {

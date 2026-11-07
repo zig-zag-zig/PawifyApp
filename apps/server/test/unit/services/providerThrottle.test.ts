@@ -2,15 +2,24 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 const originalFetch = globalThis.fetch;
-const originalEnv = { ...process.env };
 
 process.env.RATE_LIMIT_FALLBACK_DELAY_MS = '1';
 // Read once at module load by runtimeConfig, so it must be set before the dynamic imports.
 process.env.TIDAL_API_TOKEN = 'test-token';
 
-afterEach(() => {
+// Captured after the overrides so restoring the environment keeps them for every
+// test in this file: the tidal lookups need the token, and the fallback delay must
+// stay small enough for timing assertions.
+const originalEnv = { ...process.env };
+
+afterEach(async () => {
     globalThis.fetch = originalFetch;
     process.env = { ...originalEnv };
+
+    // The Tidal pool is process-wide and a 429 pauses it for a minute, which would
+    // otherwise leak into every later test in this file.
+    const { getRateLimiter } = await import('../../../src/services/musicApi/rateLimiter.js');
+    getRateLimiter('tidal').resetBackoff();
 });
 
 const importRateLimiter = async () => import('../../../src/services/musicApi/rateLimiter.js');
@@ -106,7 +115,77 @@ describe('tidal throttle fast-fail', () => {
 
         assert.equal(tidalCalls, 1, 'no Tidal requests may be issued while paused');
         assert.ok(Date.now() - started < 500, 'paused lookups must not block on the backoff');
+    });
 
-        getRateLimiter('tidal').resetBackoff?.();
+    it('rejects the lookup queue when a concurrent 429 pauses the pool', async () => {
+        const { getRateLimiter } = await importRateLimiter();
+        getRateLimiter('tidal').resetBackoff();
+
+        let tidalCalls = 0;
+        globalThis.fetch = (async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/invoke/tidal/')) {
+                tidalCalls += 1;
+                // Delay the answer so the rest of the batch is queued behind the
+                // first request, which is the state a cover batch hits in production.
+                await new Promise((resolve) => setTimeout(resolve, 20));
+                return new Response(null, { status: 429 });
+            }
+            return new Response(null, { status: 404 });
+        }) as typeof fetch;
+
+        const { getTidalAlbumImage } =
+            await import('../../../src/services/musicApi/tidalClient.js');
+
+        const started = Date.now();
+        const results = await Promise.all(
+            Array.from({ length: 10 }, (_, index) =>
+                getTidalAlbumImage([`https://tidal.com/album/${index + 1}`]),
+            ),
+        );
+        const elapsedMs = Date.now() - started;
+
+        assert.deepEqual(
+            results,
+            Array.from({ length: 10 }, () => undefined),
+            'a paused Tidal lookup is a transient miss',
+        );
+        // Only requests already dispatched when the 429 landed may reach Tidal.
+        // Everything queued behind them used to sleep out the whole 60s pause.
+        assert.ok(tidalCalls <= 4, `expected at most 4 Tidal calls, got ${tidalCalls}`);
+        assert.ok(elapsedMs < 500, `the batch must fail fast, took ${elapsedMs}ms`);
+    });
+});
+
+describe('rate limiter queue cancellation', () => {
+    it('rejects a queued acquire when its signal aborts', async () => {
+        const { RateLimiter } = await importRateLimiter();
+        const limiter = new RateLimiter(1, 0);
+
+        const releaseFirst = await limiter.acquire();
+
+        const controller = new AbortController();
+        const queued = limiter.acquire(controller.signal);
+        assert.equal(limiter.queue.length, 1);
+
+        controller.abort();
+
+        await assert.rejects(queued, (error: Error) => error.name === 'AbortError');
+        assert.equal(limiter.queue.length, 0, 'the aborted waiter leaves the queue');
+
+        releaseFirst();
+    });
+
+    it('rejects an already-aborted acquire without queueing it', async () => {
+        const { RateLimiter } = await importRateLimiter();
+        const limiter = new RateLimiter(1, 0);
+        const controller = new AbortController();
+        controller.abort();
+
+        await assert.rejects(
+            limiter.acquire(controller.signal),
+            (error: Error) => error.name === 'AbortError',
+        );
+        assert.equal(limiter.queue.length, 0);
     });
 });

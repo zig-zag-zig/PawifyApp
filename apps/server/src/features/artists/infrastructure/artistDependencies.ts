@@ -92,9 +92,7 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
                 'getArtistReleaseGroupIds',
                 () => getArtistReleaseGroupIdsFromMirror(artistId),
                 async () =>
-                    (await getArtistReleaseGroupCatalog(artistId)).groups.map(
-                        (group) => group.id,
-                    ),
+                    (await getArtistReleaseGroupCatalog(artistId)).groups.map((group) => group.id),
             )) ?? [],
     },
     artistProfileImageQueue: artistProfileImageTaskQueue,

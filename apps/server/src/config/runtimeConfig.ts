@@ -118,13 +118,14 @@ export const musicApiConfig = {
  *   env to experiment; no code change needed.
  * - discogs: 60 req/min authenticated (verified from x-discogs-ratelimit).
  * - deezer: 50 req/5s per IP (measured 2026-11-07: 45 requests at concurrency 40
- *   all succeeded before the first quota error). The reply is HTTP 200 with
- *   `{"error":{"code":4}}` and carries no rate-limit headers at all, so the
- *   bucket cannot learn a reset time and simply must stay under the window.
- *   Worst case for any 5s window is `burst + 5 * refill`, so 10 + 5*6 = 40
- *   requests, i.e. 80% of the measured budget. The previous 8/s refill allowed
- *   10 + 40 = 50, exactly 100% of the budget, which is why cold-cache bursts
- *   tripped it.
+ *   all succeeded before the first quota error, so the instant-burst ceiling is ~45).
+ *   The reply is HTTP 200 with `{"error":{"code":4}}` and carries no rate-limit
+ *   headers at all, so the bucket cannot learn a reset time and simply must stay
+ *   under the window. Worst case for any 5s window is `burst + 5 * refill`, so
+ *   5 + 5*9 = 50 requests: the full documented 50/5s budget, while the burst of 5
+ *   stays an order of magnitude below the 45-request instant burst that actually
+ *   tripped the quota. (The previous 40 + 5*8 = 80 was 160% of the window, which is
+ *   why cold-cache fills tripped it.)
  */
 export const rateLimitConfig = {
     musicbrainzBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_MUSICBRAINZ_BURST, 1),
@@ -142,19 +143,21 @@ export const rateLimitConfig = {
     discogsStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_DISCOGS_STAGGER_MS, 50),
 
     // Deezer allows 50 requests per 5s per IP. Worst case for a 5s window is
-    // burst + 5*refill, so 10 + 5*6 = 40 keeps 20% headroom. The previous 8/s
-    // refill allowed exactly 50 and tripped the quota on cold-cache fills.
-    deezerBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_BURST, 10),
-    deezerRefillPerSecond: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_REFILL_PER_SECOND, 6),
+    // burst + 5*refill, so 5 + 5*9 = 50: the whole documented budget, with the
+    // burst far below the ~45-request instant burst that tripped code 4.
+    deezerBurst: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_BURST, 5),
+    deezerRefillPerSecond: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_REFILL_PER_SECOND, 9),
     deezerStaggerMs: parsePositiveIntEnv(process.env.RATE_LIMIT_DEEZER_STAGGER_MS, 0),
 
     // Tidal publishes no rate-limit headers, and a 429 blocks the shared token for
-    // minutes. Measured 2026-11-07: 10 req/s sustained for 10s and 20 req/s
+    // minutes. Measured 2026-11-07 against origin misses: 10 req/s and 20 req/s
     // sustained for 10s both completed with zero 429s; 40 req/s tripped it after
-    // ~103 requests. 10 req/s is 50% of the fastest known-safe rate.
-    // parsePositiveIntEnv rejects 0, so delayMs uses its own non-negative parse.
-    tidalMaxConcurrent: parsePositiveIntEnv(process.env.RATE_LIMIT_TIDAL_MAX_CONCURRENT, 3),
-    tidalDelayMs: parseNonNegativeIntEnv(process.env.RATE_LIMIT_TIDAL_DELAY_MS, 100),
+    // ~103 requests. `maxConcurrent / delayMs` paces dispatch, so 4 concurrent with
+    // 55ms spacing is ~18 req/s: just under the measured 20 req/s ceiling instead of
+    // leaving half the budget unused. parsePositiveIntEnv rejects 0, so delayMs uses
+    // its own non-negative parse.
+    tidalMaxConcurrent: parsePositiveIntEnv(process.env.RATE_LIMIT_TIDAL_MAX_CONCURRENT, 4),
+    tidalDelayMs: parseNonNegativeIntEnv(process.env.RATE_LIMIT_TIDAL_DELAY_MS, 55),
 
     // Longest provider-requested pause we are willing to sit through. This has to
     // cover Discogs' documented 60s window, so anything beyond a minute is treated

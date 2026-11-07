@@ -137,10 +137,7 @@ const chunkReleaseGroupReleasePageEntries = (
 
     for (const entry of pageEntries) {
         for (const releaseIdChunk of chunkArray(dedupeStrings(entry.releaseIds), chunkSize)) {
-            if (
-                currentItemCount > 0 &&
-                currentItemCount + releaseIdChunk.length > chunkSize
-            ) {
+            if (currentItemCount > 0 && currentItemCount + releaseIdChunk.length > chunkSize) {
                 flushCurrentChunk();
             }
 

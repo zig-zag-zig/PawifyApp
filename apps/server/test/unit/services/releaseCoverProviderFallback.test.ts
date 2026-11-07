@@ -80,7 +80,11 @@ describe('fetchReleaseGroupCover provider fallback', () => {
         // Cover Art Archive has no artwork; the release's Deezer relation does.
         const calls = stubFetch((call) => {
             if (call.url.includes(`/ws/2/release-group/${GROUP_ID}`)) {
-                return jsonResponse({ id: GROUP_ID, relations: [], releases: [{ id: RELEASE_ID }] });
+                return jsonResponse({
+                    id: GROUP_ID,
+                    relations: [],
+                    releases: [{ id: RELEASE_ID }],
+                });
             }
             if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
                 return jsonResponse({
@@ -122,6 +126,33 @@ describe('fetchReleaseGroupCover provider fallback', () => {
 
         const { fetchReleaseGroupCover } = await importLookup();
         const image = await fetchReleaseGroupCover(GROUP_ID, undefined, [RELEASE_ID], {
+            deezerUrls: [],
+            tidalUrls: [],
+        });
+
+        assert.equal(image, null);
+        assert.equal(musicBrainzCalls(calls).length, 0);
+    });
+
+    it('never asks the API for a group the mirror knows without release rows', async () => {
+        // A group can be imported before any of its releases (or with none added yet),
+        // so checking release ids alone marks it "unknown" and spends a rate-limited
+        // MusicBrainz request on an entity the snapshot already has.
+        const path = createMusicDbFixture({
+            releaseGroups: [{ mbid: GROUP_ID, title: 'No Competition', primary_type: 'Single' }],
+        });
+        process.env.MUSIC_DB_PATH = path;
+        closeMusicDb();
+
+        const calls = stubFetch((call) => {
+            if (call.url.includes('/invoke/coverartarchive/')) {
+                return new Response(null, { status: 404 });
+            }
+            throw new Error(`unexpected call ${call.url}`);
+        });
+
+        const { fetchReleaseGroupCover } = await importLookup();
+        const image = await fetchReleaseGroupCover(GROUP_ID, undefined, [], {
             deezerUrls: [],
             tidalUrls: [],
         });

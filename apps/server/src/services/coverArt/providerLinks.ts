@@ -47,9 +47,7 @@ export const providerUrlsFromLinks = (
     return { deezerUrls, tidalUrls };
 };
 
-const bucketForLink = (
-    link: Pick<ExternalLink, 'service' | 'url'>,
-): 'deezer' | 'tidal' | null => {
+const bucketForLink = (link: Pick<ExternalLink, 'service' | 'url'>): 'deezer' | 'tidal' | null => {
     if (link.service === 'deezer') return 'deezer';
     if (link.service === 'tidal') return 'tidal';
     // Relations that fail the link classifier (unusual hosts, older payloads) still
@@ -167,6 +165,11 @@ const fetchReleaseLinks = async (
  * Only called when SQLite has no provider links *and* no trace of the entity, so a
  * normal page costs zero MusicBrainz requests. Results are cached in-process because
  * the caller (a cover task) runs once per page load until the cover state is written.
+ *
+ * A resolved answer that happens to carry no streaming links is cached too, exactly
+ * like the release-group path: the release is simply not on Deezer or Tidal, and
+ * re-probing it on every page load would spend one rate-limited request each time for
+ * the same empty result. Transient failures (`resolved === false`) are never cached.
  */
 export const getReleaseLinksFromApi = async (
     releaseId: string,
@@ -181,7 +184,7 @@ export const getReleaseLinksFromApi = async (
     const promise = (async () => {
         try {
             const { urls, resolved } = await fetchReleaseLinks(releaseId, signal);
-            if (resolved && (urls.deezerUrls.length > 0 || urls.tidalUrls.length > 0)) {
+            if (resolved) {
                 writeCache(releaseCache, releaseId, urls);
             }
             return urls;
