@@ -352,6 +352,14 @@ export const getReleaseIdsForGroupFromMirror = (releaseGroupId: string): string[
 };
 
 /**
+ * Whether the mirror has the release at all.
+ *
+ * Distinguishes "this release has no Deezer/Tidal links" (nothing to do) from "this
+ * release is newer than the mirror snapshot" (the caller should ask the API), which
+ * the provider-link query alone cannot tell because it only returns matching rows.
+ * `null` means the mirror is unavailable, which is also a reason to ask the API.
+ */
+/**
  * Artist name plus provider links, for the profile-image chain.
  *
  * The image worker used to fetch `/artist/{id}?inc=url-rels` from the MusicBrainz

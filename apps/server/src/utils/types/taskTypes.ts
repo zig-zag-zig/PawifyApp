@@ -65,7 +65,12 @@ export type ReleaseGroupPageEntry = {
 };
 
 export type ReleaseGroupReleasesPageEntry = {
-    releaseGroupId: string;
+    /**
+     * Release-group identity. `null` for feed entries stored before new-release
+     * detection switched from releases to release groups; those are resolved one
+     * release at a time.
+     */
+    releaseGroupId: string | null;
     releaseIds: string[];
 };
 
