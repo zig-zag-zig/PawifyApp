@@ -1,4 +1,5 @@
 import { resolveReleaseImage } from '../musicApi/releaseImageSources.js';
+import { lookupMirrorImage } from '../musicApi/mirrorEntityImages.js';
 import {
     getProviderUrlsForReleasesFromMirror,
     getReleaseIdsForGroupFromMirror,
@@ -119,6 +120,17 @@ export const fetchReleaseCover = async (
     signal?: AbortSignal,
     providerUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<RemoteValueState> => {
+    // Mirror first: the artwork was already resolved by the mirror builder, so this
+    // is one primary-key lookup instead of a provider chain. Checked before any
+    // url-rel discovery, because that discovery is itself a rate-limited call.
+    const mirrored = lookupMirrorImage('release', releaseId);
+    if (mirrored.kind === 'resolved') {
+        return mirrored.url;
+    }
+    if (mirrored.kind === 'missing') {
+        return null;
+    }
+
     let urls = providerUrls ?? getReleaseProviderUrlsForOne(releaseId);
 
     if (!hasProviderUrls(urls)) {
@@ -161,6 +173,14 @@ export const fetchReleaseGroupCover = async (
     releaseIds?: string[],
     aggregatedProviderUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<RemoteValueState> => {
+    const mirrored = lookupMirrorImage('release_group', releaseGroupId);
+    if (mirrored.kind === 'resolved') {
+        return mirrored.url;
+    }
+    if (mirrored.kind === 'missing') {
+        return null;
+    }
+
     let deezerUrls = aggregatedProviderUrls?.deezerUrls ?? [];
     let tidalUrls = aggregatedProviderUrls?.tidalUrls ?? [];
 

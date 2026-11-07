@@ -1,6 +1,7 @@
 import { getDeezerArtistImage } from './deezerClient.js';
 import { getDiscogsData } from './discogsClient.js';
 import { getTidalArtistImage } from './tidalClient.js';
+import { lookupMirrorImage } from './mirrorEntityImages.js';
 import type { ArtistImageProvider, ProviderValueState } from './types.js';
 
 /**
@@ -15,6 +16,8 @@ export const ARTIST_IMAGE_PROVIDER_ORDER: readonly ArtistImageProvider[] = [
 ];
 
 export type ArtistImageProviderLookup = {
+    /** Mirror key for the artist; the image-state tables are read by it. */
+    artistId?: string;
     /** Used only for Discogs, to pick between several same-named artists. */
     artistName?: string;
     deezerUrls?: string[];
@@ -44,6 +47,46 @@ const hasImage = (image: ProviderValueState): image is string =>
     typeof image === 'string' && image.trim().length > 0;
 
 /**
+ * Artwork the mirror already answered for this artist, or null to run the chain.
+ *
+ * Cover Art Archive is deliberately not a possible answer here: it only holds
+ * release artwork, never artist portraits, so a mirrored artist row is always one
+ * of the three streaming sources.
+ */
+const resolveMirroredArtistImage = (
+    lookup: ArtistImageProviderLookup,
+): ArtistImageResolution | null => {
+    const mirrored = lookupMirrorImage('artist', lookup.artistId);
+
+    if (mirrored.kind === 'resolved') {
+        if (
+            mirrored.service !== 'deezer' &&
+            mirrored.service !== 'tidal' &&
+            mirrored.service !== 'discogs'
+        ) {
+            return null;
+        }
+        return {
+            image: mirrored.url,
+            source: mirrored.service,
+            confirmedMisses: [],
+            transientFailures: [],
+        };
+    }
+
+    if (mirrored.kind === 'missing') {
+        return {
+            image: null,
+            source: undefined,
+            confirmedMisses: [...ARTIST_IMAGE_PROVIDER_ORDER],
+            transientFailures: [],
+        };
+    }
+
+    return null;
+};
+
+/**
  * Walks the provider chain and stops at the first usable image.
  *
  * Combines outcomes using the repo-wide tri-state: a transient failure anywhere
@@ -58,6 +101,13 @@ export const resolveArtistImage = async (
     lookup: ArtistImageProviderLookup,
     signal?: AbortSignal,
 ): Promise<ArtistImageResolution> => {
+    // A mirrored hit is the answer itself: these are the same providers, already
+    // asked once by the mirror builder, so no request is repeated here.
+    const mirrored = resolveMirroredArtistImage(lookup);
+    if (mirrored) {
+        return mirrored;
+    }
+
     const confirmedMisses: ArtistImageProvider[] = [];
     const transientFailures: ArtistImageProvider[] = [];
     const skipped = lookup.skipProviders;

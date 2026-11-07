@@ -79,6 +79,23 @@ CREATE TABLE _meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- Image state: the mirror builder resolves artwork once and stores the token, so
+-- a page render is a primary-key lookup instead of a provider round trip.
+CREATE TABLE image_services (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    url_template TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE entity_images (
+    entity_type TEXT NOT NULL,
+    entity_mbid TEXT NOT NULL,
+    service_id INTEGER NOT NULL,
+    image_token TEXT NOT NULL DEFAULT '',
+    fetched_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (entity_type, entity_mbid)
+) WITHOUT ROWID;
+CREATE INDEX idx_entity_images_pending ON entity_images(entity_type, entity_mbid)
+    WHERE service_id = 1;
 -- Column layout matches the mirror built by pawify_mb_sqlite, which in turn mirrors
 -- MusicBrainz's mbsssss fields: heading, sortname, alias, primary_alias, comment, aux.
 CREATE VIRTUAL TABLE search_fts_artist USING fts5(
@@ -118,6 +135,9 @@ export type MusicDbSeed = {
     releases?: Record<string, unknown>[];
     releaseArtists?: Record<string, unknown>[];
     externalLinks?: Record<string, unknown>[];
+    /** Overrides are unnecessary in practice; kept so a test can pin a template. */
+    imageServices?: Record<string, unknown>[];
+    entityImages?: Record<string, unknown>[];
     meta?: Record<string, string>;
     search?: {
         entityType: string;
@@ -132,6 +152,26 @@ export type MusicDbSeed = {
         artistName?: string;
     }[];
 };
+
+/**
+ * Seed rows for `image_services`.
+ *
+ * Must stay byte-identical to the mirror exporter's seed, because the service id
+ * is what `entity_images.service_id` stores.
+ */
+export const IMAGE_SERVICE_SEED: Array<{ id: number; name: string; url_template: string }> = [
+    { id: 0, name: 'none', url_template: '' },
+    { id: 1, name: 'pending', url_template: '' },
+    { id: 2, name: 'caa_rel', url_template: 'https://coverartarchive.org/release/{token}-500' },
+    {
+        id: 3,
+        name: 'caa_rg',
+        url_template: 'https://coverartarchive.org/release-group/{token}-500',
+    },
+    { id: 4, name: 'deezer', url_template: 'https://cdn-images.dzcdn.net/images/{token}' },
+    { id: 5, name: 'tidal', url_template: 'https://resources.tidal.com/images/{token}' },
+    { id: 6, name: 'discogs', url_template: '{token}' },
+];
 
 const insertRows = (
     db: Database.Database,
@@ -167,6 +207,15 @@ export const createMusicDbFixture = (seed: MusicDbSeed = {}): string => {
     insertRows(db, 'releases', seed.releases);
     insertRows(db, 'release_artists', seed.releaseArtists);
     insertRows(db, 'external_links', seed.externalLinks);
+
+    const serviceStatement = db.prepare(
+        'INSERT OR IGNORE INTO image_services (id, name, url_template) VALUES (?, ?, ?)',
+    );
+    for (const service of IMAGE_SERVICE_SEED) {
+        serviceStatement.run(service.id, service.name, service.url_template);
+    }
+    insertRows(db, 'image_services', seed.imageServices);
+    insertRows(db, 'entity_images', seed.entityImages);
 
     if (seed.meta) {
         const statement = db.prepare('INSERT INTO _meta (key, value) VALUES (?, ?)');

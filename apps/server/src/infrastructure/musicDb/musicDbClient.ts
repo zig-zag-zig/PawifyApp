@@ -83,6 +83,19 @@ const SEARCH_TABLE_CONTRACT: Record<string, string[]> = {
     ],
 };
 
+/**
+ * Optional image-state tables.
+ *
+ * `image_services` names a provider and the URL template its token plugs into;
+ * `entity_images` stores one row per entity. Older mirrors do not have them, so
+ * they are deliberately outside `READER_CONTRACT`: their absence degrades to the
+ * live provider chain instead of failing the whole mirror at boot.
+ */
+const ENTITY_IMAGE_CONTRACT: Record<string, string[]> = {
+    image_services: ['id', 'name', 'url_template'],
+    entity_images: ['entity_type', 'entity_mbid', 'service_id', 'image_token', 'fetched_at'],
+};
+
 const readColumns = (db: MusicDb, table: string): Set<string> => {
     const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
     return new Set(rows.map((row) => row.name));
@@ -127,6 +140,25 @@ const hasSearchIndex = (db: MusicDb): boolean => {
     return true;
 };
 
+/**
+ * True when the mirror can answer artwork without any provider request.
+ *
+ * Requires every column the reader uses, so a half-built table is treated as
+ * absent rather than throwing mid-query.
+ */
+export const musicDbHandleHasEntityImages = (db: MusicDb): boolean => {
+    for (const [table, required] of Object.entries(ENTITY_IMAGE_CONTRACT)) {
+        const columns = readColumns(db, table);
+        if (columns.size === 0) {
+            return false;
+        }
+        if (required.some((column) => !columns.has(column))) {
+            return false;
+        }
+    }
+    return true;
+};
+
 const openReadonly = (): MusicDb => {
     if (!musicDbConfig.path) {
         throw new Error('MUSIC_DB_PATH is not set');
@@ -149,6 +181,7 @@ const openReadonly = (): MusicDb => {
     logger.info('MusicBrainz mirror opened', {
         path: musicDbConfig.path,
         searchIndex: hasSearchIndex(db),
+        entityImages: musicDbHandleHasEntityImages(db),
         meta: Object.fromEntries(meta.map((row) => [row.key, row.value])),
     });
 
@@ -233,6 +266,13 @@ export const musicDbHasSearchIndex = (): boolean => {
     const db = getMusicDb();
     if (!db) return false;
     return hasSearchIndex(db);
+};
+
+/** True when the mirror carries the optional image-state tables. */
+export const musicDbHasEntityImages = (): boolean => {
+    const db = getMusicDb();
+    if (!db) return false;
+    return musicDbHandleHasEntityImages(db);
 };
 
 export const isMusicDbEnabled = (): boolean => getMusicDb() !== null;
