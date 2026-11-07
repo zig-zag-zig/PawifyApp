@@ -588,7 +588,7 @@ export const searchTableFor = (entityType: keyof typeof SEARCH_TABLES): string =
  */
 export const SEARCH_MAX_MATCHES = 10_000;
 const SEARCH_COUNT_PROBE = SEARCH_MAX_MATCHES + 1;
-const RANKED_CANDIDATE_WINDOW = 600;
+export const RANKED_CANDIDATE_WINDOW = 600;
 
 /**
  * Counts matches, but stops counting once the budget is exceeded.
@@ -934,16 +934,30 @@ const resolveReleaseGroupArtistAliasProbes = (db: MusicDb, rawQuery: string): st
     }
 };
 
-export const searchEntities = (
+export type RankedSearchPage = {
+    /** Every ranked candidate, in final rank order. */
+    rows: SearchRow[];
+    /** How many rows this query can page through at all. */
+    available: number;
+};
+
+/**
+ * Builds the ranked candidate set for a query.
+ *
+ * The set is bounded on purpose: recall comes from a fixed candidate window plus a
+ * handful of field/prefix probes, and the JS ranker scores all of it. Paging must
+ * therefore slice *this* list instead of asking SQLite for a later offset in raw
+ * bm25 order — the bm25 order is a different order, so a later SQL page would repeat
+ * rows that already appeared in an earlier ranked page.
+ */
+export const rankSearchEntities = (
     db: MusicDb,
     entityType: 'artist' | 'release_group',
     matchQuery: string,
-    limit: number,
-    offset: number,
     phraseQuery = '',
     rawQuery = '',
     skipOrOrderBy = false,
-): SearchRow[] => {
+): RankedSearchPage => {
     const table = searchTableFor(entityType);
     const columns =
         table === 'search_fts_artist'
@@ -975,9 +989,6 @@ export const searchEntities = (
             : selectWindow.all(match, rowLimit, rowOffset)) as SearchRow[];
 
     const effectiveQuery = rawQuery.trim().length > 0 ? rawQuery : matchQuery;
-    if (offset >= RANKED_CANDIDATE_WINDOW) {
-        return runQuery(matchQuery, limit, offset, skipOrOrderBy);
-    }
 
     const byId = new Map<string, SearchRow>();
     const addRows = (rows: SearchRow[]): void => {
@@ -1008,12 +1019,25 @@ export const searchEntities = (
     }
 
     const ranked = sortLocalSearchRows(Array.from(byId.values()), entityType, effectiveQuery);
-    return ranked.slice(offset, offset + limit);
+    return { rows: ranked, available: ranked.length };
 };
+
+export const searchEntities = (
+    db: MusicDb,
+    entityType: 'artist' | 'release_group',
+    matchQuery: string,
+    limit: number,
+    offset: number,
+    phraseQuery = '',
+    rawQuery = '',
+    skipOrOrderBy = false,
+): SearchRow[] =>
+    rankSearchEntities(db, entityType, matchQuery, phraseQuery, rawQuery, skipOrOrderBy)
+        .rows.slice(offset, offset + limit);
 
 export type SearchBudgetResult = {
     rows: SearchRow[];
-    /** Exact for narrow queries, the cap for broad ones. */
+    /** Rows this query can page through (bounded by the ranked candidate window). */
     count: number;
     /** True when the match set exceeded the budget and results are bounded. */
     capped: boolean;
@@ -1033,40 +1057,23 @@ export const searchEntitiesWithBudget = (
 ): SearchBudgetResult => {
     const countQuery = rawQuery.trim().length > 0 ? toFastCountMatchQuery(rawQuery, matchQuery) : matchQuery;
     const probed = countSearchResultsUpTo(db, entityType, countQuery, SEARCH_COUNT_PROBE);
+    const capped = probed >= SEARCH_COUNT_PROBE;
 
-    if (probed < SEARCH_COUNT_PROBE) {
-        return {
-            rows: searchEntities(
-                db,
-                entityType,
-                countQuery,
-                limit,
-                offset,
-                phraseQuery,
-                rawQuery,
-            ),
-            count: probed,
-            capped: false,
-        };
-    }
+    // The ranked candidate set is the pageable universe. Reporting the FTS match
+    // count instead would advertise rows no page can ever reach, leaving "Load
+    // more" visible (and returning duplicates) forever.
+    const page = rankSearchEntities(
+        db,
+        entityType,
+        countQuery,
+        phraseQuery,
+        rawQuery,
+        capped,
+    );
 
-    if (offset >= SEARCH_MAX_MATCHES) {
-        return { rows: [], count: SEARCH_MAX_MATCHES, capped: true };
-    }
-
-    const boundedLimit = Math.min(limit, SEARCH_MAX_MATCHES - offset);
     return {
-        rows: searchEntities(
-            db,
-            entityType,
-            countQuery,
-            boundedLimit,
-            offset,
-            phraseQuery,
-            rawQuery,
-            true,
-        ),
-        count: SEARCH_MAX_MATCHES,
-        capped: true,
+        rows: page.rows.slice(offset, offset + limit),
+        count: Math.min(page.available, SEARCH_MAX_MATCHES),
+        capped,
     };
 };

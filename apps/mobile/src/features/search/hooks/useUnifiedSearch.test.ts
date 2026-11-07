@@ -1,7 +1,97 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createInitialUnifiedSearchState } from '../model/unifiedTypes';
 import { unifiedSearchReducer } from '../state/unifiedSearchReducer';
+import { useUnifiedSearch } from './useUnifiedSearch';
+
+const searchAllMock = vi.fn();
+const waitForTaskResultById = vi.fn(async () => ({ status: 'pending' as const }));
+
+vi.mock('@react-navigation/native', () => ({
+    useNavigation: () => ({ navigate: vi.fn() }),
+}));
+
+vi.mock('../../../contexts/CacheContext', () => ({
+    useCache: () => ({
+        artistProfileImages: {},
+        setArtistProfileImages: vi.fn(),
+        releaseGroupCovers: {},
+        setReleaseGroupCovers: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../hooks/useTaskManager', () => ({
+    default: () => ({
+        // Passthrough task store: run the closure and hand back its value, which is
+        // all the paging logic depends on. The real store's replay/dedupe behaviour
+        // has its own tests.
+        addTask: (run: () => Promise<unknown>) => ({ id: 'task', run }),
+        executeTask: async (task: { run: () => Promise<unknown> }) => await task.run(),
+    }),
+}));
+
+vi.mock('../api/searchApi', () => ({
+    useSearchApi: () => ({ searchAll: searchAllMock, waitForTaskResultById }),
+}));
+
+vi.mock('../../../services/searchHistoryStorage', () => ({
+    addSearchHistoryEntry: vi.fn(async () => {}),
+}));
+
+
+const TOTAL_ARTISTS = 296;
+const TOTAL_GROUPS = 240;
+const TOTAL_TRACKS = 250;
+
+type Kind = 'artists' | 'releaseGroups' | 'tracks';
+
+const page = (prefix: string, total: number, offset: number, limit: number) =>
+    Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, index) => {
+        const position = offset + index;
+        return `${prefix}-${position}`;
+    });
+
+/**
+ * Mirrors `POST /searchAll?category=…`: only the requested category carries rows and
+ * a count, the others resolve to empty results. Anything the client merges from a
+ * different category would be a bug the real server can never mask.
+ */
+const serverPage = (kind: Kind, offset: number, limit: number) => ({
+    artists:
+        kind === 'artists'
+            ? page('artist', TOTAL_ARTISTS, offset, limit).map((id) => ({ id, name: id }))
+            : [],
+    artistCount: kind === 'artists' ? TOTAL_ARTISTS : 0,
+    artistProfileImages: {},
+    artistProfileImageTaskId: null,
+    releaseGroups:
+        kind === 'releaseGroups'
+            ? page('group', TOTAL_GROUPS, offset, limit).map((id) => ({
+                  id,
+                  title: id,
+                  'primary-type': null,
+                  'first-release-date': null,
+                  'artist-credit': [],
+              }))
+            : [],
+    releaseGroupCount: kind === 'releaseGroups' ? TOTAL_GROUPS : 0,
+    releaseGroupCovers: {},
+    releaseGroupCoverTaskId: null,
+    recordings:
+        kind === 'tracks'
+            ? page('track', TOTAL_TRACKS, offset, limit).map((id) => ({
+                  id,
+                  title: id,
+                  'artist-credit': [],
+                  release: { id: `release-${id}`, title: id, releaseGroupId: null, date: null },
+              }))
+            : [],
+    recordingCount: kind === 'tracks' ? TOTAL_TRACKS : 0,
+    releaseCovers: {},
+    releaseCoverTaskId: null,
+});
 
 const artist = (id: string) => ({ id, name: id });
 const group = (id: string) => ({
@@ -139,5 +229,108 @@ describe('unified search paging', () => {
     it('respects artists -> releases -> tracks priority when all arrive together', () => {
         const state = searched('initial', response(10, 10, 10));
         expect(state.firstLoadedScope).toBe('artists');
+    });
+});
+
+describe('useUnifiedSearch load more', () => {
+    beforeEach(() => {
+        searchAllMock.mockReset();
+        searchAllMock.mockImplementation(
+            async (
+                _query: string,
+                limit: number,
+                offset: number,
+                kind: Kind,
+            ) => serverPage(kind, offset, limit),
+        );
+    });
+
+    it('never re-requests an offset, so every category keeps loading', async () => {
+        const { result } = renderHook(() => useUnifiedSearch());
+
+        await act(async () => {
+            await result.current.onSubmitSearch('beatles');
+        });
+        expect(result.current.state.artists).toHaveLength(100);
+        expect(result.current.state.artistVisible).toBe(10);
+
+        // Keep tapping until the list is fully revealed.
+        for (let tap = 0; tap < 80 && result.current.state.artistVisible < TOTAL_ARTISTS; tap += 1) {
+            await act(async () => {
+                await result.current.onLoadMoreArtists();
+            });
+        }
+
+        expect(result.current.state.artists).toHaveLength(TOTAL_ARTISTS);
+        expect(result.current.state.artistVisible).toBe(TOTAL_ARTISTS);
+        expect(result.current.state.artistsAllFetched).toBe(true);
+
+        // The origin/main regression: the offset was reset to the page length after
+        // every load more, so the second tap re-fetched page 2 and appended nothing.
+        const artistOffsets = searchAllMock.mock.calls
+            .filter((call) => call[3] === 'artists')
+            .map((call) => call[2] as number);
+        expect(artistOffsets).toEqual([0, 100, 200]);
+        expect(new Set(artistOffsets).size).toBe(artistOffsets.length);
+    });
+
+    it('stops asking for pages once a category is exhausted', async () => {
+        const { result } = renderHook(() => useUnifiedSearch());
+
+        await act(async () => {
+            await result.current.onSubmitSearch('beatles');
+        });
+
+        for (let tap = 0; tap < 80; tap += 1) {
+            await act(async () => {
+                await result.current.onLoadMoreArtists();
+            });
+        }
+
+        const callsAfterExhaustion = searchAllMock.mock.calls.length;
+        for (let tap = 0; tap < 5; tap += 1) {
+            await act(async () => {
+                await result.current.onLoadMoreArtists();
+            });
+        }
+
+        expect(searchAllMock.mock.calls.length).toBe(callsAfterExhaustion);
+        expect(
+            searchAllMock.mock.calls
+                .filter((call) => call[3] === 'artists')
+                .every((call) => (call[2] as number) <= 200),
+        ).toBe(true);
+    });
+
+    it('pages release groups and tracks independently', async () => {
+        const { result } = renderHook(() => useUnifiedSearch());
+
+        await act(async () => {
+            await result.current.onSubmitSearch('beatles');
+        });
+
+        for (let tap = 0; tap < 60; tap += 1) {
+            await act(async () => {
+                await result.current.onLoadMoreReleaseGroups();
+            });
+        }
+        for (let tap = 0; tap < 60; tap += 1) {
+            await act(async () => {
+                await result.current.onLoadMoreTracks();
+            });
+        }
+
+        expect(result.current.state.releaseGroups).toHaveLength(TOTAL_GROUPS);
+        expect(result.current.state.releaseGroupVisible).toBe(TOTAL_GROUPS);
+        expect(result.current.state.releaseGroupsAllFetched).toBe(true);
+
+        expect(result.current.state.tracks).toHaveLength(TOTAL_TRACKS);
+        expect(result.current.state.trackVisible).toBe(TOTAL_TRACKS);
+        expect(result.current.state.tracksAllFetched).toBe(true);
+
+        const offsetsFor = (kind: Kind) =>
+            searchAllMock.mock.calls.filter((call) => call[3] === kind).map((call) => call[2]);
+        expect(offsetsFor('releaseGroups')).toEqual([0, 100, 200]);
+        expect(offsetsFor('tracks')).toEqual([0, 100, 200]);
     });
 });
