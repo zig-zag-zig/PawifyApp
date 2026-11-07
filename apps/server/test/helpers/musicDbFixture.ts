@@ -162,11 +162,15 @@ export type MusicDbSeed = {
 export const IMAGE_SERVICE_SEED: Array<{ id: number; name: string; url_template: string }> = [
     { id: 0, name: 'none', url_template: '' },
     { id: 1, name: 'pending', url_template: '' },
-    { id: 2, name: 'caa_rel', url_template: 'https://coverartarchive.org/release/{token}-500' },
+    {
+        id: 2,
+        name: 'caa_rel',
+        url_template: 'https://coverartarchive.org/release/{token}/front-500',
+    },
     {
         id: 3,
         name: 'caa_rg',
-        url_template: 'https://coverartarchive.org/release-group/{token}-500',
+        url_template: 'https://coverartarchive.org/release-group/{token}/front-500',
     },
     { id: 4, name: 'deezer', url_template: 'https://cdn-images.dzcdn.net/images/{token}' },
     { id: 5, name: 'tidal', url_template: 'https://resources.tidal.com/images/{token}' },

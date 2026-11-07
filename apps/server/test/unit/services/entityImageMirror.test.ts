@@ -145,7 +145,7 @@ describe('mirrored release artwork', () => {
             await import('../../../src/services/musicApi/releaseImageSources.js');
         const result = await resolveReleaseImage({ releaseId: RELEASE_ID });
 
-        assert.equal(result.image, `https://coverartarchive.org/release/${RELEASE_ID}-500`);
+        assert.equal(result.image, `https://coverartarchive.org/release/${RELEASE_ID}/front-500`);
         assert.equal(result.source, 'coverartarchive');
         assert.deepEqual(calls, []);
     });
@@ -322,7 +322,7 @@ describe('mirrored release artwork', () => {
             await import('../../../src/services/coverArt/coverArtLookup.js');
         const image = await fetchReleaseCover(RELEASE_ID, GROUP_ID);
 
-        assert.equal(image, `https://coverartarchive.org/release-group/${GROUP_ID}-500`);
+        assert.equal(image, `https://coverartarchive.org/release-group/${GROUP_ID}/front-500`);
         assert.deepEqual(calls, []);
     });
 
@@ -456,7 +456,7 @@ describe('entity image repository', () => {
         const first = records.get('release-0000');
         assert.equal(first?.service, 'caa_rel');
         assert.equal(first?.fetchedAt, 0);
-        assert.equal(first?.url, 'https://coverartarchive.org/release/token-0-500');
+        assert.equal(first?.url, 'https://coverartarchive.org/release/token-0/front-500');
     });
 
     it('ignores rows whose service row is missing instead of throwing', () => {
