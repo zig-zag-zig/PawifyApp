@@ -38,6 +38,7 @@ interface SearchViewProps {
     trackCovers: Record<string, string | null | undefined>;
     pendingTrackCoverIds: string[];
     isTracksLoading: boolean;
+    canLoadMoreTracks: boolean;
     onQueryChanged: (query: string) => void;
     onScopeChanged: (scope: SearchScope) => void;
     onSubmitSearch: (query?: string) => Promise<void>;
@@ -180,6 +181,7 @@ const SearchView = ({
     trackCovers,
     pendingTrackCoverIds,
     isTracksLoading,
+    canLoadMoreTracks,
     onQueryChanged,
     onScopeChanged,
     onSubmitSearch,
@@ -224,6 +226,11 @@ const SearchView = ({
                         releases: releaseGroupCount,
                         tracks: trackCount,
                     }}
+                    loadingScopes={{
+                        artists: isArtistsLoading && artists.length === 0,
+                        releases: isReleasesLoading && releaseGroups.length === 0,
+                        tracks: isTracksLoading && tracks.length === 0,
+                    }}
                     onScopeChange={onScopeChanged}
                 />
             )}
@@ -240,6 +247,10 @@ const SearchView = ({
                         />
                     ) : null}
                     <SearchEmptyState scope={scope} compact={hasScopedHistory} noResults={false} />
+                </View>
+            ) : isInitialLoading ? (
+                <View style={styles.initialLoadingArea}>
+                    <Spinner isLoading backdropVariant="strong" />
                 </View>
             ) : hasSubmittedNoResults ? (
                 <SearchEmptyState scope={scope} noResults />
@@ -269,7 +280,7 @@ const SearchView = ({
                     trackCovers={trackCovers}
                     pendingCoverIds={pendingTrackCoverIds}
                     isLoading={isTracksLoading}
-                    canLoadMore={!hasSubmittedNoResults && tracks.length > 0}
+                    canLoadMore={!hasSubmittedNoResults && canLoadMoreTracks}
                     onLoadMore={() => void onLoadMoreTracks()}
                     onTrackPress={onTrackPressed}
                 />
@@ -280,6 +291,7 @@ const SearchView = ({
 
 const styles = StyleSheet.create({
     emptyQueryArea: { flex: 1 },
+    initialLoadingArea: { flex: 1 },
     searchInputContainer: { marginHorizontal: -10, marginBottom: 10 },
     trackList: { flex: 1 },
     trackListViewport: { flex: 1 },

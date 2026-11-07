@@ -57,7 +57,31 @@ const READER_CONTRACT: Record<string, string[]> = {
  * Present only when the mirror's search index was built; without it search falls
  * back to the API. One table per entity type — see `musicDbQueries.SEARCH_TABLES`.
  */
-const SEARCH_TABLES = ['search_fts_artist', 'search_fts_release_group'] as const;
+/**
+ * Columns required on each FTS search table; an older mirror without them must
+ * cleanly fall back to the MusicBrainz API rather than fail mid-query.
+ */
+const SEARCH_TABLE_CONTRACT: Record<string, string[]> = {
+    search_fts_artist: [
+        'entity_mbid',
+        'heading',
+        'sortname',
+        'alias',
+        'primary_alias',
+        'comment',
+        'aux',
+        'ref_count',
+    ],
+    search_fts_release_group: [
+        'entity_mbid',
+        'heading',
+        'releases',
+        'artistname',
+        'comment',
+        'aux',
+        'ref_count',
+    ],
+};
 
 const readColumns = (db: MusicDb, table: string): Set<string> => {
     const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
@@ -91,7 +115,16 @@ const hasSearchIndex = (db: MusicDb): boolean => {
     const statement = db.prepare(
         `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name=?`,
     );
-    return SEARCH_TABLES.every((table) => statement.get(table) !== undefined);
+    for (const [table, required] of Object.entries(SEARCH_TABLE_CONTRACT)) {
+        if (statement.get(table) === undefined) {
+            return false;
+        }
+        const columns = readColumns(db, table);
+        if (required.some((column) => !columns.has(column))) {
+            return false;
+        }
+    }
+    return true;
 };
 
 const openReadonly = (): MusicDb => {

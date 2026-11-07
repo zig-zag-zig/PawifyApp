@@ -29,15 +29,16 @@ export const createSearchAllUseCase =
         );
 
         const [artists, releaseGroups, recordings] = result;
+        const scopeSuffix = category ?? 'all';
         const artistPlan = await assetPlanner.planArtistProfileImages({
             userId,
-            scope: `searchAll:${query}:${limit}:${offset}`,
+            scope: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
             lookups: artists.artists.map((artist) => ({ artistId: artist.id, artistName: artist.name })),
             ttl: transientArtistCacheTtlHours,
         });
         const releasePlan = await assetPlanner.planArtistReleaseGroupCovers({
             userId,
-            scope: `searchAll:${query}:${limit}:${offset}`,
+            scope: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
             pageEntries: releaseGroups.releaseGroups.map((group) => ({ releaseGroupId: group.id, releaseIds: [] })),
             ttl: transientArtistCacheTtlHours,
         });
@@ -62,7 +63,7 @@ export const createSearchAllUseCase =
                 ? { resolved: {}, taskId: null }
                 : await assetPlanner.planReleaseGroupReleaseCovers({
                       userId,
-                      releaseGroupId: `searchAll:${query}:${limit}:${offset}`,
+                      releaseGroupId: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
                       pageEntries: Array.from(trackReleasesByGroup, ([releaseGroupId, releaseIds]) => ({
                           releaseGroupId,
                           releaseIds,

@@ -79,14 +79,27 @@ CREATE TABLE _meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- Column layout matches the mirror built by pawify_mb_sqlite, which in turn mirrors
+-- MusicBrainz's mbsssss fields: heading, sortname, alias, primary_alias, comment, aux.
 CREATE VIRTUAL TABLE search_fts_artist USING fts5(
     entity_mbid UNINDEXED,
     heading,
+    sortname,
+    alias,
+    primary_alias,
+    comment,
+    aux,
+    ref_count UNINDEXED,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 CREATE VIRTUAL TABLE search_fts_release_group USING fts5(
     entity_mbid UNINDEXED,
     heading,
+    releases,
+    artistname,
+    comment,
+    aux,
+    ref_count UNINDEXED,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 CREATE VIRTUAL TABLE search_fts_release USING fts5(
@@ -106,7 +119,18 @@ export type MusicDbSeed = {
     releaseArtists?: Record<string, unknown>[];
     externalLinks?: Record<string, unknown>[];
     meta?: Record<string, string>;
-    search?: { entityType: string; entityId: string; heading: string }[];
+    search?: {
+        entityType: string;
+        entityId: string;
+        heading: string;
+        /** Artist ranking inputs; mirror the MusicBrainz boost fields. */
+        sortName?: string;
+        alias?: string;
+        primaryAlias?: string;
+        releases?: string;
+        refCount?: number;
+        artistName?: string;
+    }[];
 };
 
 const insertRows = (
@@ -153,12 +177,25 @@ export const createMusicDbFixture = (seed: MusicDbSeed = {}): string => {
 
     if (seed.search) {
         for (const row of seed.search) {
-            const table =
-                row.entityType === 'artist' ? 'search_fts_artist' : 'search_fts_release_group';
-            db.prepare(`INSERT INTO ${table} (entity_mbid, heading) VALUES (?, ?)`).run(
-                row.entityId,
-                row.heading,
-            );
+            if (row.entityType === 'artist') {
+                db.prepare(
+                    `INSERT INTO search_fts_artist (entity_mbid, heading, sortname, alias, primary_alias, comment, aux, ref_count)
+                     VALUES (?, ?, ?, ?, ?, '', '', ?)`,
+                ).run(
+                    row.entityId,
+                    row.heading,
+                    row.sortName ?? row.heading,
+                    row.alias ?? '',
+                    row.primaryAlias ?? '',
+                    row.refCount ?? 100,
+                );
+                continue;
+            }
+
+            db.prepare(
+                `INSERT INTO search_fts_release_group (entity_mbid, heading, releases, artistname, comment, aux, ref_count)
+                 VALUES (?, ?, ?, ?, '', '', ?)`,
+            ).run(row.entityId, row.heading, row.releases ?? '', row.artistName ?? '', row.refCount ?? 1);
         }
     }
 

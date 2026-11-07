@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SearchView from '../components/SearchView';
 import { useUnifiedSearch } from '../hooks/useUnifiedSearch';
 import {
@@ -13,12 +13,23 @@ const SearchPage = () => {
     const search = useUnifiedSearch();
     const [scope, setScope] = useState<SearchScope>('artists');
     const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
+    const autoSelectedSequenceRef = useRef<number>(-1);
 
     const refreshHistory = useCallback(async () => setHistory(await loadSearchHistory()), []);
 
     useEffect(() => {
         void refreshHistory();
     }, [refreshHistory]);
+
+    useEffect(() => {
+        if (
+            search.state.firstLoadedScope &&
+            autoSelectedSequenceRef.current !== search.searchSequence
+        ) {
+            autoSelectedSequenceRef.current = search.searchSequence;
+            setScope(search.state.firstLoadedScope);
+        }
+    }, [search.searchSequence, search.state.firstLoadedScope]);
 
     const onHistoryEntryPressed = useCallback(
         (entry: SearchHistoryEntry) => {
@@ -46,25 +57,33 @@ const SearchPage = () => {
             scope={scope}
             hasSubmittedSearch={search.state.hasSubmittedSearch}
             history={history}
-            artists={search.state.artists}
+            artists={search.state.artists.slice(0, search.state.artistVisible)}
             artistCount={search.state.artistCount}
             releaseGroupCount={search.state.releaseGroupCount}
             trackCount={search.state.trackCount}
             artistProfileImages={search.state.artistProfileImages}
             pendingArtistImageIds={search.state.pendingArtistImageIds}
             isArtistsLoading={search.state.isLoadingArtists}
-            canLoadMoreArtists={!search.state.artistsAllFetched && search.state.artists.length > 0}
-            releaseGroups={search.state.releaseGroups}
+            canLoadMoreArtists={
+                search.state.artistVisible < search.state.artists.length ||
+                (!search.state.artistsAllFetched && search.state.artists.length > 0)
+            }
+            releaseGroups={search.state.releaseGroups.slice(0, search.state.releaseGroupVisible)}
             releaseGroupCovers={search.state.releaseGroupCovers}
             pendingReleaseGroupCoverIds={search.state.pendingReleaseGroupCoverIds}
             isReleasesLoading={search.state.isLoadingReleaseGroups}
             canLoadMoreReleaseGroups={
-                !search.state.releaseGroupsAllFetched && search.state.releaseGroups.length > 0
+                search.state.releaseGroupVisible < search.state.releaseGroups.length ||
+                (!search.state.releaseGroupsAllFetched && search.state.releaseGroups.length > 0)
             }
-            tracks={search.state.tracks}
+            tracks={search.state.tracks.slice(0, search.state.trackVisible)}
             trackCovers={search.state.trackCovers}
             pendingTrackCoverIds={search.state.pendingTrackCoverIds}
             isTracksLoading={search.state.isLoadingTracks}
+            canLoadMoreTracks={
+                search.state.trackVisible < search.state.tracks.length ||
+                (!search.state.tracksAllFetched && search.state.tracks.length > 0)
+            }
             onQueryChanged={search.onQueryChanged}
             onScopeChanged={setScope}
             onSubmitSearch={search.onSubmitSearch}

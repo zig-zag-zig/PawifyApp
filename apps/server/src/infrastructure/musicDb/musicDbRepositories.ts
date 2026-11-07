@@ -249,6 +249,7 @@ export const searchReleaseGroupsFromMirror = (
         limit,
         offset,
         toFtsHeadingPhrase(query),
+        query,
     );
     return {
         releaseGroups: result.rows.map((row) => {

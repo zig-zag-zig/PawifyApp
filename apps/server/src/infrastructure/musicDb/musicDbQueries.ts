@@ -58,6 +58,7 @@ export type ExternalLinkRow = { rel_type: string; url: string };
  */
 export const toFtsQuery = (query: string): string => {
     const tokens = query
+        .replace(/&/g, ' and ')
         .split(/[^\p{L}\p{N}]+/u)
         .map((token) => token.trim())
         .filter((token) => token.length > 0);
@@ -67,6 +68,21 @@ export const toFtsQuery = (query: string): string => {
     }
 
     return tokens.map((token) => `"${token.replace(/"/g, '""')}"*`).join(' OR ');
+};
+
+const toFastCountMatchQuery = (rawQuery: string, fallbackMatchQuery: string): string => {
+    const tokens = tokenizeSearchValue(rawQuery);
+    const meaningful = tokens.filter((token) => token.length >= 2);
+    if (meaningful.length === 0) {
+        return fallbackMatchQuery;
+    }
+
+    return meaningful
+        .map((token, index) => {
+            const escaped = `"${token.replace(/"/g, '""')}"`;
+            return index === meaningful.length - 1 && token.length >= 3 ? `${escaped}*` : escaped;
+        })
+        .join(' OR ');
 };
 
 /**
@@ -104,17 +120,6 @@ export const normalizeHeading = (value: string): string =>
         .replace(/\p{M}+/gu, '')
         .toLowerCase()
         .replace(/[^\p{L}\p{N}]+/gu, '');
-
-/** Ranks a phrase match by how much of the query its heading actually is. */
-const headingTierScore = (heading: string, query: string): number => {
-    const normalised = normalizeHeading(heading);
-    const target = normalizeHeading(query);
-
-    if (target.length === 0) return 2;
-    if (normalised === target) return 0;
-    if (normalised.startsWith(target)) return 1;
-    return 2;
-};
 
 export const toFtsHeadingPhrase = (query: string): string => {
     const tokens = query
@@ -543,7 +548,17 @@ export const readReleaseGroupArtists = (db: MusicDb, releaseGroupId: string): Ar
         joinphrase: row.join_phrase.length > 0 ? row.join_phrase : null,
     }));
 
-export type SearchRow = { mbid: string; title: string };
+export type SearchRow = {
+    mbid: string;
+    title: string;
+    sortname?: string;
+    alias?: string;
+    primaryAlias?: string;
+    releases?: string;
+    artistName?: string;
+    refCount?: number;
+    bm25Score?: number;
+};
 
 /**
  * FTS table per entity type.
@@ -573,6 +588,7 @@ export const searchTableFor = (entityType: keyof typeof SEARCH_TABLES): string =
  */
 export const SEARCH_MAX_MATCHES = 10_000;
 const SEARCH_COUNT_PROBE = SEARCH_MAX_MATCHES + 1;
+const RANKED_CANDIDATE_WINDOW = 600;
 
 /**
  * Counts matches, but stops counting once the budget is exceeded.
@@ -597,6 +613,327 @@ export const countSearchResultsUpTo = (
     return row?.total ?? 0;
 };
 
+/**
+ * Column weights mirroring MusicBrainz's own search config (`metabrainz/mbsssss`,
+ * `artist/conf/request-params.xml`):
+ *
+ *   qf = alias^1.75 primary_alias^2 artist^2 artistaccent^2.2 comment ngram^0.5 sortname^1.85
+ *   bf = log(sum(ref_count,150))^4
+ *
+ * FTS5's bm25() takes one weight per declared column including UNINDEXED columns:
+ * (entity_mbid, heading, sortname, alias, primary_alias, comment, aux, ref_count).
+ */
+const ARTIST_FTS_WEIGHTS = [0.0, 2.0, 1.85, 1.75, 2.0, 1.0, 0.5, 0.0] as const;
+
+/**
+ * Release-group weights from `release-group/conf/request-params.xml`:
+ * releasegroup^1.5, release^1.3, artistname^1.2, comment^1.0, aux^0.5.
+ * Column order: (entity_mbid, heading, releases, artistname, comment, aux, ref_count).
+ */
+const RELEASE_GROUP_FTS_WEIGHTS = [0.0, 1.5, 1.3, 1.2, 1.0, 0.5, 0.0] as const;
+
+const bm25Args = (entityType: 'artist' | 'release_group', table: string): string => {
+    const weights = entityType === 'artist' ? ARTIST_FTS_WEIGHTS : RELEASE_GROUP_FTS_WEIGHTS;
+    return `${table}${weights.map((weight) => `, ${weight}`).join('')}`;
+};
+
+const rankExpression = (entityType: 'artist' | 'release_group', table: string): string =>
+    entityType === 'artist'
+        ? `(-bm25(${bm25Args(entityType, table)})) + (1.5 * ln(CAST(ref_count AS REAL) + 150))`
+        : `(-bm25(${bm25Args(entityType, table)})) + (0.05 * ln(CAST(ref_count AS REAL) + 1))`;
+
+export const searchOrderBy = (entityType: 'artist' | 'release_group', table: string): string =>
+    `${rankExpression(entityType, table)} DESC, entity_mbid ASC`;
+
+const normalizeSearchValue = (value: string): string =>
+    value
+        .normalize('NFD')
+        .replace(/\p{M}+/gu, '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^\p{L}\p{N}]+/gu, '');
+
+const tokenizeSearchValue = (value: string): string[] =>
+    value
+        .normalize('NFD')
+        .replace(/\p{M}+/gu, '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean);
+
+const hasTokenSequence = (haystack: string[], needle: string[]): boolean =>
+    needle.length > 0 &&
+    haystack.some(
+        (_, index) =>
+            index + needle.length <= haystack.length &&
+            needle.every((token, offset) => haystack[index + offset] === token),
+    );
+
+const artistRankTuple = (row: SearchRow, queryTokens: string[], target: string): number[] => {
+    const heading = normalizeSearchValue(row.title);
+    const sortname = normalizeSearchValue(row.sortname ?? '');
+    const headingTokens = tokenizeSearchValue(row.title);
+    const sortTokens = tokenizeSearchValue(row.sortname ?? '');
+    const primaryAliasTokens = tokenizeSearchValue(row.primaryAlias ?? '');
+    const aliasTokens = tokenizeSearchValue(row.alias ?? '');
+    const allTokens = new Set([
+        ...headingTokens,
+        ...sortTokens,
+        ...primaryAliasTokens,
+        ...aliasTokens,
+    ]);
+
+    const exactTokenMatches = queryTokens.filter((token) => allTokens.has(token)).length;
+    const prefixTokenMatches = queryTokens.filter((token) =>
+        [...allTokens].some((word) => word.startsWith(token)),
+    ).length;
+
+    const exactHeading = heading === target && headingTokens.length === queryTokens.length;
+    const exactSortname = sortname === target && sortTokens.length === queryTokens.length;
+    const exactPrimaryAlias = hasTokenSequence(primaryAliasTokens, queryTokens);
+    const exactAlias = hasTokenSequence(aliasTokens, queryTokens);
+    const refCount = row.refCount ?? 0;
+    const isSpecial =
+        (heading === 'unknown' || heading === 'variousartists' || heading === 'noartist') &&
+        target !== heading;
+    const singleShortToken = queryTokens.length === 1 && target.length <= 4;
+
+    let tier = 9;
+    if ((exactHeading || exactSortname) && (!singleShortToken || refCount >= 1000) && !isSpecial) {
+        tier = 0;
+    } else if ((exactPrimaryAlias || exactAlias) && refCount >= 1000 && !isSpecial) {
+        tier = 0;
+    } else if (
+        singleShortToken &&
+        (heading.startsWith(target) ||
+            sortname.startsWith(target) ||
+            headingTokens[0] === queryTokens[0] ||
+            sortTokens[0] === queryTokens[0]) &&
+        refCount >= 1000 &&
+        !isSpecial
+    ) {
+        tier = 0;
+    } else if ((exactHeading || exactSortname) && !isSpecial) {
+        tier = 1;
+    } else if ((exactPrimaryAlias || exactAlias) && refCount >= 20 && !isSpecial) {
+        tier = 2;
+    } else if (
+        exactTokenMatches === queryTokens.length &&
+        queryTokens.every((token) => headingTokens.includes(token) || sortTokens.includes(token))
+    ) {
+        tier = 3;
+    } else if (exactTokenMatches === queryTokens.length) {
+        tier = 4;
+    } else if (
+        prefixTokenMatches === queryTokens.length &&
+        (heading.startsWith(target) || sortname.startsWith(target))
+    ) {
+        tier = 5;
+    } else if (prefixTokenMatches === queryTokens.length) {
+        tier = 6;
+    }
+
+    const combinedScore = (row.bm25Score ?? 0) + 2.5 * Math.log(refCount + 150);
+    return [
+        tier,
+        -exactTokenMatches,
+        -prefixTokenMatches,
+        -Math.round(combinedScore * 1000),
+        heading.length,
+    ];
+};
+
+const releaseGroupRankTuple = (row: SearchRow, queryTokens: string[], target: string): number[] => {
+    const heading = normalizeSearchValue(row.title);
+    const artistName = normalizeSearchValue(row.artistName ?? '');
+    const headingTokens = tokenizeSearchValue(row.title);
+    const artistTokens = tokenizeSearchValue(row.artistName ?? '');
+    const releaseTokens = tokenizeSearchValue(row.releases ?? '');
+    const allTokens = new Set([...headingTokens, ...artistTokens, ...releaseTokens]);
+
+    const exactTokenMatches = queryTokens.filter((token) => allTokens.has(token)).length;
+    const prefixTokenMatches = queryTokens.filter((token) =>
+        [...allTokens].some((word) => word.startsWith(token)),
+    ).length;
+
+    const exactHeading = heading === target;
+    const exactArtist = artistName === target;
+    const splitTitleAndArtist =
+        queryTokens.length >= 2 &&
+        headingTokens.length > 0 &&
+        artistTokens.length > 0 &&
+        headingTokens.every((token) => queryTokens.includes(token)) &&
+        artistTokens.every((token) => queryTokens.includes(token)) &&
+        queryTokens.every((token) => headingTokens.includes(token) || artistTokens.includes(token));
+
+    let tier = 9;
+    if (exactHeading && exactTokenMatches === queryTokens.length) {
+        tier = 0;
+    } else if (splitTitleAndArtist) {
+        tier = 0;
+    } else if (
+        exactTokenMatches === queryTokens.length &&
+        headingTokens.length === queryTokens.length &&
+        queryTokens.every((token) => headingTokens.includes(token))
+    ) {
+        tier = 1;
+    } else if (
+        exactTokenMatches === queryTokens.length &&
+        queryTokens.every((token) => headingTokens.includes(token))
+    ) {
+        tier = 2;
+    } else if (
+        exactTokenMatches === queryTokens.length &&
+        queryTokens.every((token) => releaseTokens.includes(token))
+    ) {
+        tier = 3;
+    } else if (exactTokenMatches === queryTokens.length) {
+        tier = 4;
+    } else if (exactArtist) {
+        tier = 5;
+    } else if (prefixTokenMatches === queryTokens.length && heading.startsWith(target)) {
+        tier = 6;
+    } else if (prefixTokenMatches === queryTokens.length) {
+        tier = 7;
+    }
+
+    const refBoost = 0.25 * Math.log((row.refCount ?? 0) + 1);
+    return [
+        tier,
+        -exactTokenMatches,
+        -prefixTokenMatches,
+        Math.abs(heading.length - target.length),
+        -Math.round(((row.bm25Score ?? 0) + refBoost) * 1000),
+    ];
+};
+
+const sortLocalSearchRows = (
+    rows: SearchRow[],
+    entityType: 'artist' | 'release_group',
+    rawQuery: string,
+): SearchRow[] => {
+    const queryTokens = tokenizeSearchValue(rawQuery);
+    const target = normalizeSearchValue(rawQuery);
+    if (queryTokens.length === 0) {
+        return rows;
+    }
+
+    return rows.sort((left, right) => {
+        const a =
+            entityType === 'artist'
+                ? artistRankTuple(left, queryTokens, target)
+                : releaseGroupRankTuple(left, queryTokens, target);
+        const b =
+            entityType === 'artist'
+                ? artistRankTuple(right, queryTokens, target)
+                : releaseGroupRankTuple(right, queryTokens, target);
+        for (let index = 0; index < a.length; index += 1) {
+            if (a[index] !== b[index]) {
+                return a[index] - b[index];
+            }
+        }
+        return left.mbid.localeCompare(right.mbid);
+    });
+};
+
+const buildCandidateProbes = (
+    entityType: 'artist' | 'release_group',
+    rawQuery: string,
+    phraseQuery: string,
+): string[] => {
+    const rawTokens = tokenizeSearchValue(rawQuery);
+    const tokens = rawTokens.map((token) => `"${token.replace(/"/g, '""')}"`);
+    if (tokens.length === 0) {
+        return [];
+    }
+
+    const phrase = tokens.join(' ');
+    const longRawTokens = rawTokens.filter((token) => token.length >= 2);
+    const andSource = longRawTokens.length > 0 ? longRawTokens : rawTokens;
+    const andPrefix = andSource
+        .map((token, index) => {
+            const escaped = `"${token.replace(/"/g, '""')}"`;
+            return index === andSource.length - 1 && token.length >= 3 ? `${escaped}*` : escaped;
+        })
+        .join(' AND ');
+    const lastPrefix =
+        rawTokens.length === 1 && rawTokens[0].length >= 3 ? `heading:${phrase}*` : '';
+    const sortLastPrefix =
+        rawTokens.length === 1 && rawTokens[0].length >= 3 ? `sortname:${phrase}*` : '';
+
+    const probes =
+        entityType === 'artist'
+            ? [
+                  `heading:${phrase}`,
+                  `sortname:${phrase}`,
+                  `primary_alias:${phrase}`,
+                  `alias:${phrase}`,
+                  lastPrefix,
+                  sortLastPrefix,
+                  andPrefix,
+              ]
+            : [
+                  `heading:${phrase}`,
+                  `releases:${phrase}`,
+                  `artistname:${phrase}`,
+                  lastPrefix,
+                  andPrefix,
+              ];
+
+    if (phraseQuery) {
+        probes.unshift(phraseQuery);
+    }
+    return Array.from(new Set(probes.filter((probe) => probe.length > 0)));
+};
+
+const resolveReleaseGroupArtistAliasProbes = (db: MusicDb, rawQuery: string): string[] => {
+    const tokens = tokenizeSearchValue(rawQuery).map((token) => `"${token.replace(/"/g, '""')}"`);
+    if (tokens.length === 0) {
+        return [];
+    }
+
+    const phrase = tokens.join(' ');
+    const artistProbe = [
+        `heading:${phrase}`,
+        `sortname:${phrase}`,
+        `primary_alias:${phrase}`,
+        `alias:${phrase}`,
+    ].join(' OR ');
+
+    try {
+        const rows = db
+            .prepare(
+                `SELECT heading, sortname
+                 FROM search_fts_artist
+                 WHERE search_fts_artist MATCH ?
+                 ORDER BY ${searchOrderBy('artist', 'search_fts_artist')}
+                 LIMIT 10`,
+            )
+            .all(artistProbe) as { heading: string; sortname?: string }[];
+
+        const target = normalizeSearchValue(rawQuery);
+        const queryTokens = tokenizeSearchValue(rawQuery);
+        const names = new Set<string>();
+        for (const row of rows) {
+            const headingNorm = normalizeSearchValue(row.heading);
+            const sortNorm = normalizeSearchValue(row.sortname ?? '');
+            if (headingNorm === target || sortNorm === target || queryTokens.length >= 2) {
+                const artistTokens = tokenizeSearchValue(row.heading).map(
+                    (token) => `"${token.replace(/"/g, '""')}"`,
+                );
+                if (artistTokens.length > 0) {
+                    names.add(`artistname:${artistTokens.join(' ')}`);
+                }
+            }
+            if (names.size >= 3) break;
+        }
+        return Array.from(names);
+    } catch {
+        return [];
+    }
+};
+
 export const searchEntities = (
     db: MusicDb,
     entityType: 'artist' | 'release_group',
@@ -605,40 +942,73 @@ export const searchEntities = (
     offset: number,
     phraseQuery = '',
     rawQuery = '',
+    skipOrOrderBy = false,
 ): SearchRow[] => {
     const table = searchTableFor(entityType);
-    const runQuery = (match: string, rowLimit: number, rowOffset: number): SearchRow[] =>
-        db
-            .prepare(
-                `SELECT entity_mbid AS mbid, heading AS title
-                 FROM ${table}
-                 WHERE ${table} MATCH ?
-                 ORDER BY bm25(${table}) ASC, entity_mbid ASC
-                 LIMIT ? OFFSET ?`,
-            )
-            .all(match, rowLimit, rowOffset) as SearchRow[];
-
-    // Offset paging stays on the recall query; the phrase tier only reorders the
-    // first page, so page 2 does not repeat or skip rows.
-    if (!phraseQuery || offset > 0) {
-        return runQuery(matchQuery, limit, offset);
-    }
-
-    // Pull more phrase hits than the page needs: bm25 orders them by term rarity,
-    // so the artist literally named `JAŸ-Z` can trail `Jay-Z & Ja Rule`. Re-sorting
-    // the (small) phrase set by how much of the query the heading is puts the real
-    // name first.
-    const phraseRows = fetchRankedPhraseRows(db, entityType, phraseQuery, rawQuery, limit * 3);
-    if (phraseRows.length === 0) {
-        return runQuery(matchQuery, limit, offset);
-    }
-
-    const seen = new Set(phraseRows.map((row) => row.mbid));
-    const rest = runQuery(matchQuery, limit + phraseRows.length, 0).filter(
-        (row) => !seen.has(row.mbid),
+    const columns =
+        table === 'search_fts_artist'
+            ? `entity_mbid AS mbid, heading AS title, sortname, alias, primary_alias AS primaryAlias, ref_count AS refCount, (-bm25(${bm25Args(entityType, table)})) AS bm25Score`
+            : `entity_mbid AS mbid, heading AS title, releases, artistname AS artistName, ref_count AS refCount, (-bm25(${bm25Args(entityType, table)})) AS bm25Score`;
+    const order = searchOrderBy(entityType, table);
+    const selectWindow = db.prepare(
+        `SELECT ${columns}
+         FROM ${table}
+         WHERE ${table} MATCH ?
+         ORDER BY ${order}
+         LIMIT ? OFFSET ?`,
+    );
+    const selectUnorderedWindow = db.prepare(
+        `SELECT ${columns}
+         FROM ${table}
+         WHERE ${table} MATCH ?
+         LIMIT ? OFFSET ?`,
     );
 
-    return [...phraseRows, ...rest].slice(0, limit);
+    const runQuery = (
+        match: string,
+        rowLimit: number,
+        rowOffset: number,
+        unordered = false,
+    ): SearchRow[] =>
+        (unordered
+            ? selectUnorderedWindow.all(match, rowLimit, rowOffset)
+            : selectWindow.all(match, rowLimit, rowOffset)) as SearchRow[];
+
+    const effectiveQuery = rawQuery.trim().length > 0 ? rawQuery : matchQuery;
+    if (offset >= RANKED_CANDIDATE_WINDOW) {
+        return runQuery(matchQuery, limit, offset, skipOrOrderBy);
+    }
+
+    const byId = new Map<string, SearchRow>();
+    const addRows = (rows: SearchRow[]): void => {
+        for (const row of rows) {
+            if (!byId.has(row.mbid)) {
+                byId.set(row.mbid, row);
+            }
+        }
+    };
+
+    const probes = [
+        ...buildCandidateProbes(entityType, effectiveQuery, phraseQuery),
+        ...(entityType === 'release_group'
+            ? resolveReleaseGroupArtistAliasProbes(db, effectiveQuery)
+            : []),
+    ];
+
+    for (const probe of probes) {
+        try {
+            addRows(runQuery(probe, 300, 0));
+        } catch {
+            // Ignore malformed probe syntax and rely on the main recall query.
+        }
+    }
+
+    if (!skipOrOrderBy || byId.size < RANKED_CANDIDATE_WINDOW) {
+        addRows(runQuery(matchQuery, RANKED_CANDIDATE_WINDOW, 0, skipOrOrderBy));
+    }
+
+    const ranked = sortLocalSearchRows(Array.from(byId.values()), entityType, effectiveQuery);
+    return ranked.slice(offset, offset + limit);
 };
 
 export type SearchBudgetResult = {
@@ -651,44 +1021,7 @@ export type SearchBudgetResult = {
 
 /**
  * Runs a search with a bounded amount of work.
- *
- * Two modes, chosen by how many rows match:
- * - narrow: bm25 ranking and an exact count, which is what a user typing an artist
- *   name expects;
- * - broad: a capped count and no ranking. Ranking ~600k rows is the expensive part,
- *   and for a query like `a` relevance is meaningless anyway. Rows come back in FTS5's
- *   natural (rowid) order, which is deterministic for an unchanged index, so
- *   pagination stays consistent.
  */
-/** Phrase-tier hits for the first page, best "is this the name?" match first. */
-const fetchRankedPhraseRows = (
-    db: MusicDb,
-    entityType: 'artist' | 'release_group',
-    phraseQuery: string,
-    rawQuery: string,
-    rowLimit: number,
-): SearchRow[] => {
-    if (!phraseQuery) return [];
-
-    const table = searchTableFor(entityType);
-    const rankTarget = rawQuery.length > 0 ? rawQuery : phraseQuery;
-
-    return (
-        db
-            .prepare(
-                `SELECT entity_mbid AS mbid, heading AS title
-                 FROM ${table}
-                 WHERE ${table} MATCH ?
-                 ORDER BY bm25(${table}) ASC, entity_mbid ASC
-                 LIMIT ?`,
-            )
-            .all(phraseQuery, rowLimit) as SearchRow[]
-    ).sort(
-        (left, right) =>
-            headingTierScore(left.title, rankTarget) - headingTierScore(right.title, rankTarget),
-    );
-};
-
 export const searchEntitiesWithBudget = (
     db: MusicDb,
     entityType: 'artist' | 'release_group',
@@ -698,14 +1031,15 @@ export const searchEntitiesWithBudget = (
     phraseQuery = '',
     rawQuery = '',
 ): SearchBudgetResult => {
-    const probed = countSearchResultsUpTo(db, entityType, matchQuery, SEARCH_COUNT_PROBE);
+    const countQuery = rawQuery.trim().length > 0 ? toFastCountMatchQuery(rawQuery, matchQuery) : matchQuery;
+    const probed = countSearchResultsUpTo(db, entityType, countQuery, SEARCH_COUNT_PROBE);
 
     if (probed < SEARCH_COUNT_PROBE) {
         return {
             rows: searchEntities(
                 db,
                 entityType,
-                matchQuery,
+                countQuery,
                 limit,
                 offset,
                 phraseQuery,
@@ -716,35 +1050,22 @@ export const searchEntitiesWithBudget = (
         };
     }
 
-    // Broad query: never rank, and do not let the client walk past the budget.
     if (offset >= SEARCH_MAX_MATCHES) {
         return { rows: [], count: SEARCH_MAX_MATCHES, capped: true };
     }
 
-    const table = searchTableFor(entityType);
-    // The heading tier still applies here. `jay z` matches >10k artists on the recall
-    // query, so it lands in this branch, and skipping ranking returned Zooey-esque
-    // noise instead of Jay-Z purely because the query was broad.
-    const phraseRows = fetchRankedPhraseRows(db, entityType, phraseQuery, rawQuery, limit * 3);
-    const seen = new Set(phraseRows.map((row) => row.mbid));
-    const remaining = Math.min(
-        limit + phraseRows.length,
-        Math.max(0, SEARCH_MAX_MATCHES - offset),
-    );
-    const rows = db
-        .prepare(
-            `SELECT entity_mbid AS mbid, heading AS title
-             FROM ${table}
-             WHERE ${table} MATCH ?
-             LIMIT ? OFFSET ?`,
-        )
-        .all(matchQuery, remaining, offset)
-        .filter((row) => !seen.has((row as SearchRow).mbid)) as SearchRow[];
-
+    const boundedLimit = Math.min(limit, SEARCH_MAX_MATCHES - offset);
     return {
-        // Page one leads with the phrase tier; later pages exclude what it already
-        // showed instead of repeating it.
-        rows: offset === 0 ? [...phraseRows, ...rows].slice(0, limit) : rows.slice(0, limit),
+        rows: searchEntities(
+            db,
+            entityType,
+            countQuery,
+            boundedLimit,
+            offset,
+            phraseQuery,
+            rawQuery,
+            true,
+        ),
         count: SEARCH_MAX_MATCHES,
         capped: true,
     };
