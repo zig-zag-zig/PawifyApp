@@ -1,7 +1,6 @@
 import { createLogger } from '../../common/logging/logger.js';
 import { isMusicDbEnabled } from '../../infrastructure/musicDb/musicDbClient.js';
 import {
-    readEntityImage,
     toEntityImageToken,
     writeEntityImage,
     type EntityImageEntityType,
@@ -99,18 +98,24 @@ export const resolveEntityImageFreshness = (
 
 const inFlight = new Set<string>();
 
+export type RevalidationOptions = {
+    /** When true and the re-check confirms `null`, settle `fetched_at = 0` permanently. */
+    settlePermanent?: boolean;
+};
+
 /**
  * Runs a detached refresh at most once per entity at a time.
  *
- * Errors are swallowed on purpose: a revalidation is an optimisation, and a provider
- * hiccup must never surface as a failed user request.
+ * A transient failure (`undefined`) leaves the stored row untouched so a momentary
+ * outage never wipes a valid artist portrait or locks in a permanent miss.
  */
 export const scheduleEntityImageRevalidation = (
     entityType: EntityImageEntityType,
     entityId: string,
     resolve: () => Promise<string | null | undefined>,
+    options?: RevalidationOptions,
 ): void => {
-    if (!isMusicDbEnabled()) {
+    if (!isMusicDbEnabled() || !entityId) {
         return;
     }
 
@@ -123,6 +128,9 @@ export const scheduleEntityImageRevalidation = (
     void (async () => {
         try {
             const url = await resolve();
+            if (url === undefined) {
+                return;
+            }
             const token = toEntityImageToken(url, entityId);
             if (!token) {
                 return;
@@ -132,8 +140,13 @@ export const scheduleEntityImageRevalidation = (
                 entityId,
                 service: token.service,
                 token: token.token,
+                fetchedAt: url === null && options?.settlePermanent ? 0 : undefined,
             });
-            logger.debug('entity image revalidated', { entityType, entityId });
+            logger.debug('entity image revalidated', {
+                entityType,
+                entityId,
+                settledPermanent: url === null && Boolean(options?.settlePermanent),
+            });
         } catch (error) {
             logger.debug('entity image revalidation failed', {
                 entityType,
@@ -144,14 +157,6 @@ export const scheduleEntityImageRevalidation = (
             inFlight.delete(key);
         }
     })();
-};
-
-/** Marks a re-checked miss as permanent so it is never polled again. */
-export const settleEntityImageMiss = (
-    entityType: EntityImageEntityType,
-    entityId: string,
-): void => {
-    writeEntityImage({ entityType, entityId, service: 'none', token: '', fetchedAt: 0 });
 };
 
 /** Persists a freshly resolved image so the next request is instant. */
@@ -166,9 +171,3 @@ export const persistResolvedEntityImage = (
     }
     writeEntityImage({ entityType, entityId, service: token.service, token: token.token });
 };
-
-/** Convenience reader used by the revalidators. */
-export const readEntityImageForEntity = (
-    entityType: EntityImageEntityType,
-    entityId: string,
-): ReturnType<typeof readEntityImage> => readEntityImage(entityType, entityId);

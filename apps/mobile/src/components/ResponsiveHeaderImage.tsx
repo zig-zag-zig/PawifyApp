@@ -24,19 +24,25 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
     entityId,
 }) => {
     const [ratio, setRatio] = useState(1);
+    const [repairedUrl, setRepairedUrl] = useState<{
+        forPropUrl: string | null | undefined;
+        url: string | null;
+    } | null>(null);
+    const activeUrl =
+        repairedUrl && repairedUrl.forPropUrl === imageUrl ? repairedUrl.url : imageUrl;
 
     useEffect(() => {
         setRatio(1);
-        if (!imageUrl) return;
+        if (!activeUrl) return;
 
         Image.getSize(
-            imageUrl,
+            activeUrl,
             (w, h) => {
                 if (w > 0 && h > 0) setRatio(w / h);
             },
             () => { }
         );
-    }, [imageUrl]);
+    }, [activeUrl]);
 
     return (
         <View style={containerStyle}>
@@ -46,6 +52,9 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
                 showSpinnerWhenNoImage={showSpinnerWhenNoImage}
                 entityType={entityType}
                 entityId={entityId}
+                onEffectiveUrlChange={(url) =>
+                    setRepairedUrl({ forPropUrl: imageUrl, url })
+                }
                 style={{
                     width: '100%',
                     aspectRatio: ratio,

@@ -48,6 +48,8 @@ interface CachedImageComponentProps {
    */
   entityType?: BrokenEntityImageType;
   entityId?: string;
+  /** Notifies a parent wrapper (e.g. ResponsiveHeaderImage) when the displayed URL is repaired. */
+  onEffectiveUrlChange?: (url: string | null) => void;
 }
 
 interface DownloadAndCacheImageOptions {
@@ -61,6 +63,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   showSpinnerWhenNoImage = false,
   entityType,
   entityId,
+  onEffectiveUrlChange,
 }) => {
   const defaultImage = type === 'release' ? defaultReleaseImage : defaultArtistImage;
   const [repairedOverride, setRepairedOverride] = useState<{
@@ -340,6 +343,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
             // `remoteImageUrl` and `activeRemoteImageUrl` stay in lockstep and the
             // replacement image is downloaded/cached normally.
             setRepairedOverride({ forPropUrl: failedPropUrl, url: result.url });
+            onEffectiveUrlChange?.(result.url);
           });
         }
       }

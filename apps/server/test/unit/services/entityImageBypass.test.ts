@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+// Set before importing modules that evaluate runtimeConfig at load time.
+process.env.DAPR_HTTP_ENDPOINT = 'http://dapr.test:3500';
+process.env.RATE_LIMIT_FALLBACK_DELAY_MS = '1';
+process.env.RATE_LIMIT_DEEZER_BURST = '1000';
+process.env.RATE_LIMIT_DEEZER_REFILL_PER_SECOND = '1000';
+process.env.RATE_LIMIT_DEEZER_STAGGER_MS = '0';
+
 import { closeMusicDb } from '../../../src/infrastructure/musicDb/musicDbClient.js';
 import {
     readEntityImage,
@@ -16,7 +23,7 @@ const GROUP_ID = 'e06540ef-1343-4c6d-982c-ed33339bbef8';
 const ARTIST_ID = '66120159-5fe7-4cdb-8c9a-7ac68e393c6f';
 const STALE_SECONDS = Math.floor(Date.now() / 1000) - 400 * 24 * 60 * 60;
 
-beforeEach(() => {
+beforeEach(async () => {
     const path = createMusicDbFixture({
         artists: [{ mbid: ARTIST_ID, name: 'Czarface' }],
         releases: [{ mbid: RELEASE_ID, title: 'No Competition', release_group_mbid: GROUP_ID }],
@@ -34,6 +41,8 @@ beforeEach(() => {
     process.env.MUSIC_DB_PATH = path;
     closeMusicDb();
     resetEntityImageRepositoryForTests();
+    const { getRateLimiter } = await import('../../../src/services/musicApi/rateLimiter.js');
+    getRateLimiter('deezer').resetBackoff();
 });
 
 afterEach(() => {
@@ -146,6 +155,113 @@ describe('bypassMirror', () => {
             readEntityImage('artist', ARTIST_ID)?.url,
             freshUrl,
             'background revalidation must refresh entity_images using mirror links instead of wiping it',
+        );
+    });
+
+    it('settles a thrice-stale confirmed miss to fetched_at = 0 instead of overwriting it with now', async () => {
+        const path = createMusicDbFixture({
+            artists: [{ mbid: ARTIST_ID, name: 'Czarface' }],
+            externalLinks: [
+                {
+                    entity_type: 'artist',
+                    entity_mbid: ARTIST_ID,
+                    rel_type: 'free streaming',
+                    url: 'https://www.deezer.com/artist/860',
+                },
+            ],
+            entityImages: [
+                {
+                    entity_type: 'artist',
+                    entity_mbid: ARTIST_ID,
+                    service_id: 0,
+                    image_token: '',
+                    fetched_at: STALE_SECONDS,
+                },
+            ],
+        });
+        process.env.MUSIC_DB_PATH = path;
+        process.env.DAPR_HTTP_ENDPOINT = 'http://dapr.test:3500';
+        process.env.RATE_LIMIT_FALLBACK_DELAY_MS = '1';
+        closeMusicDb();
+        resetEntityImageRepositoryForTests();
+
+        globalThis.fetch = (async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/invoke/deezer/') && url.includes('/artist/860')) {
+                return new Response(
+                    JSON.stringify({ error: { type: 'DataException', code: 800 } }),
+                    { status: 200, headers: { 'content-type': 'application/json' } },
+                );
+            }
+            return new Response(null, { status: 404 });
+        }) as typeof fetch;
+
+        const { partitionArtistProfileImages } =
+            await import('../../../src/services/cache/partitionCachedAssets.js');
+
+        const partition = await partitionArtistProfileImages([{ artistId: ARTIST_ID }]);
+        assert.equal(partition.resolved[ARTIST_ID], null);
+
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+            if (readEntityImage('artist', ARTIST_ID)?.fetchedAt === 0) {
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 15));
+        }
+
+        const settled = readEntityImage('artist', ARTIST_ID);
+        assert.equal(settled?.service, 'none');
+        assert.equal(
+            settled?.fetchedAt,
+            0,
+            'a >7-day miss that still has no artwork must settle permanently to fetched_at = 0',
+        );
+    });
+
+    it('preserves a valid artist portrait when background revalidation hits a transient error', async () => {
+        const path = createMusicDbFixture({
+            artists: [{ mbid: ARTIST_ID, name: 'Czarface' }],
+            externalLinks: [
+                {
+                    entity_type: 'artist',
+                    entity_mbid: ARTIST_ID,
+                    rel_type: 'free streaming',
+                    url: 'https://www.deezer.com/artist/860',
+                },
+            ],
+            entityImages: [
+                {
+                    entity_type: 'artist',
+                    entity_mbid: ARTIST_ID,
+                    service_id: 4,
+                    image_token: 'artist/keep-me/1000x1000.jpg',
+                    fetched_at: STALE_SECONDS,
+                },
+            ],
+        });
+        process.env.MUSIC_DB_PATH = path;
+        process.env.DAPR_HTTP_ENDPOINT = 'http://dapr.test:3500';
+        process.env.RATE_LIMIT_FALLBACK_DELAY_MS = '1';
+        closeMusicDb();
+        resetEntityImageRepositoryForTests();
+
+        globalThis.fetch = (async () => new Response(null, { status: 503 })) as typeof fetch;
+
+        const { partitionArtistProfileImages } =
+            await import('../../../src/services/cache/partitionCachedAssets.js');
+
+        const partition = await partitionArtistProfileImages([{ artistId: ARTIST_ID }]);
+        assert.equal(
+            partition.resolved[ARTIST_ID],
+            'https://cdn-images.dzcdn.net/images/artist/keep-me/1000x1000.jpg',
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        assert.equal(
+            readEntityImage('artist', ARTIST_ID)?.url,
+            'https://cdn-images.dzcdn.net/images/artist/keep-me/1000x1000.jpg',
+            'a transient 503 during background refresh must not erase the stored portrait',
         );
     });
 });

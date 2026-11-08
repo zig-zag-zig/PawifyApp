@@ -27,6 +27,7 @@ import {
     shouldRefetchArtistImageState,
 } from '../backgroundTaskMappers.js';
 import { syncArtistDetailsDiscogsUrls } from './artistProfileImageCacheSync.js';
+import { lookupMirrorImage } from '../../musicApi/mirrorEntityImages.js';
 import { getArtistImageProviderLinksFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { musicDbHasEntityImages } from '../../../infrastructure/musicDb/musicDbClient.js';
 import { persistResolvedEntityImage } from '../../musicApi/entityImageFreshness.js';
@@ -197,6 +198,21 @@ const resolveCachedImage = async (
     context: ArtistImageResolutionContext,
 ): Promise<CachedImageResolution> => {
     if (musicDbHasEntityImages()) {
+        const mirrored = lookupMirrorImage('artist', context.artistId);
+        if (mirrored.kind === 'resolved') {
+            return {
+                kind: 'cached',
+                state: mapArtistImageToState(mirrored.url),
+                legacyRewriteRequired: false,
+            };
+        }
+        if (mirrored.kind === 'missing') {
+            return {
+                kind: 'cached',
+                state: mapArtistImageToState(null),
+                legacyRewriteRequired: false,
+            };
+        }
         return { kind: 'refetch' };
     }
 

@@ -221,6 +221,7 @@ export function useReleasePage(): ReleasePageController {
         let isCancelled = false;
 
         const loadRelease = async () => {
+            currentReleaseRef.current = null;
             dispatch({ type: 'releaseLoadStarted' });
 
             if (!releaseId) {

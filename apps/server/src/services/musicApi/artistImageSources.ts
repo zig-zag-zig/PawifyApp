@@ -2,7 +2,7 @@ import { getDeezerArtistImage } from './deezerClient.js';
 import { getDiscogsData } from './discogsClient.js';
 import { getTidalArtistImage } from './tidalClient.js';
 import { lookupMirrorImage } from './mirrorEntityImages.js';
-import { scheduleEntityImageRevalidation, settleEntityImageMiss } from './entityImageFreshness.js';
+import { scheduleEntityImageRevalidation } from './entityImageFreshness.js';
 import type { ArtistImageProvider, ProviderValueState } from './types.js';
 
 /**
@@ -103,21 +103,19 @@ const resolveMirroredArtistImage = (
     if (mirrored.kind === 'missing') {
         if (mirrored.freshness.revalidate && lookup.artistId) {
             const artistId = lookup.artistId;
-            const { settlePermanent } = mirrored.freshness;
-            scheduleEntityImageRevalidation('artist', artistId, async () => {
-                const refreshed = await resolveArtistImage({
-                    ...lookup,
-                    skipProviders: undefined,
-                    bypassMirror: true,
-                });
-                if (
-                    settlePermanent &&
-                    (refreshed.image === null || refreshed.image === undefined)
-                ) {
-                    settleEntityImageMiss('artist', artistId);
-                }
-                return refreshed.image;
-            });
+            scheduleEntityImageRevalidation(
+                'artist',
+                artistId,
+                async () => {
+                    const refreshed = await resolveArtistImage({
+                        ...lookup,
+                        skipProviders: undefined,
+                        bypassMirror: true,
+                    });
+                    return refreshed.image;
+                },
+                { settlePermanent: mirrored.freshness.settlePermanent },
+            );
         }
         return {
             image: null,

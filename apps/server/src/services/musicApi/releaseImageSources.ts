@@ -3,7 +3,7 @@ import { getDeezerAlbumImage } from './deezerClient.js';
 import { getTidalAlbumImage } from './tidalClient.js';
 import { getCoverArtArchiveUrl } from './coverArtArchiveClient.js';
 import { lookupMirrorImage } from './mirrorEntityImages.js';
-import { scheduleEntityImageRevalidation, settleEntityImageMiss } from './entityImageFreshness.js';
+import { scheduleEntityImageRevalidation } from './entityImageFreshness.js';
 import type { EntityImageService } from '../../infrastructure/musicDb/entityImageRepository.js';
 import type { ProviderValueState, ReleaseImageProvider } from './types.js';
 
@@ -117,7 +117,7 @@ const resolveMirroredReleaseImage = (lookup: ReleaseImageLookup): ReleaseImageRe
 
     if (releaseMirror.kind === 'missing' && groupMirror.kind === 'missing') {
         scheduleMissRevalidation(releaseMirror.freshness, 'release', lookup.releaseId, () =>
-            resolveReleaseImage({ ...lookup, releaseGroupId: undefined }),
+            resolveReleaseImage({ ...lookup, releaseGroupId: undefined, bypassMirror: true }),
         );
         scheduleMissRevalidation(
             groupMirror.freshness,
@@ -163,12 +163,8 @@ const scheduleMissRevalidation = (
         return;
     }
 
-    scheduleEntityImageRevalidation(entityType, entityId, async () => {
-        const result = await resolve();
-        if (freshness.settlePermanent && (result.image === null || result.image === undefined)) {
-            settleEntityImageMiss(entityType, entityId);
-        }
-        return result.image;
+    scheduleEntityImageRevalidation(entityType, entityId, async () => (await resolve()).image, {
+        settlePermanent: freshness.settlePermanent,
     });
 };
 

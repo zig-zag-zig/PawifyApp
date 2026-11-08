@@ -24,7 +24,6 @@ import { musicDbHasEntityImages } from '../../infrastructure/musicDb/musicDbClie
 import {
     resolveEntityImageFreshness,
     scheduleEntityImageRevalidation,
-    settleEntityImageMiss,
 } from '../musicApi/entityImageFreshness.js';
 import { resolveArtistImage } from '../musicApi/artistImageSources.js';
 import { fetchReleaseCover, fetchReleaseGroupCover } from '../coverArt/coverArtLookup.js';
@@ -146,12 +145,8 @@ const mirrorValue = (
     }
 
     if (freshness.revalidate) {
-        scheduleEntityImageRevalidation(entityType, entityId, async () => {
-            const url = await resolve();
-            if (freshness.settlePermanent && (url === null || url === undefined)) {
-                settleEntityImageMiss(entityType, entityId);
-            }
-            return url;
+        scheduleEntityImageRevalidation(entityType, entityId, resolve, {
+            settlePermanent: freshness.settlePermanent,
         });
     }
 

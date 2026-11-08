@@ -3,7 +3,6 @@ import { lookupMirrorImage } from '../musicApi/mirrorEntityImages.js';
 import {
     persistResolvedEntityImage,
     scheduleEntityImageRevalidation,
-    settleEntityImageMiss,
 } from '../musicApi/entityImageFreshness.js';
 import {
     getProviderUrlsForReleasesFromMirror,
@@ -186,7 +185,12 @@ export const fetchReleaseCover = async (
         signal,
     });
 
-    persistResolvedEntityImage('release', releaseId, resolution.image);
+    // When `bypassMirror` is set, the caller (`scheduleEntityImageRevalidation` or
+    // `invalidateEntityImage`) owns writing the miss/permanent timestamp, so avoid a
+    // redundant intermediate write here.
+    if (!options?.bypassMirror || typeof resolution.image === 'string') {
+        persistResolvedEntityImage('release', releaseId, resolution.image);
+    }
     if (typeof resolution.image === 'string' && releaseGroupId) {
         const existingGroup = lookupMirrorImage('release_group', releaseGroupId);
         if (existingGroup.kind === 'none') {
@@ -212,12 +216,8 @@ const scheduleRevalidation = (
     if (!freshness.revalidate) {
         return;
     }
-    scheduleEntityImageRevalidation(entityType, entityId, async () => {
-        const url = await resolve();
-        if ((settleMiss || freshness.settlePermanent) && (url === null || url === undefined)) {
-            settleEntityImageMiss(entityType, entityId);
-        }
-        return url;
+    scheduleEntityImageRevalidation(entityType, entityId, resolve, {
+        settlePermanent: settleMiss || freshness.settlePermanent,
     });
 };
 
@@ -300,7 +300,9 @@ export const fetchReleaseGroupCover = async (
         signal,
     });
 
-    persistResolvedEntityImage('release_group', releaseGroupId, resolution.image);
+    if (!options?.bypassMirror || typeof resolution.image === 'string') {
+        persistResolvedEntityImage('release_group', releaseGroupId, resolution.image);
+    }
     return resolution.image;
 };
 

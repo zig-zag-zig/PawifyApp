@@ -41,26 +41,68 @@ const cooldownActive = (key: string, now: number): boolean => {
  */
 const PROBE_TIMEOUT_MS = 5000;
 
+const ALLOWED_ARTWORK_HOSTS = [
+    'coverartarchive.org',
+    'archive.org',
+    'dzcdn.net',
+    'tidal.com',
+    'discogs.com',
+] as const;
+
+const isAllowedArtworkUrl = (rawUrl: string): boolean => {
+    try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol !== 'https:') {
+            return false;
+        }
+        const host = parsed.hostname.toLowerCase();
+        return ALLOWED_ARTWORK_HOSTS.some(
+            (allowed) => host === allowed || host.endsWith(`.${allowed}`),
+        );
+    } catch {
+        return false;
+    }
+};
+
 /**
  * Probes the artwork CDN directly.
  *
- * The base URL is whatever the provider handed us, so this cannot go through the
- * MusicBrainz-style provider endpoints; a plain conditional HEAD is enough and it is
- * not rate limited the way the providers' APIs are.
+ * Restricted to known HTTPS artwork CDN hosts with manual redirect handling so an
+ * unexpected redirect or non-CDN URL can never probe internal network addresses.
  */
 const isUrlConfirmedDead = async (url: string): Promise<boolean> => {
-    if (!/^https?:\/\//i.test(url)) {
+    if (!isAllowedArtworkUrl(url)) {
         return false;
     }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
     try {
-        const response = await fetch(url, { method: 'HEAD', signal: controller.signal });
-        if (response.ok) {
-            return false;
+        let current = url;
+        for (let hop = 0; hop < 3; hop += 1) {
+            const response = await fetch(current, {
+                method: 'HEAD',
+                redirect: 'manual',
+                signal: controller.signal,
+            });
+            if (response.ok) {
+                return false;
+            }
+            if (response.status >= 300 && response.status < 400) {
+                const next = response.headers.get('location');
+                if (!next) {
+                    return false;
+                }
+                const resolved = new URL(next, current).toString();
+                if (!isAllowedArtworkUrl(resolved)) {
+                    return false;
+                }
+                current = resolved;
+                continue;
+            }
+            return response.status === 404 || response.status === 403 || response.status === 410;
         }
-        return response.status === 404 || response.status === 403 || response.status === 410;
+        return false;
     } catch (error) {
         if (isAbortError(error)) {
             return false;

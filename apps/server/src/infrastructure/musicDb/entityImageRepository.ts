@@ -197,6 +197,18 @@ export const ENTITY_IMAGE_SERVICE_ID: Record<EntityImageService, number> = {
     discogs: 6,
 };
 
+const isAllowedDiscogsImageHost = (url: string): boolean => {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return false;
+        }
+        const host = parsed.hostname.toLowerCase();
+        return host === 'discogs.com' || host.endsWith('.discogs.com');
+    } catch {
+        return false;
+    }
+};
 const DEEZER_MARKER = 'cdn-images.dzcdn.net/images/';
 const TIDAL_MARKER = 'resources.tidal.com/images/';
 
@@ -244,7 +256,7 @@ export const toEntityImageToken = (
     if (trimmed.includes('coverartarchive.org/release/')) {
         return { service: 'caa_rel', token: entityId };
     }
-    if (trimmed.includes('i.discogs.com/') || trimmed.includes('img.discogs.com/')) {
+    if (isAllowedDiscogsImageHost(trimmed)) {
         return { service: 'discogs', token: trimmed };
     }
 
