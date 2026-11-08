@@ -115,7 +115,7 @@ export function SmartSelectableList<T extends { id: string }>(
                 showScrollToBottom={scroll.showScrollToBottom}
                 onScrollToTop={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}
                 onScrollToBottom={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                bottomOffset={isInSelectionMode ? 96 : 28}
+                bottomOffset={isInSelectionMode ? 96 : 10}
             />
         </>
     );
