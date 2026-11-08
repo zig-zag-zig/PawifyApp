@@ -57,7 +57,44 @@ const READER_CONTRACT: Record<string, string[]> = {
  * Present only when the mirror's search index was built; without it search falls
  * back to the API. One table per entity type — see `musicDbQueries.SEARCH_TABLES`.
  */
-const SEARCH_TABLES = ['search_fts_artist', 'search_fts_release_group'] as const;
+/**
+ * Columns required on each FTS search table; an older mirror without them must
+ * cleanly fall back to the MusicBrainz API rather than fail mid-query.
+ */
+const SEARCH_TABLE_CONTRACT: Record<string, string[]> = {
+    search_fts_artist: [
+        'entity_mbid',
+        'heading',
+        'sortname',
+        'alias',
+        'primary_alias',
+        'comment',
+        'aux',
+        'ref_count',
+    ],
+    search_fts_release_group: [
+        'entity_mbid',
+        'heading',
+        'releases',
+        'artistname',
+        'comment',
+        'aux',
+        'ref_count',
+    ],
+};
+
+/**
+ * Optional image-state tables.
+ *
+ * `image_services` names a provider and the URL template its token plugs into;
+ * `entity_images` stores one row per entity. Older mirrors do not have them, so
+ * they are deliberately outside `READER_CONTRACT`: their absence degrades to the
+ * live provider chain instead of failing the whole mirror at boot.
+ */
+const ENTITY_IMAGE_CONTRACT: Record<string, string[]> = {
+    image_services: ['id', 'name', 'url_template'],
+    entity_images: ['entity_type', 'entity_mbid', 'service_id', 'image_token', 'fetched_at'],
+};
 
 const readColumns = (db: MusicDb, table: string): Set<string> => {
     const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
@@ -91,7 +128,35 @@ const hasSearchIndex = (db: MusicDb): boolean => {
     const statement = db.prepare(
         `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name=?`,
     );
-    return SEARCH_TABLES.every((table) => statement.get(table) !== undefined);
+    for (const [table, required] of Object.entries(SEARCH_TABLE_CONTRACT)) {
+        if (statement.get(table) === undefined) {
+            return false;
+        }
+        const columns = readColumns(db, table);
+        if (required.some((column) => !columns.has(column))) {
+            return false;
+        }
+    }
+    return true;
+};
+
+/**
+ * True when the mirror can answer artwork without any provider request.
+ *
+ * Requires every column the reader uses, so a half-built table is treated as
+ * absent rather than throwing mid-query.
+ */
+export const musicDbHandleHasEntityImages = (db: MusicDb): boolean => {
+    for (const [table, required] of Object.entries(ENTITY_IMAGE_CONTRACT)) {
+        const columns = readColumns(db, table);
+        if (columns.size === 0) {
+            return false;
+        }
+        if (required.some((column) => !columns.has(column))) {
+            return false;
+        }
+    }
+    return true;
 };
 
 const openReadonly = (): MusicDb => {
@@ -116,6 +181,7 @@ const openReadonly = (): MusicDb => {
     logger.info('MusicBrainz mirror opened', {
         path: musicDbConfig.path,
         searchIndex: hasSearchIndex(db),
+        entityImages: musicDbHandleHasEntityImages(db),
         meta: Object.fromEntries(meta.map((row) => [row.key, row.value])),
     });
 
@@ -200,6 +266,13 @@ export const musicDbHasSearchIndex = (): boolean => {
     const db = getMusicDb();
     if (!db) return false;
     return hasSearchIndex(db);
+};
+
+/** True when the mirror carries the optional image-state tables. */
+export const musicDbHasEntityImages = (): boolean => {
+    const db = getMusicDb();
+    if (!db) return false;
+    return musicDbHandleHasEntityImages(db);
 };
 
 export const isMusicDbEnabled = (): boolean => getMusicDb() !== null;

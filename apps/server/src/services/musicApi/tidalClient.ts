@@ -7,10 +7,22 @@ import {
     logTidalTokenRejectedOnce,
 } from './credentials.js';
 import { fetchDaprProvider, isAbortError } from './httpClient.js';
+import { getRateLimiter } from './rateLimiter.js';
 import { isConfirmedMissingFetchFailure, isFetchFailureResult } from './types.js';
 import type { ArtistImageLookupOptions, HttpOptions, ProviderValueState } from './types.js';
 
 const logger = createLogger('services.musicApi.tidal');
+
+/**
+ * True while Tidal is paused after a 429.
+ *
+ * A Tidal 429 blocks the token for minutes, not for one request, and the reply
+ * carries no Retry-After to wait out. Sitting in the limiter for the whole pause
+ * would hold a batch slot on a request that is certain to fail, so lookups fail
+ * fast instead and the cover/follow chain falls through to the next provider.
+ * The pause still applies to the next real attempt because the pool keeps it.
+ */
+const isTidalPaused = (): boolean => getRateLimiter('tidal').backoffRemainingMs() > 0;
 
 const TIDAL_IMAGE_CDN = 'https://resources.tidal.com';
 
@@ -147,6 +159,10 @@ const lookupTidalArtist = async (
     token: string,
     signal?: AbortSignal,
 ): Promise<TidalLookup> => {
+    if (isTidalPaused()) {
+        return { kind: 'transient' };
+    }
+
     const artistId = extractTidalArtistId(tidalUrl);
     if (!artistId) {
         // Not a Tidal artist link at all, so there is nothing to retry.
@@ -301,7 +317,6 @@ export const getTidalArtistImage = async (
     return (named ?? candidates[0]!).url;
 };
 
-
 /** Extracts the numeric Tidal album id from a MusicBrainz url-rel. */
 export const extractTidalAlbumId = (url: string): string | null => {
     try {
@@ -316,16 +331,17 @@ export const extractTidalAlbumId = (url: string): string | null => {
     }
 };
 
-type TidalAlbumLookup =
-    | { kind: 'image'; url: string }
-    | { kind: 'miss' }
-    | { kind: 'transient' };
+type TidalAlbumLookup = { kind: 'image'; url: string } | { kind: 'miss' } | { kind: 'transient' };
 
 const lookupTidalAlbumCover = async (
     tidalUrl: string,
     token: string,
     signal?: AbortSignal,
 ): Promise<TidalAlbumLookup> => {
+    if (isTidalPaused()) {
+        return { kind: 'transient' };
+    }
+
     const albumId = extractTidalAlbumId(tidalUrl);
     if (!albumId) {
         return { kind: 'miss' };

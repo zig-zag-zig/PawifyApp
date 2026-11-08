@@ -4,6 +4,7 @@ import {
 } from '../../infrastructure/musicbrainz/musicbrainzMapper.js';
 import type { Release } from '@pawify/shared';
 import { getReleaseCover } from '../coverArtService.js';
+import { providerUrlsFromLinks } from '../coverArt/providerLinks.js';
 import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 import { getReleaseMetadataFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import { createLogger } from '../../common/logging/logger.js';
@@ -56,7 +57,22 @@ const fetchTracklistFromApi = async (releaseId: string): Promise<Release | null>
 };
 
 const withCover = async (release: Release): Promise<Release> => {
-    const cover = await getReleaseCover(release.id, release.releaseGroupId, undefined);
+    // The API response already carries this release's url-rels (`inc=url-rels`), so
+    // the streaming providers can be used even when the mirror has no row for the
+    // release yet. Without this, a release newer than the mirror snapshot fell
+    // straight through to Cover Art Archive, which usually has no art for a
+    // just-released digital single, and the screen showed the placeholder.
+    const apiProviderUrls = providerUrlsFromLinks(release.externalLinks);
+    const hasApiProviderUrls =
+        apiProviderUrls.deezerUrls.length > 0 || apiProviderUrls.tidalUrls.length > 0;
+
+    const cover = await getReleaseCover(
+        release.id,
+        release.releaseGroupId,
+        undefined,
+        undefined,
+        hasApiProviderUrls ? apiProviderUrls : undefined,
+    );
     release.cover_url = cover.state.url;
     return release;
 };

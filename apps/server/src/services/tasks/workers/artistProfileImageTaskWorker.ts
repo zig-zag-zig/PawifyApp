@@ -271,6 +271,7 @@ const resolveViaLookupBypass = async (
     const startedAt = Date.now();
     const resolution = await resolveArtistImage(
         {
+            artistId: context.artistId,
             artistName: context.artistNameForLookup,
             deezerUrls: context.deezerUrlsForLookup,
             tidalUrls: context.tidalUrlsForLookup,
@@ -470,6 +471,7 @@ const resolveViaProviders = async (
     const startedAt = Date.now();
     const resolution = await resolveArtistImage(
         {
+            artistId: context.artistId,
             artistName,
             deezerUrls: urls.deezerUrls,
             tidalUrls: urls.tidalUrls,

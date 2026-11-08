@@ -1,6 +1,7 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
 import type { ExternalLinkService } from '@pawify/shared';
@@ -60,6 +61,22 @@ const ArtistHeader = ({
         setPreferredService(service);
         void savePreferredStreamingService(service);
     }, []);
+
+    const onShare = React.useCallback(() => {
+        if (!artist) {
+            return;
+        }
+
+        const artistName = nameWithDisambiguation(artist.disambiguation, artist.name);
+        const link = Linking.createURL(`artist/${artist.id}`);
+
+        void Share.share({
+            message: `${artistName} — ${link}`,
+            url: link,
+        }).catch(() => {
+            // User dismissed the sheet — nothing to do.
+        });
+    }, [artist]);
 
     if (!artist) return null;
 
@@ -159,6 +176,18 @@ const ArtistHeader = ({
                     </SelectableText>
                 )}
 
+                <TouchableOpacity
+                    onPress={onShare}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Share ${nameWithDisambiguation(artist.disambiguation, artist.name)}`}
+                    style={localStyles.shareButton}
+                >
+                    <MaterialIcons name="share" size={16} color="#81ddff" />
+                    <SelectableText style={localStyles.shareText} selectable={false}>
+                        Share
+                    </SelectableText>
+                </TouchableOpacity>
+
                 <ExternalLinksGrid
                     links={artist.externalLinks}
                     preferredService={preferredService}
@@ -194,6 +223,24 @@ const localStyles = StyleSheet.create({
         marginLeft: 7,
         fontSize: 14,
         fontWeight: '700',
+    },
+    shareButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: 'rgba(56, 189, 248, 0.52)',
+        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginBottom: 12,
+    },
+    shareText: {
+        color: '#81ddff',
+        fontSize: 14,
+        fontWeight: '600',
     },
 });
 

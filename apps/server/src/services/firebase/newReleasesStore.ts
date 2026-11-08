@@ -237,10 +237,17 @@ const buildNewReleaseCoverPageEntries = (newReleasesMap: StoredNewReleasesMap) =
         string,
         { releaseGroupId: string; releaseIds: Set<string> }
     >();
+    // Entries written before release-group detection existed have no group id. They
+    // are kept so the cover worker can resolve them by release instead of dropping
+    // them, which used to leave those rows with a permanent placeholder.
+    const standaloneReleases: Array<{ releaseGroupId: null; releaseIds: string[] }> = [];
 
     for (const release of Object.values(newReleasesMap)) {
         const releaseGroupId = release.releaseGroupId;
         if (!releaseGroupId) {
+            if (release.id) {
+                standaloneReleases.push({ releaseGroupId: null, releaseIds: [release.id] });
+            }
             continue;
         }
 
@@ -252,10 +259,13 @@ const buildNewReleaseCoverPageEntries = (newReleasesMap: StoredNewReleasesMap) =
         releaseIdsByGroup.set(releaseGroupId, entry);
     }
 
-    return Array.from(releaseIdsByGroup.values()).map((entry) => ({
-        releaseGroupId: entry.releaseGroupId,
-        releaseIds: Array.from(entry.releaseIds),
-    }));
+    return [
+        ...Array.from(releaseIdsByGroup.values()).map((entry) => ({
+            releaseGroupId: entry.releaseGroupId as string | null,
+            releaseIds: Array.from(entry.releaseIds),
+        })),
+        ...standaloneReleases,
+    ];
 };
 
 export const getNewReleasesSnapshotFromDb = async (

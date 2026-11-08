@@ -1,8 +1,6 @@
 import { getReleaseCover, getReleaseGroupCover } from '../../coverArtService.js';
-import {
-    aggregateProviderUrls,
-    getReleaseProviderUrls,
-} from '../../coverArt/coverArtLookup.js';
+import { writeReleaseCoverState } from '../../coverArt/coverArtCache.js';
+import { aggregateProviderUrls, getReleaseProviderUrls } from '../../coverArt/coverArtLookup.js';
 import { getReleaseIdsForGroupFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
@@ -82,27 +80,42 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
     const startedAt = Date.now();
     let firstError: unknown;
 
-    const releaseIdsByGroup = new Map(
-        pageEntries.map((entry) => [
-            entry.releaseGroupId,
-            dedupeStrings(entry.releaseIds),
-        ]),
-    );
-    const providerUrlsByRelease = getReleaseProviderUrls(
-        Array.from(releaseIdsByGroup.values()).flat(),
-    );
+    // Entries written before new-release detection switched to release groups carry
+    // no `releaseGroupId`. Skipping them (the old behaviour) left them with no cover
+    // plan at all, so the placeholder never cleared no matter how often the feed was
+    // reloaded. They are resolved one release at a time instead.
+    const groupEntries: Array<{ releaseGroupId: string; releaseIds: string[] }> = [];
+    const standaloneReleaseIds: string[] = [];
+    for (const entry of pageEntries) {
+        if (entry.releaseGroupId) {
+            groupEntries.push({
+                releaseGroupId: entry.releaseGroupId,
+                releaseIds: dedupeStrings(entry.releaseIds),
+            });
+        } else {
+            standaloneReleaseIds.push(...entry.releaseIds);
+        }
+    }
+
+    // Deduped up front so the batch mirror query below covers every release the
+    // task will resolve, including the group-less legacy feed rows. Looking them up
+    // one release at a time here would run one SQLite query per standalone row.
+    const uniqueStandaloneReleaseIds = dedupeStrings(standaloneReleaseIds);
+
+    const providerUrlsByRelease = getReleaseProviderUrls([
+        ...groupEntries.flatMap((entry) => entry.releaseIds),
+        ...uniqueStandaloneReleaseIds,
+    ]);
 
     logger.debug('new release cover batch started', {
-        releaseGroupCount: pageEntries.length,
-        releaseCount: Array.from(releaseIdsByGroup.values()).reduce(
-            (total, ids) => total + ids.length,
-            0,
-        ),
+        releaseGroupCount: groupEntries.length,
+        standaloneReleaseCount: uniqueStandaloneReleaseIds.length,
+        releaseCount: groupEntries.reduce((total, entry) => total + entry.releaseIds.length, 0),
         ttlHours: ttl ?? null,
     });
 
-    await mapWithConcurrency(pageEntries, COVER_ART_REQUEST_CONCURRENCY, async (entry) => {
-        const releaseIds = releaseIdsByGroup.get(entry.releaseGroupId) ?? [];
+    await mapWithConcurrency(groupEntries, COVER_ART_REQUEST_CONCURRENCY, async (entry) => {
+        const releaseIds = entry.releaseIds;
 
         try {
             const cover = await getReleaseGroupCover(
@@ -122,9 +135,13 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
                 ),
             );
 
-            // Every release in the group shares the group cover.
+            // Every release in the group shares the group cover, and each one is
+            // written to its own cache key: the New Releases page peeks per-release
+            // states (`partitionReleaseGroupReleaseCovers`), so leaving them unwritten
+            // made every page load re-queue the same groups forever.
             for (const releaseId of releaseIds) {
                 covers[releaseId] = cover.state.url;
+                await writeReleaseCoverState(releaseId, cover.state, ttl);
             }
         } catch (error) {
             if (!firstError) {
@@ -132,6 +149,27 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
             }
         }
     });
+
+    await mapWithConcurrency(
+        uniqueStandaloneReleaseIds,
+        COVER_ART_REQUEST_CONCURRENCY,
+        async (releaseId) => {
+            try {
+                const cover = await getReleaseCover(
+                    releaseId,
+                    null,
+                    ttl,
+                    signal,
+                    providerUrlsByRelease.get(releaseId),
+                );
+                covers[releaseId] = cover.state.url;
+            } catch (error) {
+                if (!firstError) {
+                    firstError = error;
+                }
+            }
+        },
+    );
 
     if (firstError) {
         logger.warn('new release cover batch completed with errors', {

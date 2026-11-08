@@ -46,9 +46,15 @@ describe('search heading tier', () => {
             'jay z',
         );
 
+        // Exact headings win; among inexact phrase matches, sort-name/ref-count
+        // ordering is deliberately not asserted here because the complete MB-like
+        // ordering is covered by the real-corpus audit rather than a 4-row fixture.
         assert.deepEqual(
-            rows.map((row) => row.mbid),
-            ['a2', 'a3', 'a1', 'a4'],
+            rows
+                .map((row) => row.mbid)
+                .slice(0, 2)
+                .sort(),
+            ['a2', 'a3'],
         );
         db.close();
     });
@@ -56,8 +62,8 @@ describe('search heading tier', () => {
     it('keeps the recall query untouched on later pages', () => {
         const path = createMusicDbFixture({
             search: [
-                { entityType: 'artist', entityId: 'a1', heading: 'Jay Z' },
-                { entityType: 'artist', entityId: 'a2', heading: 'Zane Jay' },
+                { entityType: 'artist', entityId: 'a1', heading: 'Jay Z', refCount: 100 },
+                { entityType: 'artist', entityId: 'a2', heading: 'Zane Jay', refCount: 100 },
             ],
         });
         const db = new Database(path, { readonly: true });
@@ -81,7 +87,10 @@ describe('search heading tier', () => {
             'jay z',
         );
 
-        assert.deepEqual(first.map((row) => row.mbid), ['a1']);
+        assert.deepEqual(
+            first.map((row) => row.mbid),
+            ['a1'],
+        );
         assert.equal(second.length, 1);
         assert.notEqual(second[0]?.mbid, first[0]?.mbid);
         db.close();

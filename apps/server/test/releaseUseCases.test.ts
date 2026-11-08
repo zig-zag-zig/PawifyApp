@@ -14,7 +14,7 @@ import type {
 
 describe('release use cases', () => {
     it('sorts new releases by date and never plans covers in the feed request', async () => {
-        let plannedEntries: Array<{ releaseGroupId: string; releaseIds: string[] }> = [];
+        let plannedEntries: Array<{ releaseGroupId: string | null; releaseIds: string[] }> = [];
         const state = createGetNewReleasesDependencies(
             {
                 newReleasesMap: {
@@ -349,11 +349,11 @@ describe('release use cases', () => {
                     }),
                 }),
                 releaseCatalogGateway: {
-                getArtistReleasesPage: async () => ({
-                    releaseGroups: [],
-                    hasMore: false,
-                    nextCursor: null,
-                }),
+                    getArtistReleasesPage: async () => ({
+                        releaseGroups: [],
+                        hasMore: false,
+                        nextCursor: null,
+                    }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -426,11 +426,11 @@ describe('release use cases', () => {
                     }),
                 }),
                 releaseCatalogGateway: {
-                getArtistReleasesPage: async () => ({
-                    releaseGroups: [],
-                    hasMore: false,
-                    nextCursor: null,
-                }),
+                    getArtistReleasesPage: async () => ({
+                        releaseGroups: [],
+                        hasMore: false,
+                        nextCursor: null,
+                    }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -494,11 +494,11 @@ describe('release use cases', () => {
             > = {
                 assetPlanner: createDefaultAssetPlanner(),
                 releaseCatalogGateway: {
-                getArtistReleasesPage: async () => ({
-                    releaseGroups: [],
-                    hasMore: false,
-                    nextCursor: null,
-                }),
+                    getArtistReleasesPage: async () => ({
+                        releaseGroups: [],
+                        hasMore: false,
+                        nextCursor: null,
+                    }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -550,7 +550,7 @@ describe('release use cases', () => {
                 },
                 invalidate(): void {},
             };
-            let plannedEntries: Array<{ releaseGroupId: string; releaseIds: string[] }> = [];
+            let plannedEntries: Array<{ releaseGroupId: string | null; releaseIds: string[] }> = [];
             let addedTaskUser: { taskId: string; userId: string } | undefined;
 
             const deps: Pick<
@@ -564,11 +564,11 @@ describe('release use cases', () => {
                     },
                 }),
                 releaseCatalogGateway: {
-                getArtistReleasesPage: async () => ({
-                    releaseGroups: [],
-                    hasMore: false,
-                    nextCursor: null,
-                }),
+                    getArtistReleasesPage: async () => ({
+                        releaseGroups: [],
+                        hasMore: false,
+                        nextCursor: null,
+                    }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },
@@ -665,11 +665,11 @@ describe('release use cases', () => {
                     }),
                 }),
                 releaseCatalogGateway: {
-                getArtistReleasesPage: async () => ({
-                    releaseGroups: [],
-                    hasMore: false,
-                    nextCursor: null,
-                }),
+                    getArtistReleasesPage: async () => ({
+                        releaseGroups: [],
+                        hasMore: false,
+                        nextCursor: null,
+                    }),
                     async getArtistReleases() {
                         throw new Error('should not run');
                     },

@@ -137,10 +137,7 @@ const chunkReleaseGroupReleasePageEntries = (
 
     for (const entry of pageEntries) {
         for (const releaseIdChunk of chunkArray(dedupeStrings(entry.releaseIds), chunkSize)) {
-            if (
-                currentItemCount > 0 &&
-                currentItemCount + releaseIdChunk.length > chunkSize
-            ) {
+            if (currentItemCount > 0 && currentItemCount + releaseIdChunk.length > chunkSize) {
                 flushCurrentChunk();
             }
 
@@ -177,10 +174,17 @@ const submitReleaseGroupReleaseCoversPage = (
     pageEntry: ReleaseGroupReleasesPageEntry,
     ttl: number | undefined,
 ): void => {
+    const releaseGroupId = pageEntry.releaseGroupId;
+    if (!releaseGroupId) {
+        // Only the new-release feed carries group-less entries, and it goes through
+        // `submitNewReleaseCoversPage`; the group release list always has an id.
+        throw new Error('release group release covers require a release group id');
+    }
+
     session.submitPage(
         async (signal) =>
             await fetchAndUpsertReleaseGroupReleaseCovers(
-                pageEntry.releaseGroupId,
+                releaseGroupId,
                 pageEntry.releaseIds,
                 ttl,
                 signal,

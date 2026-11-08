@@ -249,6 +249,7 @@ export const searchReleaseGroupsFromMirror = (
         limit,
         offset,
         toFtsHeadingPhrase(query),
+        query,
     );
     return {
         releaseGroups: result.rows.map((row) => {
@@ -394,10 +395,32 @@ export const getArtistImageProviderLinksFromMirror = (
     };
 };
 
+/**
+ * Whether the mirror has the release at all.
+ *
+ * Distinguishes "this release has no Deezer/Tidal links" (nothing to do) from "this
+ * release is newer than the mirror snapshot" (the caller should ask the API), which
+ * the provider-link query alone cannot tell because it only returns matching rows.
+ * `null` means the mirror is unavailable, which is also a reason to ask the API.
+ */
 export const releaseExistsInMirror = (releaseId: string): boolean | null => {
     const db = getMusicDb();
     if (!db) return null;
     return readReleaseExists(db, releaseId);
+};
+
+/**
+ * Whether the mirror has the release group at all.
+ *
+ * The release-group counterpart of `releaseExistsInMirror`. A group can be present in
+ * `release_groups` while its `releases` rows are not, so checking only the release ids
+ * would treat a known group as new and spend a rate-limited MusicBrainz request on it.
+ * `null` means the mirror is unavailable, which is also a reason to ask the API.
+ */
+export const releaseGroupExistsInMirror = (releaseGroupId: string): boolean | null => {
+    const db = getMusicDb();
+    if (!db) return null;
+    return readReleaseGroupExists(db, releaseGroupId);
 };
 
 /**

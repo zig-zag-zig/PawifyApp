@@ -16,15 +16,12 @@ import {
 } from '../../../services/artistDetailsService.js';
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
-import { searchForArtist } from '../../../services/musicbrainz/artistSearch.js';
-import { searchReleaseGroups } from '../../../services/musicbrainz/releaseGroupSearch.js';
 import { searchRecordings as searchRecordingsFromApi } from '../../../services/musicbrainz/recordingSearch.js';
+import { searchWithZeroResultFallback } from '../../../services/search/zeroResultApiFallback.js';
 import {
     getArtistDetailsFromMirror,
     getArtistReleaseGroupIdsFromMirror,
     getFollowedArtistSummaryFromMirror,
-    searchArtistsFromMirror,
-    searchReleaseGroupsFromMirror,
 } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
 import { getArtistReleaseGroupCatalog } from '../../../services/musicbrainz/artistReleaseGroupCatalog.js';
@@ -95,27 +92,20 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
                 'getArtistReleaseGroupIds',
                 () => getArtistReleaseGroupIdsFromMirror(artistId),
                 async () =>
-                    (await getArtistReleaseGroupCatalog(artistId)).groups.map(
-                        (group) => group.id,
-                    ),
+                    (await getArtistReleaseGroupCatalog(artistId)).groups.map((group) => group.id),
             )) ?? [],
     },
     artistProfileImageQueue: artistProfileImageTaskQueue,
     artistSearchGateway: {
+        // Local FTS5 index is primary; when a typo or unavailable mirror returns 0
+        // rows, transparently fall back to MusicBrainz's Solr n-gram search (cached
+        // 1h in Redis).
         searchArtists: async (userId, query, offset, limit) =>
-            (await withMusicDb(
-                'searchArtists',
-                () => searchArtistsFromMirror(query, offset, limit),
-                async () => await searchForArtist(userId, query, offset, limit),
-            )) ?? { artists: [], count: 0 },
+            await searchWithZeroResultFallback.searchArtists(userId, query, offset, limit),
         searchRecordings: async (query, offset, limit) =>
             await searchRecordingsFromApi(query, offset, limit),
         searchReleaseGroups: async (userId, query, offset, limit) =>
-            (await withMusicDb(
-                'searchReleaseGroups',
-                () => searchReleaseGroupsFromMirror(query, offset, limit),
-                async () => await searchReleaseGroups(userId, query, offset, limit),
-            )) ?? { releaseGroups: [], count: 0 },
+            await searchWithZeroResultFallback.searchReleaseGroups(userId, query, offset, limit),
     },
     followingNotifier: {
         notifyFollowingChanged: async (userId, sourcePushToken) => {

@@ -1,6 +1,7 @@
 import { musicApiConfig, rateLimitConfig } from '../../config/runtimeConfig.js';
 import { createLogger } from '../../common/logging/logger.js';
-import { GlobalTokenBucket } from './globalTokenBucket.js';
+import { createAbortError } from './abortableDelay.js';
+import { GlobalTokenBucket, RateLimitUnavailableError } from './globalTokenBucket.js';
 import type { MusicBrainzPriority } from './types.js';
 
 const logger = createLogger('services.musicApi.rateLimit');
@@ -21,38 +22,111 @@ export type ExternalService =
 // oversized wait into a tight timer storm. Never schedule beyond this.
 export const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
+/**
+ * Providers whose responses were measured to carry no rate-limit headers at all.
+ *
+ * Measured 2026-11-07 from a residential IP against the real APIs:
+ *
+ * - Deezer (`api.deezer.com`): a tripped quota is HTTP 200 with
+ *   `{"error":{"code":4,"message":"Quota limit exceeded"}}`. The complete
+ *   response header set for that reply is Apache/CORS/cookie headers only — no
+ *   `Retry-After`, no `X-RateLimit-*`. 80 requests at concurrency 40 produced 26
+ *   quota errors, and the window cleared in ~6s.
+ * - Tidal (`api.tidal.com`): a throttle is HTTP 429 with `content-length: 0` and
+ *   only CloudFront headers — again no `Retry-After` and no `X-RateLimit-*`.
+ *
+ * Reading those headers for these providers can therefore only ever return
+ * nothing, so the reads are skipped and the body/status fallbacks below are the
+ * authoritative signal. This is what keeps a quota trip from silently disabling
+ * backoff through a header that never arrives.
+ */
+const SERVICES_WITHOUT_RATE_LIMIT_HEADERS: ReadonlySet<ExternalService> = new Set([
+    'deezer',
+    'deezerimages',
+    'tidal',
+    'tidalimages',
+]);
+
+/**
+ * Backoff applied from a response status alone, for providers that publish no
+ * reset time anywhere in the response.
+ *
+ * Tidal: a 429 is not a per-request throttle. Once tripped the token is blocked
+ * for minutes and every further request 429s, so continuing to fire requests
+ * both wastes them and risks extending the block. Measured: 40 req/s tripped it
+ * after ~103 successful requests, and the block had still not cleared after a
+ * cumulative 78s of probing. 60s is a floor — if the block outlasts it the next
+ * 429 re-arms another window, so the loop self-heals without extending a ban.
+ */
+const STATUS_THROTTLE_BACKOFF_MS: Partial<Record<ExternalService, number>> = {
+    tidal: 60_000,
+};
+
 const RATE_LIMIT_CONFIG = {
     // Default pool for services without a dedicated limiter below (expo, other).
     // MusicBrainz, Discogs and Deezer use the shared token buckets instead.
     default: { maxConcurrent: 1, delayMs: musicApiConfig.musicBrainzDelayMs },
     genius: { maxConcurrent: 30, delayMs: 0 },
     coverartarchive: { maxConcurrent: 40, delayMs: 0 },
-    // The Tidal API is reached with a shared community token, so serialize it.
-    // The Tidal API is reached with a shared community token. Measured headroom
-    // is high (76 req/sec returned no 429s), but the token is not ours, so this
-    // stays deliberately modest while still allowing more than one call in
-    // flight. One-at-a-time serialized every Tidal fallback in a batch.
-    tidal: { maxConcurrent: 3, delayMs: 50 },
+    // The Tidal API is reached with a shared community token. Measured headroom:
+    // 10 req/s sustained for 10s and 20 req/s sustained for 10s both completed
+    // with zero 429s; 40 req/s tripped it after ~103 requests and then stayed
+    // blocked for minutes. A tripped Tidal limit is therefore far more expensive
+    // than a slow one: it takes the whole Tidal source offline for the shared
+    // token and returns no Retry-After to recover gracefully. The default paces
+    // dispatch at ~18 req/s (4 concurrent, 55ms spacing), just under the measured
+    // ceiling, so the budget is used in full without tripping it.
+    tidal: {
+        maxConcurrent: rateLimitConfig.tidalMaxConcurrent,
+        delayMs: rateLimitConfig.tidalDelayMs,
+    },
     // Artwork HEAD probes hit resources.tidal.com, a different host with its own
     // limits. A separate pool stops them queueing behind artist API calls.
+    // Measured: 200 HEADs at concurrency 20 (~175/s) returned zero non-200s, so
+    // this pool has large headroom and needs no throttle.
     tidalimages: { maxConcurrent: 5, delayMs: 0 },
     // Deezer artwork probes hit cdn-images.dzcdn.net, another separate host.
     deezerimages: { maxConcurrent: 10, delayMs: 0 },
 };
 
+export type RateLimiterOptions = {
+    /** Label used in logs and in the error queued callers receive. */
+    name?: string;
+    /**
+     * Reject queued callers when the pool pauses, instead of parking them.
+     *
+     * Some providers (Tidal) answer a throttle with a pause measured in minutes and
+     * no `Retry-After`. Waiting out that pause inside `acquire` holds a batch slot on
+     * a request that is certain to fail, so a fail-fast pool reports it as a transient
+     * miss instead. Disabled by default: for providers whose pause is short and whose
+     * answers matter, waiting is the better trade.
+     */
+    failQueueOnBackoff?: boolean;
+};
+
+/** One waiting `acquire` call, with the abort listener attached to it. */
+type QueuedAcquisition = {
+    resolve: (release: () => void) => void;
+    reject: (error: Error) => void;
+    signal?: AbortSignal;
+    onAbort?: () => void;
+};
+
 export class RateLimiter {
     maxConcurrent: number;
     delayMs: number;
-    queue: Array<() => void>;
+    queue: QueuedAcquisition[];
     activeRequests: number;
     lastDispatchTime: number;
     processing: boolean;
     backoffUntil: number;
+    name: string;
+    failQueueOnBackoff: boolean;
     /** Mirrors GlobalTokenBucket's shared timestamp; unused by this in-memory pool. */
     lastDispatchAt = 0;
     pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
-    constructor(maxConcurrent: number, delayMs: number) {
+    constructor(maxConcurrent: number, delayMs: number, options: RateLimiterOptions = {}) {
         this.maxConcurrent = maxConcurrent;
         this.delayMs = delayMs;
         this.queue = [];
@@ -60,14 +134,38 @@ export class RateLimiter {
         this.lastDispatchTime = 0;
         this.processing = false;
         this.backoffUntil = 0;
+        this.name = options.name ?? 'rate-limiter';
+        this.failQueueOnBackoff = options.failQueueOnBackoff ?? false;
         this.pendingTimer = undefined;
     }
 
-    async acquire(): Promise<() => void> {
-        return new Promise<() => void>((resolve) => {
-            this.queue.push(() => {
-                resolve(() => this.release());
-            });
+    async acquire(signal?: AbortSignal): Promise<() => void> {
+        if (signal?.aborted) {
+            throw createAbortError();
+        }
+
+        // A fail-fast pool never parks a caller for the length of a provider pause:
+        // the provider cannot answer, so the caller is told to retry later and its
+        // batch slot stays free for a provider that can.
+        if (this.failQueueOnBackoff && this.backoffRemainingMs() > 0) {
+            throw new RateLimitUnavailableError(this.name, this.backoffRemainingMs());
+        }
+
+        return new Promise<() => void>((resolve, reject) => {
+            const waiter: QueuedAcquisition = { resolve, reject, signal };
+
+            if (signal) {
+                waiter.onAbort = () => {
+                    const index = this.queue.indexOf(waiter);
+                    if (index !== -1) {
+                        this.queue.splice(index, 1);
+                    }
+                    reject(createAbortError());
+                };
+                signal.addEventListener('abort', waiter.onAbort, { once: true });
+            }
+
+            this.queue.push(waiter);
             if (!this.processing) {
                 this.processQueue();
             }
@@ -80,9 +178,55 @@ export class RateLimiter {
     }
 
     setBackoff(ms: number) {
+        const waitMs = Math.max(0, ms);
+        if (waitMs === 0) {
+            return;
+        }
+
         // Concurrent responses can finish out of order; never let a shorter
         // remaining wait override a longer deadline already in effect.
-        this.backoffUntil = Math.max(this.backoffUntil, Date.now() + ms);
+        this.backoffUntil = Math.max(this.backoffUntil, Date.now() + waitMs);
+
+        if (this.failQueueOnBackoff) {
+            this.failQueuedAcquisitions(
+                new RateLimitUnavailableError(this.name, this.backoffRemainingMs()),
+            );
+        }
+    }
+
+    /**
+     * Rejects everyone waiting in the queue with `error`.
+     *
+     * Used when a pool pauses hard enough that any queued request would just sit
+     * there: the caller learns it should retry later and the slot is freed now.
+     */
+    private failQueuedAcquisitions(error: Error): void {
+        if (this.queue.length === 0) {
+            return;
+        }
+
+        const waiters = this.queue.splice(0, this.queue.length);
+        // Nothing is queued any more, so no timer is needed to serve the pause.
+        this.clearPendingTimer();
+        this.processing = false;
+
+        for (const waiter of waiters) {
+            this.detachAbortListener(waiter);
+            waiter.reject(error);
+        }
+    }
+
+    private detachAbortListener(waiter: QueuedAcquisition): void {
+        if (waiter.signal && waiter.onAbort) {
+            waiter.signal.removeEventListener('abort', waiter.onAbort);
+        }
+    }
+
+    private clearPendingTimer(): void {
+        if (this.pendingTimer !== undefined) {
+            clearTimeout(this.pendingTimer);
+            this.pendingTimer = undefined;
+        }
     }
 
     /** This pool only backs off locally, so the remaining pause is purely local. */
@@ -93,6 +237,11 @@ export class RateLimiter {
     /** Clears a pause. Only used by tests, which share one process-wide pool. */
     resetBackoff(): void {
         this.backoffUntil = 0;
+        this.clearPendingTimer();
+        this.processing = false;
+        if (this.queue.length > 0) {
+            this.processQueue();
+        }
     }
 
     /** Mirrors GlobalTokenBucket.setLocalBackoff; this pool is already per-process. */
@@ -129,7 +278,11 @@ export class RateLimiter {
         this.activeRequests++;
         this.lastDispatchTime = now;
         const next = this.queue.shift();
-        if (next) next();
+        if (next) {
+            // Dispatched waiters are no longer cancellable through the queue.
+            this.detachAbortListener(next);
+            next.resolve(() => this.release());
+        }
 
         if (this.queue.length > 0 && this.activeRequests < this.maxConcurrent) {
             this.scheduleProcessQueue(this.delayMs);
@@ -214,7 +367,14 @@ const rateLimiters = {
         RATE_LIMIT_CONFIG.deezerimages.maxConcurrent,
         RATE_LIMIT_CONFIG.deezerimages.delayMs,
     ),
-    tidal: new RateLimiter(RATE_LIMIT_CONFIG.tidal.maxConcurrent, RATE_LIMIT_CONFIG.tidal.delayMs),
+    // Fail-fast on purpose: a Tidal 429 pauses the shared token for minutes and
+    // sends no Retry-After, so a queued caller that waits it out just holds a slot.
+    // Rejecting the queue turns the pause into a transient miss the cover chain can
+    // answer from the next provider.
+    tidal: new RateLimiter(RATE_LIMIT_CONFIG.tidal.maxConcurrent, RATE_LIMIT_CONFIG.tidal.delayMs, {
+        name: 'tidal',
+        failQueueOnBackoff: true,
+    }),
     tidalimages: new RateLimiter(
         RATE_LIMIT_CONFIG.tidalimages.maxConcurrent,
         RATE_LIMIT_CONFIG.tidalimages.delayMs,
@@ -350,37 +510,44 @@ export const applyRateLimitHeaders = (
 ): number => {
     let backoffMs = 0;
 
-    const retryAfter = response.headers.get('retry-after');
-    if (retryAfter) {
-        const retryAfterMsRaw = /^\d+$/.test(retryAfter) ? parseInt(retryAfter, 10) * 1000 : 0;
-        const retryAfterMs =
-            service === 'musicbrainz' && retryAfterMsRaw > 0
-                ? retryAfterMsRaw + musicApiConfig.musicBrainzRetryAfterBufferMs
-                : retryAfterMsRaw;
-        if (retryAfterMs > 0) {
-            backoffMs = Math.max(backoffMs, retryAfterMs);
+    if (!SERVICES_WITHOUT_RATE_LIMIT_HEADERS.has(service)) {
+        const retryAfter = response.headers.get('retry-after');
+        if (retryAfter) {
+            const retryAfterMsRaw = /^\d+$/.test(retryAfter) ? parseInt(retryAfter, 10) * 1000 : 0;
+            const retryAfterMs =
+                service === 'musicbrainz' && retryAfterMsRaw > 0
+                    ? retryAfterMsRaw + musicApiConfig.musicBrainzRetryAfterBufferMs
+                    : retryAfterMsRaw;
+            if (retryAfterMs > 0) {
+                backoffMs = Math.max(backoffMs, retryAfterMs);
+            }
         }
+
+        const discogsRemaining = response.headers.get('x-discogs-ratelimit-remaining');
+        const discogsReset = response.headers.get('x-ratelimit-reset');
+        backoffMs = addRemainingBackoff(
+            'discogs',
+            rateLimiter,
+            discogsRemaining,
+            discogsReset,
+            backoffMs,
+        );
+
+        const genericRemaining = response.headers.get('x-ratelimit-remaining');
+        const genericReset = response.headers.get('x-ratelimit-reset');
+        backoffMs = addRemainingBackoff(
+            service,
+            rateLimiter,
+            genericRemaining,
+            genericReset,
+            backoffMs,
+        );
     }
 
-    const discogsRemaining = response.headers.get('x-discogs-ratelimit-remaining');
-    const discogsReset = response.headers.get('x-ratelimit-reset');
-    backoffMs = addRemainingBackoff(
-        'discogs',
-        rateLimiter,
-        discogsRemaining,
-        discogsReset,
-        backoffMs,
-    );
-
-    const genericRemaining = response.headers.get('x-ratelimit-remaining');
-    const genericReset = response.headers.get('x-ratelimit-reset');
-    backoffMs = addRemainingBackoff(
-        service,
-        rateLimiter,
-        genericRemaining,
-        genericReset,
-        backoffMs,
-    );
+    const statusBackoffMs = STATUS_THROTTLE_BACKOFF_MS[service] ?? 0;
+    if (statusBackoffMs > 0 && response.status === 429) {
+        backoffMs = Math.max(backoffMs, statusBackoffMs);
+    }
 
     if (service === 'musicbrainz' && isMusicBrainzRateLimitedStatus(response.status)) {
         backoffMs = Math.max(backoffMs, musicApiConfig.musicBrainzMinRateLimitWaitMs);

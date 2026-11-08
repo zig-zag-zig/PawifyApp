@@ -2,7 +2,11 @@ import type { ArtistReadUseCaseDependencies } from '../ports.js';
 import { transientArtistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 
 export const createSearchAllUseCase =
-    ({ artistSearchGateway, assetPlanner, requestDeduper }: Pick<
+    ({
+        artistSearchGateway,
+        assetPlanner,
+        requestDeduper,
+    }: Pick<
         ArtistReadUseCaseDependencies,
         'artistSearchGateway' | 'assetPlanner' | 'requestDeduper'
     >) =>
@@ -15,30 +19,38 @@ export const createSearchAllUseCase =
     ) => {
         const result = await requestDeduper.run(
             `searchAll:${userId}:${query}:${limit}:${offset}:${category ?? 'all'}`,
-            async () => await Promise.all([
-                !category || category === 'artists'
-                    ? artistSearchGateway.searchArtists(userId, query, offset, limit)
-                    : Promise.resolve({ artists: [], count: 0 }),
-                !category || category === 'releaseGroups'
-                    ? artistSearchGateway.searchReleaseGroups(userId, query, offset, limit)
-                    : Promise.resolve({ releaseGroups: [], count: 0 }),
-                (!category || category === 'tracks') && artistSearchGateway.searchRecordings
-                    ? artistSearchGateway.searchRecordings(query, offset, limit)
-                    : Promise.resolve({ recordings: [], count: 0 }),
-            ]),
+            async () =>
+                await Promise.all([
+                    !category || category === 'artists'
+                        ? artistSearchGateway.searchArtists(userId, query, offset, limit)
+                        : Promise.resolve({ artists: [], count: 0 }),
+                    !category || category === 'releaseGroups'
+                        ? artistSearchGateway.searchReleaseGroups(userId, query, offset, limit)
+                        : Promise.resolve({ releaseGroups: [], count: 0 }),
+                    (!category || category === 'tracks') && artistSearchGateway.searchRecordings
+                        ? artistSearchGateway.searchRecordings(query, offset, limit)
+                        : Promise.resolve({ recordings: [], count: 0 }),
+                ]),
         );
 
         const [artists, releaseGroups, recordings] = result;
+        const scopeSuffix = category ?? 'all';
         const artistPlan = await assetPlanner.planArtistProfileImages({
             userId,
-            scope: `searchAll:${query}:${limit}:${offset}`,
-            lookups: artists.artists.map((artist) => ({ artistId: artist.id, artistName: artist.name })),
+            scope: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
+            lookups: artists.artists.map((artist) => ({
+                artistId: artist.id,
+                artistName: artist.name,
+            })),
             ttl: transientArtistCacheTtlHours,
         });
         const releasePlan = await assetPlanner.planArtistReleaseGroupCovers({
             userId,
-            scope: `searchAll:${query}:${limit}:${offset}`,
-            pageEntries: releaseGroups.releaseGroups.map((group) => ({ releaseGroupId: group.id, releaseIds: [] })),
+            scope: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
+            pageEntries: releaseGroups.releaseGroups.map((group) => ({
+                releaseGroupId: group.id,
+                releaseIds: [],
+            })),
             ttl: transientArtistCacheTtlHours,
         });
 
@@ -62,11 +74,14 @@ export const createSearchAllUseCase =
                 ? { resolved: {}, taskId: null }
                 : await assetPlanner.planReleaseGroupReleaseCovers({
                       userId,
-                      releaseGroupId: `searchAll:${query}:${limit}:${offset}`,
-                      pageEntries: Array.from(trackReleasesByGroup, ([releaseGroupId, releaseIds]) => ({
-                          releaseGroupId,
-                          releaseIds,
-                      })),
+                      releaseGroupId: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
+                      pageEntries: Array.from(
+                          trackReleasesByGroup,
+                          ([releaseGroupId, releaseIds]) => ({
+                              releaseGroupId,
+                              releaseIds,
+                          }),
+                      ),
                       ttl: transientArtistCacheTtlHours,
                   });
 
