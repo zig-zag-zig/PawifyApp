@@ -92,11 +92,74 @@ const mapToArtistCredit = (data: any): ArtistCredit => ({
     joinphrase: data.joinphrase ?? null,
 });
 
+/**
+ * MusicBrainz's "lyrics" URL relationship type.
+ *
+ * Editors attach it to the recording or, more often, to the work the recording
+ * performs, which is why both levels are inspected.
+ */
+const LYRICS_RELATION_TYPE_ID = 'e38e65aa-75e0-42ba-ace0-072aeb91a538';
+
+const isLyricsRelation = (relation: any): boolean =>
+    relation?.type === 'lyrics' || relation?.['type-id'] === LYRICS_RELATION_TYPE_ID;
+
+const lyricsUrlFromRelations = (relations: unknown): string | null => {
+    if (!Array.isArray(relations)) {
+        return null;
+    }
+
+    const urls: string[] = [];
+    for (const relation of relations) {
+        if (!isLyricsRelation(relation)) {
+            continue;
+        }
+        const resource = relation?.url?.resource;
+        if (typeof resource === 'string' && /^https?:\/\//i.test(resource.trim())) {
+            urls.push(resource.trim());
+        }
+    }
+
+    if (urls.length === 0) {
+        return null;
+    }
+
+    // Genius first: it is Pawify's primary lyrics provider, so a Genius link keeps
+    // the in-app experience consistent. Any other whitelisted site is the fallback.
+    return urls.find((url) => url.includes('genius.com')) ?? urls[0]!;
+};
+
+/**
+ * Lyrics URL for one track, from the recording's relations or its work's relations.
+ *
+ * Both levels are needed: MusicBrainz editors commonly attach the lyrics link to the
+ * work ("Paranoid Android" is a work; the release track is a recording of it).
+ */
+const lyricsUrlForRecording = (recording: any): string | null => {
+    const direct = lyricsUrlFromRelations(recording?.relations);
+    if (direct) {
+        return direct;
+    }
+
+    const relations = Array.isArray(recording?.relations) ? recording.relations : [];
+    for (const relation of relations) {
+        if (relation?.['target-type'] !== 'work' || !relation.work) {
+            continue;
+        }
+        const fromWork = lyricsUrlFromRelations(relation.work.relations);
+        if (fromWork) {
+            return fromWork;
+        }
+    }
+
+    return null;
+};
+
 const mapToTrack = (data: any): Track => ({
     id: data.id,
     title: data.title,
     'artist-credit': data['artist-credit']?.map(mapToArtistCredit) ?? [],
     length: data.length ?? null,
+    lyricsUrl: lyricsUrlForRecording(data.recording),
 });
 
 const mapToMedia = (data: any): Media => ({
@@ -169,7 +232,7 @@ export const mapToNewRelease = (release: Release): NewRelease => ({
 
 export interface ReleaseResult {
     releases: Release[];
-    "release-count": number;
+    'release-count': number;
 }
 
 export const mapToReleaseResult = (data: any, artistId?: string): ReleaseResult => ({

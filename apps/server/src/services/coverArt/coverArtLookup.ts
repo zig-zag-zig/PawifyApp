@@ -1,6 +1,11 @@
 import { resolveReleaseImage } from '../musicApi/releaseImageSources.js';
 import { lookupMirrorImage } from '../musicApi/mirrorEntityImages.js';
 import {
+    persistResolvedEntityImage,
+    scheduleEntityImageRevalidation,
+    settleEntityImageMiss,
+} from '../musicApi/entityImageFreshness.js';
+import {
     getProviderUrlsForReleasesFromMirror,
     getReleaseIdsForGroupFromMirror,
     releaseExistsInMirror,
@@ -128,11 +133,27 @@ export const fetchReleaseCover = async (
     // the cover a pressing without its own art inherits.
     const releaseMirror = lookupMirrorImage('release', releaseId);
     if (releaseMirror.kind === 'resolved') {
+        scheduleRevalidation(releaseMirror.freshness, 'release', releaseId, () =>
+            fetchReleaseCover(releaseId, null, signal, providerUrls),
+        );
         return releaseMirror.url;
     }
     if (releaseMirror.kind === 'missing') {
         const groupMirror = lookupMirrorImage('release_group', releaseGroupId);
-        return groupMirror.kind === 'resolved' ? groupMirror.url : null;
+        if (groupMirror.kind === 'resolved') {
+            return groupMirror.url;
+        }
+        // Both verdicts are recorded misses: answer immediately and re-check the
+        // release (not the group) in the background, since only its own cover could
+        // improve on the inherited group cover.
+        scheduleRevalidation(
+            releaseMirror.freshness,
+            'release',
+            releaseId,
+            () => fetchReleaseCover(releaseId, null, signal, providerUrls),
+            releaseMirror.freshness.settlePermanent,
+        );
+        return null;
     }
 
     let urls = providerUrls ?? getReleaseProviderUrlsForOne(releaseId);
@@ -153,7 +174,33 @@ export const fetchReleaseCover = async (
         signal,
     });
 
+    persistResolvedEntityImage('release', releaseId, resolution.image);
     return resolution.image;
+};
+
+/**
+ * Queues a detached re-check for a stale row.
+ *
+ * `settleMiss` writes `fetched_at = 0` when the re-check still finds nothing, so a
+ * release that definitively has no cover of its own is never polled again.
+ */
+const scheduleRevalidation = (
+    freshness: { revalidate: boolean; settlePermanent: boolean },
+    entityType: 'release' | 'release_group',
+    entityId: string,
+    resolve: () => Promise<RemoteValueState>,
+    settleMiss = false,
+): void => {
+    if (!freshness.revalidate) {
+        return;
+    }
+    scheduleEntityImageRevalidation(entityType, entityId, async () => {
+        const url = await resolve();
+        if ((settleMiss || freshness.settlePermanent) && (url === null || url === undefined)) {
+            settleEntityImageMiss(entityType, entityId);
+        }
+        return url;
+    });
 };
 
 const getReleaseProviderUrlsForOne = (
@@ -179,9 +226,20 @@ export const fetchReleaseGroupCover = async (
 ): Promise<RemoteValueState> => {
     const mirrored = lookupMirrorImage('release_group', releaseGroupId);
     if (mirrored.kind === 'resolved') {
+        scheduleRevalidation(mirrored.freshness, 'release_group', releaseGroupId, () =>
+            fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls),
+        );
         return mirrored.url;
     }
     if (mirrored.kind === 'missing') {
+        scheduleRevalidation(
+            mirrored.freshness,
+            'release_group',
+            releaseGroupId,
+            () =>
+                fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls),
+            mirrored.freshness.settlePermanent,
+        );
         return null;
     }
 

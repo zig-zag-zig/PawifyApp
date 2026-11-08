@@ -35,6 +35,12 @@ export const collectTrackLyricsRequests = (release: Release): TrackLyricsRequest
         }
 
         for (const track of media.tracks) {
+            // MusicBrainz already told us where the lyrics are (recording or work
+            // url-rels), so asking Genius again would be a wasted provider call.
+            if (typeof track.lyricsUrl === 'string' && track.lyricsUrl.trim().length > 0) {
+                continue;
+            }
+
             const artistName =
                 track['artist-credit']?.[0]?.name ?? release['artist-credit']?.[0]?.name;
 

@@ -38,6 +38,11 @@ interface CachedImageComponentProps {
   style?: ImageStyle;
   type: 'release' | 'profile';
   showSpinnerWhenNoImage?: boolean;
+  /**
+   * Called once when the remote image itself cannot be loaded, so the owner can ask
+   * the server to re-resolve a file that was deleted upstream.
+   */
+  onRemoteLoadError?: () => void;
 }
 
 interface DownloadAndCacheImageOptions {
@@ -49,6 +54,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   style,
   type,
   showSpinnerWhenNoImage = false,
+  onRemoteLoadError,
 }) => {
   const defaultImage = type === 'release' ? defaultReleaseImage : defaultArtistImage;
   const remoteImageUrl = normalizeRemoteImageUrl(imageUrl);
@@ -277,6 +283,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
       elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
       error: describeError(error),
     });
+    onRemoteLoadError?.();
     if (!prefixedCacheKey) {
       setIsLoading(false);
       return;

@@ -7,6 +7,7 @@ import { createReleaseRoutes } from '../features/releases/releaseRoutes.js';
 import { userSettingsRoutes } from '../features/userSettings/userSettingsRoutes.js';
 import { notificationRoutes } from '../features/notifications/notificationRoutes.js';
 import { taskRoutes } from '../features/tasks/taskRoutes.js';
+import { artworkRoutes } from '../features/artwork/artworkRoutes.js';
 import type { ArtistUseCases } from '../features/artists/artistUseCases.js';
 import type { ArtistWirePresenters } from '../features/artists/handlers/artistHandlers.js';
 import type { ReleaseUseCases } from '../features/releases/releaseUseCases.js';
@@ -31,6 +32,7 @@ export const createApiRoutes = (prefix: string, variants: ApiRouteVariants): Rou
     router.use(prefix, userSettingsRoutes);
     router.use(prefix, notificationRoutes);
     router.use(prefix, taskRoutes);
+    router.use(prefix, artworkRoutes);
 
     return router;
 };

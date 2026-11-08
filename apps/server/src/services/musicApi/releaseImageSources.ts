@@ -2,7 +2,8 @@ import { createLogger } from '../../common/logging/logger.js';
 import { getDeezerAlbumImage } from './deezerClient.js';
 import { getTidalAlbumImage } from './tidalClient.js';
 import { getCoverArtArchiveUrl } from './coverArtArchiveClient.js';
-import { lookupMirrorReleaseCover } from './mirrorEntityImages.js';
+import { lookupMirrorImage } from './mirrorEntityImages.js';
+import { scheduleEntityImageRevalidation, settleEntityImageMiss } from './entityImageFreshness.js';
 import type { EntityImageService } from '../../infrastructure/musicDb/entityImageRepository.js';
 import type { ProviderValueState, ReleaseImageProvider } from './types.js';
 
@@ -85,20 +86,78 @@ const missingMirrorResolution = (): ReleaseImageResolution => ({
 /**
  * Artwork the mirror already answered for this release, or null to run the chain.
  *
- * Shares the release/group precedence with `fetchReleaseCover`, so the two paths
- * cannot drift: a release with no art still inherits its group's cover.
+ * The release's own row wins; its group's row is the same fallback the live chain
+ * gets from the Cover Art Archive group endpoint. A confirmed miss is only trusted
+ * when both verdicts are recorded, because a pressing with no art inherits its
+ * group's cover.
+ *
+ * Stale rows are still answered immediately: the re-check is scheduled here as
+ * detached background work, so a request never waits on it.
  */
 const resolveMirroredReleaseImage = (lookup: ReleaseImageLookup): ReleaseImageResolution | null => {
-    const mirrored = lookupMirrorReleaseCover(lookup.releaseId, lookup.releaseGroupId);
-
-    if (mirrored.kind === 'resolved') {
-        return resolvedMirrorResolution(mirrored);
+    const releaseMirror = lookupMirrorImage('release', lookup.releaseId);
+    if (releaseMirror.kind === 'resolved') {
+        scheduleReleaseRevalidation(releaseMirror.freshness, lookup, releaseMirror.service);
+        return resolvedMirrorResolution(releaseMirror);
     }
-    if (mirrored.kind === 'missing') {
+
+    const groupMirror = lookupMirrorImage('release_group', lookup.releaseGroupId);
+    if (groupMirror.kind === 'resolved') {
+        scheduleReleaseRevalidation(groupMirror.freshness, lookup, groupMirror.service);
+        return resolvedMirrorResolution(groupMirror);
+    }
+
+    if (releaseMirror.kind === 'missing' && groupMirror.kind === 'missing') {
+        scheduleMissRevalidation(releaseMirror.freshness, 'release', lookup.releaseId, () =>
+            resolveReleaseImage({ ...lookup, releaseGroupId: undefined }),
+        );
+        scheduleMissRevalidation(
+            groupMirror.freshness,
+            'release_group',
+            lookup.releaseGroupId,
+            () => resolveReleaseImage({ ...lookup, releaseId: undefined }),
+        );
         return missingMirrorResolution();
     }
 
     return null;
+};
+
+const scheduleReleaseRevalidation = (
+    freshness: { revalidate: boolean },
+    lookup: ReleaseImageLookup,
+    service: EntityImageService,
+): void => {
+    if (!freshness.revalidate) {
+        return;
+    }
+    // Only artist-style (time-limited) rows reach this branch; covers are permanent.
+    if (service !== 'deezer' && service !== 'tidal') {
+        return;
+    }
+    scheduleEntityImageRevalidation('release', lookup.releaseId ?? '', async () => {
+        const result = await resolveReleaseImage({ ...lookup, releaseGroupId: undefined });
+        return result.image;
+    });
+};
+
+const scheduleMissRevalidation = (
+    freshness: { revalidate: boolean; settlePermanent: boolean },
+    entityType: 'release' | 'release_group',
+    entityId: string | undefined,
+    resolve: () => Promise<ReleaseImageResolution>,
+): void => {
+    if (!entityId || !freshness.revalidate) {
+        return;
+    }
+
+    scheduleEntityImageRevalidation(entityType, entityId, async () => {
+        const result = await resolve();
+        if (freshness.settlePermanent && (result.image === null || result.image === undefined)) {
+            settleEntityImageMiss(entityType, entityId);
+        }
+        return result.image;
+    });
 };
 
 const hasImage = (image: ProviderValueState): image is string =>

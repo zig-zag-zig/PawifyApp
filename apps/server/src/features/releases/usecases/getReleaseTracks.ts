@@ -28,6 +28,17 @@ export const createGetReleaseTracksUseCase =
             return null;
         }
 
+        // Seed lyrics that MusicBrainz already answered so the client renders them
+        // immediately and the planner only queues Genius for the remaining tracks.
+        const knownLyrics: Record<string, string | null> = {};
+        for (const media of release.media) {
+            for (const track of media.tracks ?? []) {
+                if (typeof track.lyricsUrl === 'string' && track.lyricsUrl.trim().length > 0) {
+                    knownLyrics[track.id] = track.lyricsUrl;
+                }
+            }
+        }
+
         const [lyricsPlan, profileImagesPlan] = await Promise.all([
             assetPlanner.planReleaseTrackLyrics({ userId, release, ttl: undefined }),
             assetPlanner.planReleaseArtistProfileImages({ userId, release, ttl: undefined }),
@@ -35,7 +46,7 @@ export const createGetReleaseTracksUseCase =
 
         return {
             media: release.media,
-            trackLyrics: lyricsPlan.resolved,
+            trackLyrics: { ...knownLyrics, ...lyricsPlan.resolved },
             lyricsTaskId: lyricsPlan.taskId,
             profileImages: profileImagesPlan.resolved,
             profileImageTaskId: profileImagesPlan.taskId,

@@ -8,6 +8,8 @@ interface ResponsiveHeaderImageProps {
     containerStyle?: StyleProp<ViewStyle>;
     borderRadius?: number;
     showSpinnerWhenNoImage?: boolean;
+    /** Fired when the stored URL no longer loads, so the owner can re-resolve it. */
+    onRemoteLoadError?: () => void;
 }
 
 export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
@@ -16,6 +18,7 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
     containerStyle,
     borderRadius = 8,
     showSpinnerWhenNoImage = false,
+    onRemoteLoadError,
 }) => {
     const [ratio, setRatio] = useState(1);
 
@@ -38,6 +41,7 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
                 imageUrl={imageUrl}
                 type={type}
                 showSpinnerWhenNoImage={showSpinnerWhenNoImage}
+                onRemoteLoadError={onRemoteLoadError}
                 style={{
                     width: '100%',
                     aspectRatio: ratio,

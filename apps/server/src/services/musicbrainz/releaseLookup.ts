@@ -8,6 +8,8 @@ import { providerUrlsFromLinks } from '../coverArt/providerLinks.js';
 import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 import { getReleaseMetadataFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import { createLogger } from '../../common/logging/logger.js';
+import { getCachedData, replaceCachedData } from '../cacheService.js';
+import { cacheConfig } from '../../config/runtimeConfig.js';
 
 const logger = createLogger('services.musicbrainz.releaseLookup');
 
@@ -56,8 +58,11 @@ const fetchReleaseMetadataFromApi = async (releaseId: string): Promise<Release |
 };
 
 const fetchTracklistFromApi = async (releaseId: string): Promise<Release | null> => {
+    // The extra `inc=` values ride along on the same single request: MusicBrainz
+    // returns lyrics url-rels for the recording and for its work, so most tracks get
+    // their lyrics for free instead of costing a Genius search each.
     const musicbrainzResult = await fetchMusicBrainz(
-        `/release/${releaseId}?fmt=json&inc=recordings+artist-credits`,
+        `/release/${releaseId}?fmt=json&inc=recordings+artist-credits+recording-level-rels+work-rels+work-level-rels+url-rels`,
     );
 
     if (musicbrainzResult === null) {
@@ -138,8 +143,27 @@ export const getRelease = async (releaseId: string): Promise<Release | null> => 
  * header.
  */
 export const getReleaseTracks = async (releaseId: string): Promise<Release | null> => {
+    const cacheKey = `release:tracks:${releaseId}`;
+
     try {
-        return await fetchTracklistFromApi(releaseId);
+        const cached = await getCachedData<Release>(cacheKey);
+        if (cached) {
+            return cached;
+        }
+    } catch (error) {
+        logger.debug('tracklist cache read failed; asking MusicBrainz', { releaseId, error });
+    }
+
+    try {
+        const release = await fetchTracklistFromApi(releaseId);
+        if (release && release.media.length > 0) {
+            try {
+                await replaceCachedData(cacheKey, release, cacheConfig.releaseTracksTtlHours);
+            } catch (error) {
+                logger.debug('tracklist cache write failed', { releaseId, error });
+            }
+        }
+        return release;
     } catch (error) {
         throw Object.assign(new Error('Failed to fetch release tracks'), { cause: error });
     }

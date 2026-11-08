@@ -51,6 +51,9 @@ vi.mock('../../../components/ui', () => ({
 }));
 
 vi.mock('../../../components/ExternalLinksGrid', () => ({ default: () => null }));
+vi.mock('../../../services/brokenEntityImageReporter', () => ({
+    useBrokenEntityImageReporter: () => vi.fn(),
+}));
 vi.mock('../../../components/ResponsiveHeaderImage', () => ({ ResponsiveHeaderImage: () => null }));
 vi.mock('./ArtistRelationships', () => ({ default: () => null }));
 

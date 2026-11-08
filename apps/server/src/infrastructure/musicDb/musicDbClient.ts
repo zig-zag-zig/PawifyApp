@@ -192,6 +192,59 @@ let handle: MusicDb | null = null;
 let unavailableReason: string | null = null;
 
 /**
+ * Write handle for `entity_images` only.
+ *
+ * The mirror is produced by a separate tool, but artwork resolved live by this
+ * server (a brand-new release, a stale artist portrait) has to be persisted
+ * somewhere. Writing it back into `entity_images` keeps one source of truth and
+ * stops the same lookup being repeated on every request. WAL plus a busy timeout
+ * lets it coexist with the hourly `mbforge sync` writer.
+ */
+let writerHandle: MusicDb | null = null;
+let writerLoggedFailure = false;
+
+export const getMusicDbWriter = (): MusicDb | null => {
+    if (writerHandle) {
+        return writerHandle;
+    }
+    if (!musicDbConfig.path || !fs.existsSync(musicDbConfig.path)) {
+        return null;
+    }
+
+    try {
+        const db = new Database(musicDbConfig.path, { readonly: false, fileMustExist: true });
+        db.pragma('busy_timeout = 5000');
+        db.pragma('journal_mode = WAL');
+        db.pragma('synchronous = NORMAL');
+
+        if (!musicDbHandleHasEntityImages(db)) {
+            db.close();
+            return null;
+        }
+
+        writerHandle = db;
+        return db;
+    } catch (error) {
+        if (!writerLoggedFailure) {
+            writerLoggedFailure = true;
+            logger.warn('MusicBrainz mirror is not writable; artwork stays in the request cache', {
+                path: musicDbConfig.path,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+        return null;
+    }
+};
+
+export const closeMusicDbWriter = (): void => {
+    if (writerHandle) {
+        writerHandle.close();
+        writerHandle = null;
+    }
+    writerLoggedFailure = false;
+};
+
+/**
  * Opens the mirror at boot.
  *
  * A missing file is not fatal: it is what a host without a synced mirror looks like,
@@ -283,5 +336,6 @@ export const closeMusicDb = (): void => {
         handle.close();
         handle = null;
     }
+    closeMusicDbWriter();
     unavailableReason = null;
 };
