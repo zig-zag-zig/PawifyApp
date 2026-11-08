@@ -48,9 +48,50 @@ describe('releaseReducer', () => {
       expect(state.artistProfileImages).toEqual({});
       expect(state.pendingLyricTrackIds).toEqual([]);
       expect(state.pendingArtistImageIds).toEqual([]);
+      expect(state.loadingTracks).toBe(false);
+      expect(state.tracksLoadFailed).toBe(false);
       expect(state.loadingLyrics).toBe(false);
       expect(state.releaseExists).toBeNull();
       expect(state.checkingExistence).toBe(true);
+    });
+  });
+
+  describe('progressive release metadata and tracks', () => {
+    it('shows the release immediately while tracks are still loading and keeps it if tracks fail', () => {
+      const metadataOnly: Release = { ...release(), media: [] };
+      const withMetadata = releaseReducer(createInitialReleaseState(), {
+        type: 'releaseMetadataLoaded',
+        release: metadataOnly,
+        artistProfileImages: { 'artist-1': 'https://img.example/a1.jpg' },
+        pendingArtistImageIds: [],
+      });
+
+      expect(withMetadata.release).toEqual(metadataOnly);
+      expect(withMetadata.releaseExists).toBe(true);
+      expect(withMetadata.checkingExistence).toBe(false);
+      expect(withMetadata.loadingTracks).toBe(true);
+      expect(withMetadata.tracksLoadFailed).toBe(false);
+
+      const tracksFailed = releaseReducer(withMetadata, { type: 'tracksLoadFailed' });
+      expect(tracksFailed.release).toEqual(metadataOnly);
+      expect(tracksFailed.loadingTracks).toBe(false);
+      expect(tracksFailed.tracksLoadFailed).toBe(true);
+
+      const retrying = releaseReducer(tracksFailed, { type: 'tracksLoadStarted' });
+      expect(retrying.loadingTracks).toBe(true);
+      expect(retrying.tracksLoadFailed).toBe(false);
+
+      const withTracks = releaseReducer(retrying, {
+        type: 'lyricsLoadingStarted',
+        release: release(),
+        trackLyrics: { 'track-1': undefined },
+        artistProfileImages: { 'artist-1': 'https://img.example/a1.jpg' },
+        pendingLyricTrackIds: ['track-1'],
+        pendingArtistImageIds: [],
+      });
+      expect(withTracks.loadingTracks).toBe(false);
+      expect(withTracks.tracksLoadFailed).toBe(false);
+      expect(withTracks.release?.media).toHaveLength(1);
     });
   });
 

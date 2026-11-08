@@ -70,11 +70,16 @@ export const cacheConfig = {
         process.env.ARTIST_METADATA_REFRESH_TTL_MS,
         1000 * 60 * 60 * 24 * 28,
     ),
-    // Provider artwork/lyrics: a month of success, a week of "definitely absent".
-    // Covers change independently of MusicBrainz (a provider can replace artwork),
-    // so they do not inherit the 61-day artist-metadata TTL.
-    assetSuccessTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_SUCCESS_TTL_HOURS, 24 * 30),
+    // Provider artwork/lyrics: ninety days of success, a week of "definitely absent".
+    // Most artwork now lives in the SQLite mirror, so these TTLs only govern lyric
+    // lookups and the API-fallback path.
+    assetSuccessTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_SUCCESS_TTL_HOURS, 24 * 90),
     assetMissTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_MISS_TTL_HOURS, 24 * 7),
+    // Tracklists are not in the mirror, so they cost one 1 req/s MusicBrainz request
+    // per release view unless cached. A tracklist effectively never changes.
+    releaseTracksTtlHours: parsePositiveIntEnv(process.env.RELEASE_TRACKS_CACHE_TTL_HOURS, 24 * 30),
+    // Track search is the only search category that still hits MusicBrainz.
+    trackSearchTtlHours: parsePositiveIntEnv(process.env.TRACK_SEARCH_CACHE_TTL_HOURS, 24),
     transientRemoteValueRetryWindowMs: parsePositiveIntEnv(
         process.env.TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS,
         1000 * 60 * 5,

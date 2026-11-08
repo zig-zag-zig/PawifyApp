@@ -22,7 +22,13 @@ const logger = createLogger('services.search.zeroResultFallback');
  * returns 0 rows locally, we fall back to MusicBrainz's Solr n-gram search and
  * cache the response for an hour so repeat paging/retries are free.
  */
-export const ZERO_RESULT_SEARCH_CACHE_TTL_HOURS = 1;
+export const ZERO_RESULT_SEARCH_CACHE_TTL_HOURS = 6;
+
+/**
+ * Empty results expire sooner: a name that has no MusicBrainz match today may be
+ * added tomorrow, and caching "nothing" for hours is the least useful answer.
+ */
+export const ZERO_RESULT_EMPTY_CACHE_TTL_HOURS = 1;
 
 export type SearchWithApiFallbackDependencies = {
     searchArtistsFromMirror(
@@ -189,8 +195,17 @@ export const searchWithZeroResultFallback = createSearchWithZeroResultFallback({
         }
     },
     writeCache: async <T>(key: string, value: T): Promise<void> => {
+        const isEmpty =
+            typeof value === 'object' &&
+            value !== null &&
+            'count' in value &&
+            (value as { count?: unknown }).count === 0;
         try {
-            await replaceCachedData(key, value, ZERO_RESULT_SEARCH_CACHE_TTL_HOURS);
+            await replaceCachedData(
+                key,
+                value,
+                isEmpty ? ZERO_RESULT_EMPTY_CACHE_TTL_HOURS : ZERO_RESULT_SEARCH_CACHE_TTL_HOURS,
+            );
         } catch {
             // Non-fatal: response is still valid even if Redis is unavailable.
         }

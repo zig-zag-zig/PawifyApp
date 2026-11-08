@@ -15,6 +15,19 @@ import {
     shouldRefetchArtistImageState,
     shouldRefetchState,
 } from '../tasks/backgroundTaskMappers.js';
+import {
+    readEntityImages,
+    type EntityImageEntityType,
+    type EntityImageRecord,
+} from '../../infrastructure/musicDb/entityImageRepository.js';
+import { musicDbHasEntityImages } from '../../infrastructure/musicDb/musicDbClient.js';
+import {
+    resolveEntityImageFreshness,
+    scheduleEntityImageRevalidation,
+} from '../musicApi/entityImageFreshness.js';
+import { resolveArtistImage } from '../musicApi/artistImageSources.js';
+import { fetchReleaseCover, fetchReleaseGroupCover } from '../coverArt/coverArtLookup.js';
+import { getArtistImageProviderLinksFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 
 const logger = createLogger('services.cache.partitionAssets');
 
@@ -93,9 +106,53 @@ const logPreResolved = (
 };
 
 /**
- * Splits artist profile image lookups into cached (string/null URLs) and
- * pending sets using the same freshness rules as the background worker.
+ * Reads artwork rows from `mb.db` for a batch of entities and converts them into the
+ * partition shape the callers already expect.
+ *
+ * Returns null when the mirror does not carry the image-state tables, which is the
+ * signal to fall back to the Redis cache path.
  */
+const readMirrorImages = (
+    entityType: EntityImageEntityType,
+    ids: readonly string[],
+): Map<string, EntityImageRecord> | null => {
+    if (!musicDbHasEntityImages()) {
+        return null;
+    }
+    return readEntityImages(entityType, ids);
+};
+
+/**
+ * Applies the freshness matrix to one mirrored row.
+ *
+ * A row that is due for a re-check is still returned immediately; the re-check is
+ * detached background work, so a page never waits on it. `null` means "go through the
+ * live path" (`pending`, or no row at all).
+ */
+const mirrorValue = (
+    record: EntityImageRecord | undefined,
+    entityType: EntityImageEntityType,
+    entityId: string,
+    resolve: () => Promise<string | null | undefined>,
+): { value: string | null } | null => {
+    if (!record) {
+        return null;
+    }
+
+    const freshness = resolveEntityImageFreshness(entityType, record);
+    if (!freshness) {
+        return null;
+    }
+
+    if (freshness.revalidate) {
+        scheduleEntityImageRevalidation(entityType, entityId, resolve, {
+            settlePermanent: freshness.settlePermanent,
+        });
+    }
+
+    return { value: record.service === 'none' ? null : record.url };
+};
+
 export const partitionArtistProfileImages = async (
     lookups: ArtistProfileImageLookup[],
     readCache: CacheReader = getCachedData,
@@ -104,8 +161,37 @@ export const partitionArtistProfileImages = async (
     const resolved: Record<string, string | null> = {};
     const pending: ArtistProfileImageLookup[] = [];
 
+    const artistIds = lookups
+        .map((lookup) => lookup.artistId)
+        .filter(
+            (artistId): artistId is string => typeof artistId === 'string' && artistId.length > 0,
+        );
+    const mirror = readMirrorImages('artist', artistIds);
+
     await mapWithConcurrency(lookups, PRE_RESOLVE_CONCURRENCY, async (lookup) => {
         if (!lookup.artistId) {
+            pending.push(lookup);
+            return;
+        }
+
+        if (mirror) {
+            const artistId = lookup.artistId;
+            const mirrored = mirrorValue(mirror.get(artistId), 'artist', artistId, async () => {
+                const links = getArtistImageProviderLinksFromMirror(artistId);
+                const refreshed = await resolveArtistImage({
+                    artistId,
+                    artistName: lookup.artistName ?? links?.artistName,
+                    deezerUrls: lookup.deezerUrls ?? links?.deezerUrls,
+                    tidalUrls: lookup.tidalUrls ?? links?.tidalUrls,
+                    discogsUrls: lookup.discogsUrls ?? links?.discogsUrls,
+                    bypassMirror: true,
+                });
+                return refreshed.image;
+            });
+            if (mirrored) {
+                resolved[artistId] = mirrored.value;
+                return;
+            }
             pending.push(lookup);
             return;
         }
@@ -191,14 +277,56 @@ export const partitionReleaseGroupReleaseCovers = async (
     const resolved: Record<string, string | null> = {};
     const pending: ReleaseGroupReleasesPageEntry[] = [];
     const allReleaseIds = pageEntries.flatMap((entry) => entry.releaseIds);
-    const keys = allReleaseIds.map((releaseId) => assetKeys.releaseCover(releaseId));
 
-    const states = await readStates<CoverState>(keys, readCache);
+    const mirror = readMirrorImages('release', allReleaseIds);
+    const keys = mirror ? [] : allReleaseIds.map((releaseId) => assetKeys.releaseCover(releaseId));
+    const states = mirror
+        ? new Map<string, CoverState>()
+        : await readStates<CoverState>(keys, readCache);
+    // Groups that already hold a cover are the fallback for their pressings; a
+    // release without its own artwork inherits it, exactly like the live chain.
+    const groupIds = pageEntries
+        .map((entry) => entry.releaseGroupId)
+        .filter((groupId): groupId is string => typeof groupId === 'string' && groupId.length > 0);
+    const groupMirror = readMirrorImages('release_group', groupIds);
 
     for (const entry of pageEntries) {
         const unresolvedReleaseIds: string[] = [];
+        const groupRecord = entry.releaseGroupId
+            ? groupMirror?.get(entry.releaseGroupId)
+            : undefined;
+        const groupFallback =
+            groupRecord && groupRecord.service !== 'none' && groupRecord.service !== 'pending'
+                ? groupRecord.url
+                : null;
+        const groupUnresolved =
+            Boolean(entry.releaseGroupId) && (!groupRecord || groupRecord.service === 'pending');
 
         for (const releaseId of entry.releaseIds) {
+            if (mirror) {
+                const mirrored = mirrorValue(mirror.get(releaseId), 'release', releaseId, () =>
+                    fetchReleaseCover(releaseId, null, undefined, undefined, {
+                        bypassMirror: true,
+                    }),
+                );
+                if (mirrored) {
+                    if (mirrored.value !== null) {
+                        resolved[releaseId] = mirrored.value;
+                        continue;
+                    }
+                    if (groupFallback !== null) {
+                        resolved[releaseId] = groupFallback;
+                        continue;
+                    }
+                    if (!groupUnresolved) {
+                        resolved[releaseId] = null;
+                        continue;
+                    }
+                }
+                unresolvedReleaseIds.push(releaseId);
+                continue;
+            }
+
             const state = states.get(assetKeys.releaseCover(releaseId));
             if (state && shouldUseCachedState(state)) {
                 const value = toResolvedValue(state.url);
@@ -243,10 +371,32 @@ export const partitionArtistReleaseGroupCovers = async (
     const resolved: Record<string, string | null> = {};
     const pending: ReleaseGroupPageEntry[] = [];
 
-    const keys = pageEntries.map((entry) => assetKeys.groupCover(entry.releaseGroupId));
-    const states = await readStates<CoverState>(keys, readCache);
+    const groupIds = pageEntries.map((entry) => entry.releaseGroupId);
+    const mirror = readMirrorImages('release_group', groupIds);
+    const keys = mirror ? [] : groupIds.map((groupId) => assetKeys.groupCover(groupId));
+    const states = mirror
+        ? new Map<string, CoverState>()
+        : await readStates<CoverState>(keys, readCache);
 
     for (const entry of pageEntries) {
+        if (mirror) {
+            const mirrored = mirrorValue(
+                mirror.get(entry.releaseGroupId),
+                'release_group',
+                entry.releaseGroupId,
+                () =>
+                    fetchReleaseGroupCover(entry.releaseGroupId, undefined, undefined, undefined, {
+                        bypassMirror: true,
+                    }),
+            );
+            if (mirrored) {
+                resolved[entry.releaseGroupId] = mirrored.value;
+                continue;
+            }
+            pending.push(entry);
+            continue;
+        }
+
         const state = states.get(assetKeys.groupCover(entry.releaseGroupId));
         if (state && shouldUseCachedState(state)) {
             const value = toResolvedValue(state.url);

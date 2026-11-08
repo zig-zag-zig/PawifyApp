@@ -51,6 +51,8 @@ const ReleaseItem = ({
                     <CachedImageComponent
                         imageUrl={release.cover_url}
                         type='release'
+                        entityType='release'
+                        entityId={release.id}
                         style={styles.coverArtReleases}
                         showSpinnerWhenNoImage={isCoverLoading}
                     />

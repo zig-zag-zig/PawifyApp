@@ -73,6 +73,8 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                 type="release"
                 containerStyle={styles.releaseCoverContainer}
                 borderRadius={8}
+                entityType="release"
+                entityId={release.id}
             />
             <View style={styles.textContainer}>
                 <SelectableText style={styles.releaseTitle}>

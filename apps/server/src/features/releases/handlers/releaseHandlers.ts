@@ -24,6 +24,9 @@ export type ReleaseWirePresenters = {
     getRelease: (
         result: NonNullable<Awaited<ReturnType<ReleaseUseCases['getRelease']>>>,
     ) => unknown;
+    getReleaseTracks: (
+        result: NonNullable<Awaited<ReturnType<ReleaseUseCases['getReleaseTracks']>>>,
+    ) => unknown;
     resolveNewReleaseCovers: (
         result: Awaited<ReturnType<ReleaseUseCases['resolveNewReleaseCovers']>>,
     ) => unknown;
@@ -45,6 +48,10 @@ export const releasePresentersV1: ReleaseWirePresenters = {
     }),
     getRelease: (result) => ({
         release: result.release,
+        profileImageTaskId: result.profileImageTaskId,
+    }),
+    getReleaseTracks: (result) => ({
+        media: result.media,
         lyricsTaskId: result.lyricsTaskId,
         profileImageTaskId: result.profileImageTaskId,
     }),
@@ -59,6 +66,7 @@ export const releasePresentersV2: ReleaseWirePresenters = {
     getArtistReleases: (result) => result,
     getReleaseGroupReleases: (result) => result,
     getRelease: (result) => result,
+    getReleaseTracks: (result) => result,
     resolveNewReleaseCovers: (result) => result,
 };
 
@@ -141,6 +149,20 @@ export const createReleaseHandlers = (
         res.status(200).send(presenters.getRelease(payload));
     });
 
+    const getReleaseTracksHandler = authenticatedHandler(
+        '/getReleaseTracks',
+        async ({ req, res, userId }) => {
+            const releaseId = requireString(req.body, 'releaseId');
+            const payload = await releaseUseCases.getReleaseTracks(userId, releaseId);
+
+            if (!payload) {
+                throw new NotFoundError('Release was not found in MusicBrainz');
+            }
+
+            res.status(200).send(presenters.getReleaseTracks(payload));
+        },
+    );
+
     const verifyReleaseExistenceHandler = authenticatedHandler(
         '/verifyReleaseExistence',
         async ({ req, res, userId }) => {
@@ -171,6 +193,7 @@ export const createReleaseHandlers = (
         getArtistReleasesHandler,
         getReleaseGroupReleasesHandler,
         getReleaseHandler,
+        getReleaseTracksHandler,
         verifyReleaseExistenceHandler,
     };
 };

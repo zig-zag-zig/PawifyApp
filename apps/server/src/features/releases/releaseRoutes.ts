@@ -15,6 +15,7 @@ export const createReleaseRoutes = (
     router.post('/getArtistReleases', handlers.getArtistReleasesHandler);
     router.post('/getReleaseGroupReleases', handlers.getReleaseGroupReleasesHandler);
     router.post('/getRelease', handlers.getReleaseHandler);
+    router.post('/getReleaseTracks', handlers.getReleaseTracksHandler);
     router.post('/verifyReleaseExistence', handlers.verifyReleaseExistenceHandler);
 
     return router;

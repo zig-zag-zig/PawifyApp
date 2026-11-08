@@ -7,6 +7,10 @@ import { ENV } from '../../config/env';
 import { theme } from '../../styles/theme';
 import { captureAppError } from '../../services/monitoring/reportError';
 import {
+  useBrokenEntityImageReporter,
+  type BrokenEntityImageType,
+} from '../../services/brokenEntityImageReporter';
+import {
   deleteCachedImageFile,
   getCachedImageFileUri,
   getCacheKeyFromUrl,
@@ -38,6 +42,14 @@ interface CachedImageComponentProps {
   style?: ImageStyle;
   type: 'release' | 'profile';
   showSpinnerWhenNoImage?: boolean;
+  /**
+   * Artwork identity. When both are given, a remote load failure that survives the
+   * retries asks the server to re-resolve the file and renders the repair inline.
+   */
+  entityType?: BrokenEntityImageType;
+  entityId?: string;
+  /** Notifies a parent wrapper (e.g. ResponsiveHeaderImage) when the displayed URL is repaired. */
+  onEffectiveUrlChange?: (url: string | null) => void;
 }
 
 interface DownloadAndCacheImageOptions {
@@ -49,11 +61,23 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   style,
   type,
   showSpinnerWhenNoImage = false,
+  entityType,
+  entityId,
+  onEffectiveUrlChange,
 }) => {
   const defaultImage = type === 'release' ? defaultReleaseImage : defaultArtistImage;
-  const remoteImageUrl = normalizeRemoteImageUrl(imageUrl);
+  const [repairedOverride, setRepairedOverride] = useState<{
+    forPropUrl: string | null | undefined;
+    url: string | null;
+  } | null>(null);
+  const effectiveImageUrl =
+    repairedOverride && repairedOverride.forPropUrl === imageUrl
+      ? repairedOverride.url
+      : imageUrl;
+  const remoteImageUrl = normalizeRemoteImageUrl(effectiveImageUrl);
   const [activeRemoteImageUrl, setActiveRemoteImageUrl] = useState<string | null>(remoteImageUrl);
   const { updateAccessTime, cleanUpCache } = useCache();
+  const reportBrokenEntityImage = useBrokenEntityImageReporter();
   const [isLoading, setIsLoading] = useState(true);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -246,7 +270,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   }, [localUri, isLoading, prefixedCacheKey, remoteImageUrl, type]);
 
   if (!remoteImageUrl) {
-    if (imageUrl === undefined && showSpinnerWhenNoImage) {
+    if (effectiveImageUrl === undefined && showSpinnerWhenNoImage) {
       return <PulsingPlaceholder style={style} />;
     }
 
@@ -308,6 +332,20 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
           ...getImageDiagnosticPayload(),
           elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
         });
+
+        if (entityType && entityId) {
+          const failedPropUrl = imageUrl;
+          void reportBrokenEntityImage(entityType, entityId).then((result) => {
+            if (!result?.invalidated || !isMountedRef.current) {
+              return;
+            }
+            // Feed the replacement (or null) through the same source pipeline so
+            // `remoteImageUrl` and `activeRemoteImageUrl` stay in lockstep and the
+            // replacement image is downloaded/cached normally.
+            setRepairedOverride({ forPropUrl: failedPropUrl, url: result.url });
+            onEffectiveUrlChange?.(result.url);
+          });
+        }
       }
 
       setLocalUri(null);

@@ -22,11 +22,11 @@ const createDependencies = (exists: boolean) => {
             },
         },
         releaseCatalogGateway: {
-                getArtistReleasesPage: async () => ({
-                    releaseGroups: [],
-                    hasMore: false,
-                    nextCursor: null,
-                }),
+            getArtistReleasesPage: async () => ({
+                releaseGroups: [],
+                hasMore: false,
+                nextCursor: null,
+            }),
             async getArtistReleases() {
                 throw new Error('getArtistReleases should not run');
             },
@@ -35,6 +35,9 @@ const createDependencies = (exists: boolean) => {
             },
             async getRelease() {
                 throw new Error('getRelease should not run');
+            },
+            async getReleaseTracks() {
+                throw new Error('getReleaseTracks should not run');
             },
             async releaseExists() {
                 return exists;

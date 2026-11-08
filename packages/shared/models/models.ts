@@ -110,6 +110,14 @@ export interface Track {
   title: string;
   "artist-credit": ArtistCredit[];
   length: number | null;
+  /**
+   * Lyrics URL MusicBrainz already knows for this track.
+   *
+   * Sourced from the recording's own `url-rels` or its work's `url-rels`
+   * (Genius first, then any other whitelisted lyrics site), so the tracklist
+   * request answers lyrics for free instead of costing a Genius API call.
+   */
+  lyricsUrl?: string | null;
 }
 
 export interface ArtistMinimal {

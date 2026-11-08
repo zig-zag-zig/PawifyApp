@@ -245,9 +245,9 @@ describe('mirrored release artwork', () => {
         assert.equal(calls.length > 0, true);
     });
 
-    it('still writes a mirrored cover into the asset cache', async () => {
-        // Instant lookup is only half the win: the resolved state must land in the
-        // existing per-release cache, otherwise the next render pays again.
+    it('serves a mirrored cover without writing the Redis asset cache', async () => {
+        // The mirror is the artwork store now. Duplicating a resolved cover into
+        // Redis was what left image keys in the cache after the SQLite migration.
         useMirror({
             entityImages: [imageRow('release', RELEASE_ID, 4, DEEZER_TOKEN, nowSeconds())],
         });
@@ -264,8 +264,12 @@ describe('mirrored release artwork', () => {
         const originalRead = cacheModule.readReleaseCoverState;
         const originalWrite = cacheModule.writeReleaseCoverState;
         const written: Array<{ releaseId: string; url: unknown }> = [];
+        let readCount = 0;
 
-        cacheModule.readReleaseCoverState = async () => null;
+        cacheModule.readReleaseCoverState = async () => {
+            readCount += 1;
+            return null;
+        };
         cacheModule.writeReleaseCoverState = async (releaseId, state) => {
             written.push({ releaseId, url: (state as { url?: unknown }).url });
         };
@@ -275,7 +279,8 @@ describe('mirrored release artwork', () => {
             const result = await getReleaseCover(RELEASE_ID, null, undefined);
 
             assert.equal(result.state.url, DEEZER_IMAGE);
-            assert.deepEqual(written, [{ releaseId: RELEASE_ID, url: DEEZER_IMAGE }]);
+            assert.deepEqual(written, [], 'the mirror must not duplicate artwork into Redis');
+            assert.equal(readCount, 0, 'the mirror must be read instead of Redis');
             assert.deepEqual(calls, []);
         } finally {
             cacheModule.readReleaseCoverState = originalRead;

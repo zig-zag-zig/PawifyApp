@@ -2,6 +2,7 @@ import { getDeezerArtistImage } from './deezerClient.js';
 import { getDiscogsData } from './discogsClient.js';
 import { getTidalArtistImage } from './tidalClient.js';
 import { lookupMirrorImage } from './mirrorEntityImages.js';
+import { scheduleEntityImageRevalidation } from './entityImageFreshness.js';
 import type { ArtistImageProvider, ProviderValueState } from './types.js';
 
 /**
@@ -18,6 +19,20 @@ export const ARTIST_IMAGE_PROVIDER_ORDER: readonly ArtistImageProvider[] = [
 export type ArtistImageProviderLookup = {
     /** Mirror key for the artist; the image-state tables are read by it. */
     artistId?: string;
+    /**
+     * Ignore the mirror row and always walk the providers.
+     *
+     * Background revalidation and the broken-image repair path set this: they are
+     * called precisely because the stored row is stale or dead, so reading it again
+     * would hand the same answer back.
+     */
+    bypassMirror?: boolean;
+    /**
+     * Image URLs already proven broken on the CDN. A provider returning one of
+     * these is treated as a transient failure so the chain falls through to the
+     * next provider instead of stopping on the dead URL or marking a permanent miss.
+     */
+    excludeUrls?: ReadonlySet<string>;
     /** Used only for Discogs, to pick between several same-named artists. */
     artistName?: string;
     deezerUrls?: string[];
@@ -66,6 +81,17 @@ const resolveMirroredArtistImage = (
         ) {
             return null;
         }
+        if (mirrored.freshness.revalidate && lookup.artistId) {
+            const artistId = lookup.artistId;
+            scheduleEntityImageRevalidation('artist', artistId, async () => {
+                const refreshed = await resolveArtistImage({
+                    ...lookup,
+                    skipProviders: undefined,
+                    bypassMirror: true,
+                });
+                return refreshed.image;
+            });
+        }
         return {
             image: mirrored.url,
             source: mirrored.service,
@@ -75,6 +101,22 @@ const resolveMirroredArtistImage = (
     }
 
     if (mirrored.kind === 'missing') {
+        if (mirrored.freshness.revalidate && lookup.artistId) {
+            const artistId = lookup.artistId;
+            scheduleEntityImageRevalidation(
+                'artist',
+                artistId,
+                async () => {
+                    const refreshed = await resolveArtistImage({
+                        ...lookup,
+                        skipProviders: undefined,
+                        bypassMirror: true,
+                    });
+                    return refreshed.image;
+                },
+                { settlePermanent: mirrored.freshness.settlePermanent },
+            );
+        }
         return {
             image: null,
             source: undefined,
@@ -102,8 +144,9 @@ export const resolveArtistImage = async (
     signal?: AbortSignal,
 ): Promise<ArtistImageResolution> => {
     // A mirrored hit is the answer itself: these are the same providers, already
-    // asked once by the mirror builder, so no request is repeated here.
-    const mirrored = resolveMirroredArtistImage(lookup);
+    // asked once by the mirror builder, so no request is repeated here. Revalidation
+    // and repair pass `bypassMirror` so they interrogate the providers instead.
+    const mirrored = lookup.bypassMirror ? null : resolveMirroredArtistImage(lookup);
     if (mirrored) {
         return mirrored;
     }
@@ -123,15 +166,26 @@ export const resolveArtistImage = async (
     const shouldAttempt = (provider: ArtistImageProvider, urls: string[] | undefined) =>
         hasUrls(urls) && !skipped?.has(provider);
 
+    const isUsableImage = (image: ProviderValueState): image is string =>
+        hasImage(image) && !lookup.excludeUrls?.has(image.trim());
+
+    const recordExcludedOrMiss = (provider: ArtistImageProvider, image: ProviderValueState) => {
+        if (hasImage(image) && lookup.excludeUrls?.has(image.trim())) {
+            transientFailures.push(provider);
+            return;
+        }
+        record(provider, image);
+    };
+
     if (shouldAttempt('deezer', lookup.deezerUrls)) {
         const image = await getDeezerArtistImage(lookup.deezerUrls!, {
             artistName: lookup.artistName,
             signal,
         });
-        if (hasImage(image)) {
+        if (isUsableImage(image)) {
             return { image, source: 'deezer', confirmedMisses, transientFailures };
         }
-        record('deezer', image);
+        recordExcludedOrMiss('deezer', image);
     }
 
     if (shouldAttempt('tidal', lookup.tidalUrls)) {
@@ -139,10 +193,10 @@ export const resolveArtistImage = async (
             artistName: lookup.artistName,
             signal,
         });
-        if (hasImage(image)) {
+        if (isUsableImage(image)) {
             return { image, source: 'tidal', confirmedMisses, transientFailures };
         }
-        record('tidal', image);
+        recordExcludedOrMiss('tidal', image);
     }
 
     if (shouldAttempt('discogs', lookup.discogsUrls)) {
@@ -151,10 +205,10 @@ export const resolveArtistImage = async (
             lookup.discogsUrls!,
             signal,
         );
-        if (hasImage(image)) {
+        if (isUsableImage(image)) {
             return { image, source: 'discogs', confirmedMisses, transientFailures };
         }
-        record('discogs', image);
+        recordExcludedOrMiss('discogs', image);
     }
 
     return {

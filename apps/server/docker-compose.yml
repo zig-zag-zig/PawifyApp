@@ -131,7 +131,7 @@ services:
                     --port 6379 \
                     --requirepass "$$REDIS_PASSWORD" \
                     --maxmemory "$${REDIS_MAXMEMORY:-128mb}" \
-                    --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-allkeys-lru}" \
+                    --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-volatile-lru}" \
                     --appendonly no \
                     --dir /tmp \
                     --dbfilename dump.rdb \
@@ -144,7 +144,7 @@ services:
                   --port 6379 \
                   --requirepass "$$REDIS_PASSWORD" \
                   --maxmemory "$${REDIS_MAXMEMORY:-128mb}" \
-                  --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-allkeys-lru}" \
+                  --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-volatile-lru}" \
                   --appendonly yes \
                   --appendfsync everysec \
                   --save 900 1 \

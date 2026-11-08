@@ -10,4 +10,7 @@ import { initializeMusicDb } from './infrastructure/musicDb/musicDbClient.js';
 // to the API that hides a broken sync job.
 initializeMusicDb();
 
+// Artwork now lives in `entity_images`; any leftover `asset:*` artwork key is
+// deleted on touch by `assetCache`, so no boot-time sweep is needed.
+
 startServer(createApp());

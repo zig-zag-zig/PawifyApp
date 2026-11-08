@@ -1,5 +1,10 @@
 import { createLogger } from '../../common/logging/logger.js';
-import { getMusicDb, musicDbHandleHasEntityImages, type MusicDb } from './musicDbClient.js';
+import {
+    getMusicDb,
+    getMusicDbWriter,
+    musicDbHandleHasEntityImages,
+    type MusicDb,
+} from './musicDbClient.js';
 
 const logger = createLogger('infrastructure.musicDb.entityImages');
 
@@ -173,4 +178,169 @@ export const readEntityImages = (
 export const resetEntityImageRepositoryForTests = (): void => {
     checkedHandle = null;
     handleHasTables = false;
+    writerCheckedHandle = null;
+    writerWarned = false;
 };
+
+/* ------------------------------------------------------------------------- *
+ * Writes
+ * ------------------------------------------------------------------------- */
+
+/** Service ids, mirroring `image_services` in the mirror. */
+export const ENTITY_IMAGE_SERVICE_ID: Record<EntityImageService, number> = {
+    none: 0,
+    pending: 1,
+    caa_rel: 2,
+    caa_rg: 3,
+    deezer: 4,
+    tidal: 5,
+    discogs: 6,
+};
+
+const isAllowedDiscogsImageHost = (url: string): boolean => {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return false;
+        }
+        const host = parsed.hostname.toLowerCase();
+        return host === 'discogs.com' || host.endsWith('.discogs.com');
+    } catch {
+        return false;
+    }
+};
+const DEEZER_MARKER = 'cdn-images.dzcdn.net/images/';
+const TIDAL_MARKER = 'resources.tidal.com/images/';
+
+const tokenAfter = (url: string, marker: string): string | null => {
+    const index = url.indexOf(marker);
+    if (index < 0) {
+        return null;
+    }
+    const token = url.slice(index + marker.length).trim();
+    return token.length > 0 ? token : null;
+};
+
+/**
+ * Converts a resolved full URL back into the compact `(service, token)` pair the
+ * mirror stores, so a live lookup costs one small row instead of a duplicated URL.
+ *
+ * Returns null when the URL does not belong to a known provider, in which case the
+ * caller keeps the row untouched rather than recording a wrong token.
+ */
+export const toEntityImageToken = (
+    url: string | null | undefined,
+    entityId: string,
+): { service: EntityImageService; token: string } | null => {
+    if (url === null) {
+        return { service: 'none', token: '' };
+    }
+    if (typeof url !== 'string' || url.trim().length === 0) {
+        return null;
+    }
+
+    const trimmed = url.trim();
+    const deezer = tokenAfter(trimmed, DEEZER_MARKER);
+    if (deezer) {
+        return { service: 'deezer', token: deezer };
+    }
+
+    const tidal = tokenAfter(trimmed, TIDAL_MARKER);
+    if (tidal) {
+        return { service: 'tidal', token: tidal };
+    }
+
+    if (trimmed.includes('coverartarchive.org/release-group/')) {
+        return { service: 'caa_rg', token: entityId };
+    }
+    if (trimmed.includes('coverartarchive.org/release/')) {
+        return { service: 'caa_rel', token: entityId };
+    }
+    if (isAllowedDiscogsImageHost(trimmed)) {
+        return { service: 'discogs', token: trimmed };
+    }
+
+    return null;
+};
+
+let writerCheckedHandle: MusicDb | null = null;
+let writerWarned = false;
+
+const writerFor = (): MusicDb | null => {
+    const db = getMusicDbWriter();
+    if (!db) {
+        if (!writerWarned) {
+            writerWarned = true;
+            logger.debug('mirror writer unavailable; resolved artwork is not persisted');
+        }
+        return null;
+    }
+    if (db !== writerCheckedHandle) {
+        writerCheckedHandle = db;
+    }
+    return db;
+};
+
+export type EntityImageWrite = {
+    entityType: EntityImageEntityType;
+    entityId: string;
+    service: EntityImageService;
+    token: string;
+    /** Unix seconds; 0 marks the state as permanent (`none` derived offline or settled). */
+    fetchedAt?: number;
+};
+
+/**
+ * Persists the outcome of one artwork lookup into the mirror.
+ *
+ * Writes are best-effort: a mirror that is missing, read-only, or locked by the
+ * hourly sync must never fail a user request. The caller keeps serving the value it
+ * just resolved either way.
+ */
+export const writeEntityImages = (writes: readonly EntityImageWrite[]): number => {
+    if (writes.length === 0) {
+        return 0;
+    }
+    const db = writerFor();
+    if (!db) {
+        return 0;
+    }
+
+    const statement = db.prepare(
+        `INSERT INTO entity_images(entity_type, entity_mbid, service_id, image_token, fetched_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(entity_type, entity_mbid) DO UPDATE SET
+             service_id = excluded.service_id,
+             image_token = excluded.image_token,
+             fetched_at = excluded.fetched_at`,
+    );
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    let written = 0;
+    const run = db.transaction((batch: readonly EntityImageWrite[]) => {
+        for (const write of batch) {
+            statement.run(
+                write.entityType,
+                write.entityId,
+                ENTITY_IMAGE_SERVICE_ID[write.service],
+                write.token,
+                write.fetchedAt ?? nowSeconds,
+            );
+            written += 1;
+        }
+    });
+
+    try {
+        run(writes);
+        return written;
+    } catch (error) {
+        logger.warn('entity image write failed; value stays request-scoped', {
+            count: writes.length,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return 0;
+    }
+};
+
+export const writeEntityImage = (write: EntityImageWrite): boolean =>
+    writeEntityImages([write]) > 0;

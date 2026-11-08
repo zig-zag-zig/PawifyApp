@@ -1,5 +1,6 @@
 import { getReleaseCover, getReleaseGroupCover } from '../../coverArtService.js';
 import { writeReleaseCoverState } from '../../coverArt/coverArtCache.js';
+import { musicDbHasEntityImages } from '../../../infrastructure/musicDb/musicDbClient.js';
 import { aggregateProviderUrls, getReleaseProviderUrls } from '../../coverArt/coverArtLookup.js';
 import { getReleaseIdsForGroupFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
@@ -141,6 +142,12 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
             // made every page load re-queue the same groups forever.
             for (const releaseId of releaseIds) {
                 covers[releaseId] = cover.state.url;
+                if (musicDbHasEntityImages()) {
+                    // One source of truth: the mirror already stores this group's
+                    // cover, so per-release rows stay untouched and the server reads
+                    // the group row as the fallback.
+                    continue;
+                }
                 await writeReleaseCoverState(releaseId, cover.state, ttl);
             }
         } catch (error) {

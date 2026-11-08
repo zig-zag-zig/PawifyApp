@@ -102,6 +102,8 @@ const ReleasesSection = ({
                         imageUrl={releaseGroupCovers[releaseGroup.id]}
                         type='release'
                         showSpinnerWhenNoImage={pendingReleaseGroupCoverIdSet.has(releaseGroup.id)}
+                        entityType='release_group'
+                        entityId={releaseGroup.id}
                         style={styles.albumCover}
                     />
                     <SelectableText

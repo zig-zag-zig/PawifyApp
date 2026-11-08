@@ -1,6 +1,10 @@
 import { resolveReleaseImage } from '../musicApi/releaseImageSources.js';
 import { lookupMirrorImage } from '../musicApi/mirrorEntityImages.js';
 import {
+    persistResolvedEntityImage,
+    scheduleEntityImageRevalidation,
+} from '../musicApi/entityImageFreshness.js';
+import {
     getProviderUrlsForReleasesFromMirror,
     getReleaseIdsForGroupFromMirror,
     releaseExistsInMirror,
@@ -114,11 +118,19 @@ const providerUrlsForUnknownGroup = async (
  * The streaming providers answer from their own CDNs; CAA is the last resort because
  * it redirects to Internet Archive storage, which is the slow part.
  */
+export type CoverLookupOptions = {
+    /** Ignore the mirror row and always walk the providers (revalidation/repair). */
+    bypassMirror?: boolean;
+    /** Broken CDN URLs that must be skipped and treated as transient. */
+    excludeUrls?: ReadonlySet<string>;
+};
+
 export const fetchReleaseCover = async (
     releaseId: string,
     releaseGroupId: string | null,
     signal?: AbortSignal,
     providerUrls?: { deezerUrls: string[]; tidalUrls: string[] },
+    options?: CoverLookupOptions,
 ): Promise<RemoteValueState> => {
     // Mirror first: the artwork was already resolved by the mirror builder, so this
     // is one primary-key lookup instead of a provider chain, and it is checked
@@ -126,13 +138,31 @@ export const fetchReleaseCover = async (
     // call. A confirmed release miss is authoritative for the release endpoint, so
     // it must not be re-probed; the group row is still consulted because that is
     // the cover a pressing without its own art inherits.
-    const releaseMirror = lookupMirrorImage('release', releaseId);
+    const releaseMirror = options?.bypassMirror
+        ? ({ kind: 'none' } as const)
+        : lookupMirrorImage('release', releaseId);
     if (releaseMirror.kind === 'resolved') {
+        scheduleRevalidation(releaseMirror.freshness, 'release', releaseId, () =>
+            fetchReleaseCover(releaseId, null, signal, providerUrls, { bypassMirror: true }),
+        );
         return releaseMirror.url;
     }
     if (releaseMirror.kind === 'missing') {
         const groupMirror = lookupMirrorImage('release_group', releaseGroupId);
-        return groupMirror.kind === 'resolved' ? groupMirror.url : null;
+        if (groupMirror.kind === 'resolved') {
+            return groupMirror.url;
+        }
+        // Both verdicts are recorded misses: answer immediately and re-check the
+        // release (not the group) in the background, since only its own cover could
+        // improve on the inherited group cover.
+        scheduleRevalidation(
+            releaseMirror.freshness,
+            'release',
+            releaseId,
+            () => fetchReleaseCover(releaseId, null, signal, providerUrls, { bypassMirror: true }),
+            releaseMirror.freshness.settlePermanent,
+        );
+        return null;
     }
 
     let urls = providerUrls ?? getReleaseProviderUrlsForOne(releaseId);
@@ -150,10 +180,45 @@ export const fetchReleaseCover = async (
         // The release endpoint is preferred for a release's own cover; the group is
         // the fallback the caller reaches for only when this returns nothing.
         releaseId,
+        bypassMirror: options?.bypassMirror,
+        excludeUrls: options?.excludeUrls,
         signal,
     });
 
+    // When `bypassMirror` is set, the caller (`scheduleEntityImageRevalidation` or
+    // `invalidateEntityImage`) owns writing the miss/permanent timestamp, so avoid a
+    // redundant intermediate write here.
+    if (!options?.bypassMirror || typeof resolution.image === 'string') {
+        persistResolvedEntityImage('release', releaseId, resolution.image);
+    }
+    if (typeof resolution.image === 'string' && releaseGroupId) {
+        const existingGroup = lookupMirrorImage('release_group', releaseGroupId);
+        if (existingGroup.kind === 'none') {
+            persistResolvedEntityImage('release_group', releaseGroupId, resolution.image);
+        }
+    }
     return resolution.image;
+};
+
+/**
+ * Queues a detached re-check for a stale row.
+ *
+ * `settleMiss` writes `fetched_at = 0` when the re-check still finds nothing, so a
+ * release that definitively has no cover of its own is never polled again.
+ */
+const scheduleRevalidation = (
+    freshness: { revalidate: boolean; settlePermanent: boolean },
+    entityType: 'release' | 'release_group',
+    entityId: string,
+    resolve: () => Promise<RemoteValueState>,
+    settleMiss = false,
+): void => {
+    if (!freshness.revalidate) {
+        return;
+    }
+    scheduleEntityImageRevalidation(entityType, entityId, resolve, {
+        settlePermanent: settleMiss || freshness.settlePermanent,
+    });
 };
 
 const getReleaseProviderUrlsForOne = (
@@ -176,12 +241,30 @@ export const fetchReleaseGroupCover = async (
     signal?: AbortSignal,
     releaseIds?: string[],
     aggregatedProviderUrls?: { deezerUrls: string[]; tidalUrls: string[] },
+    options?: CoverLookupOptions,
 ): Promise<RemoteValueState> => {
-    const mirrored = lookupMirrorImage('release_group', releaseGroupId);
+    const mirrored = options?.bypassMirror
+        ? ({ kind: 'none' } as const)
+        : lookupMirrorImage('release_group', releaseGroupId);
     if (mirrored.kind === 'resolved') {
+        scheduleRevalidation(mirrored.freshness, 'release_group', releaseGroupId, () =>
+            fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls, {
+                bypassMirror: true,
+            }),
+        );
         return mirrored.url;
     }
     if (mirrored.kind === 'missing') {
+        scheduleRevalidation(
+            mirrored.freshness,
+            'release_group',
+            releaseGroupId,
+            () =>
+                fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls, {
+                    bypassMirror: true,
+                }),
+            mirrored.freshness.settlePermanent,
+        );
         return null;
     }
 
@@ -212,9 +295,14 @@ export const fetchReleaseGroupCover = async (
         deezerUrls,
         tidalUrls,
         releaseGroupId,
+        bypassMirror: options?.bypassMirror,
+        excludeUrls: options?.excludeUrls,
         signal,
     });
 
+    if (!options?.bypassMirror || typeof resolution.image === 'string') {
+        persistResolvedEntityImage('release_group', releaseGroupId, resolution.image);
+    }
     return resolution.image;
 };
 

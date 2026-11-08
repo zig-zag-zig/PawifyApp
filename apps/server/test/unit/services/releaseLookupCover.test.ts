@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { closeMusicDb } from '../../../src/infrastructure/musicDb/musicDbClient.js';
+import { createMusicDbFixture } from '../../helpers/musicDbFixture.js';
 
 // See releaseCoverProviderFallback: collapse the local fallback limiter delay so the
 // provider chain does not sleep a second per request in tests.
@@ -131,5 +132,86 @@ describe('getRelease cover resolution', () => {
         assert.ok(release);
         assert.equal(release.cover_url, null);
         assert.ok(calls.some((call) => call.url.includes('/invoke/coverartarchive/')));
+    });
+
+    it('returns mirror metadata and cover in getRelease without calling MusicBrainz, while getReleaseTracks fetches media', async () => {
+        const path = createMusicDbFixture({
+            artists: [{ mbid: '66120159-5fe7-4cdb-8c9a-7ac68e393c6f', name: 'Czarface' }],
+            releaseGroups: [{ mbid: GROUP_ID, title: 'No Competition', primary_type: 'Single' }],
+            releases: [
+                {
+                    mbid: RELEASE_ID,
+                    title: 'No Competition',
+                    date: '2026-10-04',
+                    release_group_mbid: GROUP_ID,
+                },
+            ],
+            releaseArtists: [
+                {
+                    release_mbid: RELEASE_ID,
+                    artist_mbid: '66120159-5fe7-4cdb-8c9a-7ac68e393c6f',
+                    artist_name: 'Czarface',
+                    position: 1,
+                },
+            ],
+            entityImages: [
+                {
+                    entity_type: 'release',
+                    entity_mbid: RELEASE_ID,
+                    service_id: 2,
+                    image_token: RELEASE_ID,
+                    fetched_at: 0,
+                },
+            ],
+        });
+        process.env.MUSIC_DB_PATH = path;
+        closeMusicDb();
+
+        const calls = stubFetch((call) => {
+            if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
+                return jsonResponse({
+                    ...apiReleasePayload(false),
+                    media: [
+                        {
+                            position: 1,
+                            format: 'Digital Media',
+                            'track-count': 1,
+                            tracks: [
+                                {
+                                    id: 'track-1',
+                                    title: 'No Competition',
+                                    length: 180000,
+                                    'artist-credit': [],
+                                },
+                            ],
+                        },
+                    ],
+                });
+            }
+            throw new Error(`unexpected call ${call.url}`);
+        });
+
+        const { getRelease, getReleaseTracks } =
+            await import('../../../src/services/musicbrainz/releaseLookup.js');
+
+        const release = await getRelease(RELEASE_ID);
+        assert.ok(release);
+        assert.equal(release.title, 'No Competition');
+        assert.equal(
+            release.cover_url,
+            `https://coverartarchive.org/release/${RELEASE_ID}/front-500`,
+        );
+        assert.deepEqual(release.media, []);
+        assert.equal(
+            calls.filter((call) => call.url.includes('/ws/2/release/')).length,
+            0,
+            'getRelease must not hit MusicBrainz when the release is in the mirror',
+        );
+
+        const tracksRelease = await getReleaseTracks(RELEASE_ID);
+        assert.ok(tracksRelease);
+        assert.equal(tracksRelease.media.length, 1);
+        assert.equal(tracksRelease.media[0]?.tracks?.[0]?.title, 'No Competition');
+        assert.equal(calls.filter((call) => call.url.includes('/ws/2/release/')).length, 1);
     });
 });

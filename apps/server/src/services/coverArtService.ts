@@ -10,6 +10,8 @@ import {
     writeReleaseCoverState,
 } from './coverArt/coverArtCache.js';
 import { readAssetStates, assetKeys } from './cache/assetCache.js';
+import { musicDbHasEntityImages } from '../infrastructure/musicDb/musicDbClient.js';
+import { lookupMirrorImage } from './musicApi/mirrorEntityImages.js';
 import { fetchReleaseCover, fetchReleaseGroupCover } from './coverArt/coverArtLookup.js';
 import { dedupeStrings } from '../common/utils/array.js';
 
@@ -67,18 +69,24 @@ export const getReleaseGroupCover = async (
     _artistCoverCacheContext?: unknown,
     aggregatedProviderUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<CoverLookupResult> => {
-    const cached = await readGroupCoverState(releaseGroupId);
-    if (cached && hasUsableUrl(cached)) {
-        return { state: cached, isFallback: false };
-    }
+    // The mirror is the artwork store: reading it is a primary-key lookup, and a
+    // resolved row is written back there instead of into Redis.
+    const mirrorOwnsArtwork = musicDbHasEntityImages();
 
-    // A release in the same group may already have a real cover; reuse it before
-    // spending provider calls.
-    const peerCover = await cachedReleaseCoverFromIds(fallbackReleaseIds);
-    if (peerCover) {
-        const state = mapCoverState(peerCover.url);
-        await writeGroupCoverState(releaseGroupId, state, ttl);
-        return { state, isFallback: true };
+    if (!mirrorOwnsArtwork) {
+        const cached = await readGroupCoverState(releaseGroupId);
+        if (cached && hasUsableUrl(cached)) {
+            return { state: cached, isFallback: false };
+        }
+
+        // A release in the same group may already have a real cover; reuse it before
+        // spending provider calls.
+        const peerCover = await cachedReleaseCoverFromIds(fallbackReleaseIds);
+        if (peerCover) {
+            const state = mapCoverState(peerCover.url);
+            await writeGroupCoverState(releaseGroupId, state, ttl);
+            return { state, isFallback: true };
+        }
     }
 
     const direct = await fetchReleaseGroupCover(
@@ -88,14 +96,10 @@ export const getReleaseGroupCover = async (
         aggregatedProviderUrls,
     );
 
-    if (typeof direct === 'string' && direct.trim().length > 0) {
-        const state = mapCoverState(direct);
-        await writeGroupCoverState(releaseGroupId, state, ttl);
-        return { state, isFallback: false };
-    }
-
     const state = mapCoverState(direct);
-    await writeGroupCoverState(releaseGroupId, state, ttl);
+    if (!mirrorOwnsArtwork) {
+        await writeGroupCoverState(releaseGroupId, state, ttl);
+    }
     return { state, isFallback: false };
 };
 
@@ -112,38 +116,59 @@ export const getReleaseCover = async (
     signal?: AbortSignal,
     providerUrls?: { deezerUrls: string[]; tidalUrls: string[] },
 ): Promise<CoverLookupResult> => {
-    const cached = await readReleaseCoverState(releaseId);
-    if (cached && hasUsableUrl(cached)) {
-        return { state: cached, isFallback: false };
+    const mirrorOwnsArtwork = musicDbHasEntityImages();
+
+    if (!mirrorOwnsArtwork) {
+        const cached = await readReleaseCoverState(releaseId);
+        if (cached && hasUsableUrl(cached)) {
+            return { state: cached, isFallback: false };
+        }
     }
 
     const direct = await fetchReleaseCover(releaseId, releaseGroupId, signal, providerUrls);
 
     if (typeof direct === 'string' && direct.trim().length > 0) {
         const state = mapCoverState(direct);
-        await writeReleaseCoverState(releaseId, state, ttl);
-        if (releaseGroupId) {
-            // A real release cover is also a valid group cover; recording it saves the
-            // group lookup a provider call.
-            await writeGroupCoverState(releaseGroupId, state, ttl);
+        if (!mirrorOwnsArtwork) {
+            await writeReleaseCoverState(releaseId, state, ttl);
+            if (releaseGroupId) {
+                // A real release cover is also a valid group cover; recording it saves
+                // the group lookup a provider call.
+                await writeGroupCoverState(releaseGroupId, state, ttl);
+            }
         }
         return { state, isFallback: false };
     }
 
     if (releaseGroupId) {
-        const groupCover = await readGroupCoverState(releaseGroupId);
-        if (groupCover && hasUsableUrl(groupCover)) {
-            const state = fallbackCoverState(
-                groupCover.url as string,
-                isRemoteValueState(direct) && direct === undefined,
-            );
-            await writeReleaseCoverState(releaseId, state, ttl);
-            return { state, isFallback: true };
+        if (mirrorOwnsArtwork) {
+            const mirroredGroup = lookupMirrorImage('release_group', releaseGroupId);
+            if (mirroredGroup.kind === 'resolved') {
+                return {
+                    state: fallbackCoverState(
+                        mirroredGroup.url,
+                        isRemoteValueState(direct) && direct === undefined,
+                    ),
+                    isFallback: true,
+                };
+            }
+        } else {
+            const groupCover = await readGroupCoverState(releaseGroupId);
+            if (groupCover && hasUsableUrl(groupCover)) {
+                const state = fallbackCoverState(
+                    groupCover.url as string,
+                    isRemoteValueState(direct) && direct === undefined,
+                );
+                await writeReleaseCoverState(releaseId, state, ttl);
+                return { state, isFallback: true };
+            }
         }
     }
 
     const state = mapCoverState(direct);
-    await writeReleaseCoverState(releaseId, state, ttl);
+    if (!mirrorOwnsArtwork) {
+        await writeReleaseCoverState(releaseId, state, ttl);
+    }
     return { state, isFallback: false };
 };
 

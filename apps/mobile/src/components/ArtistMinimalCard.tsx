@@ -62,6 +62,8 @@ const ArtistMinimalCard: React.FC<ArtistMinimalCardProps> = ({
         imageUrl={profileImageUrl}
         type="profile"
         showSpinnerWhenNoImage={showProfileImageSpinnerWhenMissing}
+        entityType="artist"
+        entityId={artist.id}
         style={smallPicture ? styles.roundPictureSmall : styles.roundPicture}
       />
       <View

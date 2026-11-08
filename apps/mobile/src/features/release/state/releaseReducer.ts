@@ -6,6 +6,14 @@ type ReleaseAction =
     | { type: 'releaseLoadStarted' }
     | { type: 'releaseLoadFailed'; notFound: boolean }
     | {
+        type: 'releaseMetadataLoaded';
+        release: Release;
+        artistProfileImages: Record<string, string | null | undefined>;
+        pendingArtistImageIds: string[];
+    }
+    | { type: 'tracksLoadStarted' }
+    | { type: 'tracksLoadFailed' }
+    | {
         type: 'lyricsLoadingStarted';
         release: Release;
         trackLyrics: Record<string, string | null | undefined>;
@@ -35,6 +43,8 @@ export function createInitialReleaseState(): ReleasePageState {
         artistProfileImages: {},
         pendingLyricTrackIds: [],
         pendingArtistImageIds: [],
+        loadingTracks: false,
+        tracksLoadFailed: false,
         loadingLyrics: false,
         releaseExists: null,
         checkingExistence: true,
@@ -58,12 +68,41 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 artistProfileImages: {},
                 pendingLyricTrackIds: [],
                 pendingArtistImageIds: [],
+                loadingTracks: false,
+                tracksLoadFailed: false,
                 loadingLyrics: false,
                 // A 404 means the release is gone for good; anything else
                 // (network failure, server error) may succeed on retry.
                 releaseExists: action.notFound ? false : state.releaseExists,
                 checkingExistence: false,
                 loadFailed: !action.notFound,
+            };
+
+        case 'releaseMetadataLoaded':
+            return {
+                ...state,
+                release: action.release,
+                releaseExists: true,
+                checkingExistence: false,
+                loadFailed: false,
+                loadingTracks: true,
+                tracksLoadFailed: false,
+                artistProfileImages: action.artistProfileImages,
+                pendingArtistImageIds: action.pendingArtistImageIds,
+            };
+
+        case 'tracksLoadStarted':
+            return {
+                ...state,
+                loadingTracks: true,
+                tracksLoadFailed: false,
+            };
+
+        case 'tracksLoadFailed':
+            return {
+                ...state,
+                loadingTracks: false,
+                tracksLoadFailed: true,
             };
 
         case 'lyricsLoadingStarted':
@@ -73,6 +112,8 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 releaseExists: true,
                 checkingExistence: false,
                 loadFailed: false,
+                loadingTracks: false,
+                tracksLoadFailed: false,
                 trackLyrics: action.trackLyrics,
                 artistProfileImages: action.artistProfileImages,
                 pendingLyricTrackIds: action.pendingLyricTrackIds,
@@ -100,7 +141,10 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
             return {
                 ...state,
                 release: action.release,
-                artistProfileImages: action.artistProfileImages,
+                artistProfileImages: {
+                    ...state.artistProfileImages,
+                    ...action.artistProfileImages,
+                },
                 pendingArtistImageIds: removeIds(
                     state.pendingArtistImageIds,
                     action.resolvedArtistImageIds

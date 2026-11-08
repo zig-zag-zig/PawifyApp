@@ -1,10 +1,6 @@
 import type { RequestDeduperPort } from '../../common/request/requestDeduper.js';
 import type { BackgroundAssetPlanner } from '../../services/backgroundAssets/plannerTypes.js';
-import type {
-    NewRelease,
-    Release,
-    ReleaseGroupReleaseListItem,
-} from '@pawify/shared';
+import type { NewRelease, Release, ReleaseGroupReleaseListItem } from '@pawify/shared';
 import type { CachedArtistReleases } from '../../utils/types/cacheTypes.js';
 import type {
     ContractNamespace,
@@ -16,7 +12,6 @@ import type {
 export type NewReleasesById = {
     [releaseId: string]: NewRelease;
 };
-
 
 type NewReleasesSnapshot = {
     newReleasesMap: NewReleasesById;
@@ -53,6 +48,7 @@ export interface ReleaseCatalogGateway {
         ) => Promise<void> | void,
     ): Promise<ReleaseGroupReleaseListItem[]>;
     getRelease(releaseId: string): Promise<Release | null>;
+    getReleaseTracks(releaseId: string): Promise<Release | null>;
     releaseExists(releaseId: string): Promise<boolean>;
 }
 

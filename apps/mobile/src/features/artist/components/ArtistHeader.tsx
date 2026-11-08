@@ -116,6 +116,8 @@ const ArtistHeader = ({
                 containerStyle={styles.artistPageBlock}
                 borderRadius={8}
                 showSpinnerWhenNoImage={pendingArtistImageIds.includes(artist.id)}
+                entityType="artist"
+                entityId={artist.id}
             />
 
             <View style={[styles.artistHeaderTextContainer, { backgroundColor: styles.container.backgroundColor }]}>

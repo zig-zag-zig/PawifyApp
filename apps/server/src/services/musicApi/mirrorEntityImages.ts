@@ -4,27 +4,22 @@ import {
     type EntityImageEntityType,
     type EntityImageService,
 } from '../../infrastructure/musicDb/entityImageRepository.js';
+import { resolveEntityImageFreshness, type EntityImageFreshness } from './entityImageFreshness.js';
 
 const logger = createLogger('services.musicApi.mirrorEntityImages');
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * How long a recorded "no image anywhere" stays authoritative.
- *
- * A `none` row is written from the release dump or by the image worker after
- * every provider answered "no artwork". New artwork does get uploaded later, so
- * the fact is trusted for a week and then re-derived by the live chain.
- */
-export const CONFIRMED_MISS_MAX_AGE_MS = 7 * DAY_MS;
-
 /** Only used to log that a long-unverified row is still being served. */
-const RESOLVED_IMAGE_REVIEW_AGE_MS = 30 * DAY_MS;
+const RESOLVED_IMAGE_REVIEW_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type MirrorImage =
-    | { kind: 'resolved'; url: string; service: EntityImageService }
-    | { kind: 'missing' }
-    /** No usable row: absent, `pending`, stale `none`, or no mirror at all. */
+    | {
+          kind: 'resolved';
+          url: string;
+          service: EntityImageService;
+          freshness: EntityImageFreshness;
+      }
+    | { kind: 'missing'; freshness: EntityImageFreshness }
+    /** No usable row: absent, `pending`, or no mirror at all. */
     | { kind: 'none' };
 
 /**
@@ -34,6 +29,10 @@ export type MirrorImage =
  * turns a provider round trip into one primary-key lookup. `pending` means
  * "queued for the worker but not answered yet" and is deliberately treated as
  * absent, so the user still gets a live resolution instead of a blank tile.
+ *
+ * Every answer that comes from a stored row is returned immediately, even when the
+ * row is due for a re-check: re-checks are background work (see
+ * `entityImageFreshness`), never something a request waits on.
  *
  * Never throws: `readEntityImage` swallows mirror failures and returns null.
  */
@@ -50,15 +49,14 @@ export const lookupMirrorImage = (
         return { kind: 'none' };
     }
 
-    if (record.service === 'pending') {
+    const freshness = resolveEntityImageFreshness(entityType, record);
+    if (!freshness) {
+        // `pending`: never checked yet, so the caller runs the live chain.
         return { kind: 'none' };
     }
 
     if (record.service === 'none') {
-        const fresh =
-            record.fetchedAt === 0 ||
-            Date.now() - record.fetchedAt * 1000 <= CONFIRMED_MISS_MAX_AGE_MS;
-        return fresh ? { kind: 'missing' } : { kind: 'none' };
+        return { kind: 'missing', freshness };
     }
 
     if (!record.url) {
@@ -72,48 +70,10 @@ export const lookupMirrorImage = (
                 entityType,
                 mbid,
                 service: record.service,
-                ageDays: Math.round(ageMs / DAY_MS),
+                ageDays: Math.round(ageMs / (24 * 60 * 60 * 1000)),
             });
         }
     }
 
-    return { kind: 'resolved', url: record.url, service: record.service };
-};
-
-/**
- * Combined artwork verdict for a release and its release group.
- *
- * A release owns its own artwork, but a pressing with none still inherits the
- * group's cover — that is the fallback the live chain gets from the Cover Art
- * Archive group endpoint. So the release row wins, the group row is next, and a
- * miss is only authoritative when *both* verdicts are recorded.
- *
- * An absent release row is not a miss: the release may simply be newer than the
- * snapshot, or still `pending` in the image worker, and both cases must fall
- * through to the live chain.
- */
-export type MirrorCoverVerdict =
-    | { kind: 'resolved'; url: string; service: EntityImageService }
-    | { kind: 'missing' }
-    | { kind: 'none' };
-
-export const lookupMirrorReleaseCover = (
-    releaseId: string | null | undefined,
-    releaseGroupId: string | null | undefined,
-): MirrorCoverVerdict => {
-    const release = lookupMirrorImage('release', releaseId);
-    if (release.kind === 'resolved') {
-        return release;
-    }
-
-    const group = lookupMirrorImage('release_group', releaseGroupId);
-    if (group.kind === 'resolved') {
-        return group;
-    }
-
-    if (release.kind === 'missing' && group.kind === 'missing') {
-        return { kind: 'missing' };
-    }
-
-    return { kind: 'none' };
+    return { kind: 'resolved', url: record.url, service: record.service, freshness };
 };
