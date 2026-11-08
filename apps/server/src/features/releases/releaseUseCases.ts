@@ -7,6 +7,7 @@ import { createGetArtistReleasesPageUseCase } from './usecases/getArtistReleases
 import { createGetNewReleasesUseCase } from './usecases/getNewReleases.js';
 import { createResolveNewReleaseCoversUseCase } from './usecases/resolveNewReleaseCovers.js';
 import { createGetReleaseUseCase } from './usecases/getRelease.js';
+import { createGetReleaseTracksUseCase } from './usecases/getReleaseTracks.js';
 import { createGetReleaseGroupReleasesUseCase } from './usecases/getReleaseGroupReleases.js';
 import { createRemoveNewReleasesUseCase } from './usecases/removeNewReleases.js';
 import { createVerifyReleaseExistenceUseCase } from './usecases/verifyReleaseExistence.js';
@@ -80,6 +81,19 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
                 getMetadata: (_userId, releaseId) => ({ releaseId }),
                 getResultMetadata: (result) => ({
                     found: result !== null,
+                    profileImageTaskId: result?.profileImageTaskId,
+                }),
+            },
+        ),
+        getReleaseTracks: withOperationLogging(
+            logger,
+            'getReleaseTracks',
+            createGetReleaseTracksUseCase(dependencies),
+            {
+                getMetadata: (_userId, releaseId) => ({ releaseId }),
+                getResultMetadata: (result) => ({
+                    found: result !== null,
+                    mediaCount: result?.media.length ?? 0,
                     lyricsTaskId: result?.lyricsTaskId,
                     profileImageTaskId: result?.profileImageTaskId,
                 }),

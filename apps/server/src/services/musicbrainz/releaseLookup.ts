@@ -11,7 +11,6 @@ import { createLogger } from '../../common/logging/logger.js';
 
 const logger = createLogger('services.musicbrainz.releaseLookup');
 
-/** Only the tracklist is needed from the API now; everything else comes from the mirror. */
 /**
  * Combines the API release (authoritative for the tracklist) with mirror metadata.
  *
@@ -41,9 +40,24 @@ export const mergeReleaseMetadata = (
     artistId: apiRelease.artistId || metadata.artistId,
 });
 
+const fetchReleaseMetadataFromApi = async (releaseId: string): Promise<Release | null> => {
+    const musicbrainzResult = await fetchMusicBrainz(
+        `/release/${releaseId}?fmt=json&inc=release-groups+artist-credits+url-rels`,
+    );
+
+    if (musicbrainzResult === null) {
+        return null;
+    }
+
+    return mapToRelease(
+        musicbrainzResult as Parameters<typeof mapToRelease>[0],
+        getPrimaryArtistId(musicbrainzResult),
+    );
+};
+
 const fetchTracklistFromApi = async (releaseId: string): Promise<Release | null> => {
     const musicbrainzResult = await fetchMusicBrainz(
-        `/release/${releaseId}?fmt=json&inc=recordings+release-groups+artist-credits+url-rels`,
+        `/release/${releaseId}?fmt=json&inc=recordings+artist-credits`,
     );
 
     if (musicbrainzResult === null) {
@@ -78,15 +92,12 @@ const withCover = async (release: Release): Promise<Release> => {
 };
 
 /**
- * Release screen data.
+ * Release header metadata + cover art (`POST /getRelease`).
  *
- * The mirror stores no tracks, so this stays a hybrid: stable metadata (title,
- * date, disambiguation, release group, credits, links) comes from SQLite and the
- * tracklist from the MusicBrainz API. That is one API call per release view,
- * exactly as before the migration — the difference is that the metadata is now
- * local, and the call is only made for the screen that genuinely needs it.
- *
- * With no mirror available this is the original single API call.
+ * Answered straight from the local SQLite mirror whenever the release is known
+ * locally, so the Release screen renders immediately without waiting on the 1 req/s
+ * MusicBrainz API. Only a release newer than the mirror snapshot (or an environment
+ * without a mirror) falls back to the API.
  */
 export const getRelease = async (releaseId: string): Promise<Release | null> => {
     try {
@@ -100,17 +111,36 @@ export const getRelease = async (releaseId: string): Promise<Release | null> => 
             });
         }
 
-        const apiRelease = await fetchTracklistFromApi(releaseId);
+        if (metadata) {
+            return await withCover({
+                ...metadata,
+                media: [],
+                cover_url: null,
+            });
+        }
+
+        const apiRelease = await fetchReleaseMetadataFromApi(releaseId);
         if (!apiRelease) {
             return null;
         }
 
-        if (!metadata) {
-            return await withCover(apiRelease);
-        }
-
-        return await withCover(mergeReleaseMetadata(apiRelease, metadata));
+        return await withCover(apiRelease);
     } catch (error) {
         throw Object.assign(new Error('Failed to fetch release'), { cause: error });
+    }
+};
+
+/**
+ * Release tracklist (`POST /getReleaseTracks`).
+ *
+ * The mirror does not store recordings/tracks, so the tracklist is fetched on its
+ * own endpoint while the client already displays and interacts with the release
+ * header.
+ */
+export const getReleaseTracks = async (releaseId: string): Promise<Release | null> => {
+    try {
+        return await fetchTracklistFromApi(releaseId);
+    } catch (error) {
+        throw Object.assign(new Error('Failed to fetch release tracks'), { cause: error });
     }
 };

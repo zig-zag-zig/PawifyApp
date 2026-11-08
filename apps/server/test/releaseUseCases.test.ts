@@ -158,6 +158,9 @@ describe('release use cases', () => {
                 async getRelease() {
                     return null;
                 },
+                async getReleaseTracks() {
+                    return null;
+                },
                 async releaseExists() {
                     return false;
                 },
@@ -235,6 +238,9 @@ describe('release use cases', () => {
                     return [];
                 },
                 async getRelease() {
+                    return null;
+                },
+                async getReleaseTracks() {
                     return null;
                 },
                 async releaseExists() {
@@ -363,6 +369,9 @@ describe('release use cases', () => {
                     async getRelease(_releaseId) {
                         return release;
                     },
+                    async getReleaseTracks() {
+                        throw new Error('should not run');
+                    },
                     async releaseExists() {
                         throw new Error('should not run');
                     },
@@ -393,15 +402,15 @@ describe('release use cases', () => {
 
             assert.ok(result);
             assert.equal(result.release.id, 'release-1');
-            assert.deepEqual(result.trackLyrics, {});
             assert.deepEqual(result.profileImages, {});
-            assert.equal(result.lyricsTaskId, 'lyrics-task-1');
             assert.equal(result.profileImageTaskId, 'profile-task-1');
         });
 
         it('returns null task IDs and immediate maps when everything is cached', async () => {
             const { createGetReleaseUseCase } =
                 await import('../src/features/releases/usecases/getRelease.js');
+            const { createGetReleaseTracksUseCase } =
+                await import('../src/features/releases/usecases/getReleaseTracks.js');
             const fakeRequestDeduper = {
                 async run<T>(_key: string, worker: () => Promise<T>): Promise<T> {
                     return worker();
@@ -440,6 +449,9 @@ describe('release use cases', () => {
                     async getRelease(_releaseId) {
                         return release;
                     },
+                    async getReleaseTracks(_releaseId) {
+                        return release;
+                    },
                     async releaseExists() {
                         throw new Error('should not run');
                     },
@@ -467,14 +479,26 @@ describe('release use cases', () => {
                 requestDeduper: fakeRequestDeduper,
             };
 
-            const useCase = createGetReleaseUseCase(deps);
-            const result = await useCase('user-1', 'release-1');
+            const releaseUseCase = createGetReleaseUseCase(deps);
+            const releaseResult = await releaseUseCase('user-1', 'release-1');
+            assert.ok(releaseResult);
+            assert.deepEqual(releaseResult.profileImages, {
+                'artist-1': 'https://img.example/a.jpg',
+            });
+            assert.equal(releaseResult.profileImageTaskId, null);
 
-            assert.ok(result);
-            assert.deepEqual(result.trackLyrics, { 'track-1': 'https://lyrics.example/song' });
-            assert.deepEqual(result.profileImages, { 'artist-1': 'https://img.example/a.jpg' });
-            assert.equal(result.lyricsTaskId, null);
-            assert.equal(result.profileImageTaskId, null);
+            const tracksUseCase = createGetReleaseTracksUseCase(deps);
+            const tracksResult = await tracksUseCase('user-1', 'release-1');
+            assert.ok(tracksResult);
+            assert.equal(tracksResult.media.length, release.media.length);
+            assert.deepEqual(tracksResult.trackLyrics, {
+                'track-1': 'https://lyrics.example/song',
+            });
+            assert.deepEqual(tracksResult.profileImages, {
+                'artist-1': 'https://img.example/a.jpg',
+            });
+            assert.equal(tracksResult.lyricsTaskId, null);
+            assert.equal(tracksResult.profileImageTaskId, null);
             assert.equal(queueCalled, false);
         });
 
@@ -506,6 +530,9 @@ describe('release use cases', () => {
                         throw new Error('should not run');
                     },
                     async getRelease() {
+                        return null;
+                    },
+                    async getReleaseTracks() {
                         return null;
                     },
                     async releaseExists() {
@@ -598,6 +625,9 @@ describe('release use cases', () => {
                         ];
                     },
                     async getRelease() {
+                        throw new Error('should not run');
+                    },
+                    async getReleaseTracks() {
                         throw new Error('should not run');
                     },
                     async releaseExists() {
@@ -699,6 +729,9 @@ describe('release use cases', () => {
                         ];
                     },
                     async getRelease() {
+                        throw new Error('should not run');
+                    },
+                    async getReleaseTracks() {
                         throw new Error('should not run');
                     },
                     async releaseExists() {

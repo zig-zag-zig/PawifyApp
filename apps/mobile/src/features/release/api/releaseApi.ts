@@ -6,6 +6,7 @@ import type {
     NewReleasesResponse,
     ReleaseGroupReleasesResponse,
     ReleaseResponse,
+    ReleaseTracksResponse,
 } from '../../../types/apiTypes';
 
 export function useReleaseApi() {
@@ -16,6 +17,10 @@ export function useReleaseApi() {
         return {
             getRelease: async (releaseId: string) =>
                 await apiClient.request<ReleaseResponse>('getRelease', {
+                    body: { releaseId },
+                }),
+            getReleaseTracks: async (releaseId: string) =>
+                await apiClient.request<ReleaseTracksResponse>('getReleaseTracks', {
                     body: { releaseId },
                 }),
             getReleaseGroupReleases: async (releaseGroupId: string) =>

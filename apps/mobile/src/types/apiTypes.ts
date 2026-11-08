@@ -66,6 +66,14 @@ export interface ReleaseGroupReleasesResponse {
 
 export interface ReleaseResponse {
   release: Release;
+  lyricsTaskId?: string | null;
+  profileImageTaskId: string | null;
+  trackLyrics?: Record<string, string | null>;
+  profileImages: Record<string, string | null>;
+}
+
+export interface ReleaseTracksResponse {
+  media: Release['media'];
   lyricsTaskId: string | null;
   profileImageTaskId: string | null;
   trackLyrics: Record<string, string | null>;

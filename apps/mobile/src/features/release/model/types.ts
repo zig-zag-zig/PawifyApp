@@ -22,6 +22,8 @@ export interface ReleasePageState {
     artistProfileImages: Record<string, string | null | undefined>;
     pendingLyricTrackIds: string[];
     pendingArtistImageIds: string[];
+    loadingTracks: boolean;
+    tracksLoadFailed: boolean;
     loadingLyrics: boolean;
     releaseExists: boolean | null;
     checkingExistence: boolean;
@@ -35,6 +37,8 @@ export interface ReleasePageUiState {
     artistProfileImages: Record<string, string | null | undefined>;
     pendingLyricTrackIds: string[];
     pendingArtistImageIds: string[];
+    loadingTracks: boolean;
+    tracksLoadFailed: boolean;
     loadingLyrics: boolean;
     releaseExists: boolean | null;
     checkingExistence: boolean;
@@ -62,6 +66,7 @@ export interface ReleasePageController {
     state: ReleasePageUiState;
     onSongPressed: (track: Track) => void;
     onLyricsOpened: (track: Track) => void;
+    onRetryTracks?: () => void;
 }
 
 export interface ReleaseGroupPageController {

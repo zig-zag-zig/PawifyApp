@@ -2,7 +2,10 @@ import {
     getArtistReleases as getArtistReleasesFromService,
     getReleaseGroupReleases as getReleaseGroupReleasesFromService,
 } from '../../../services/musicbrainz/cachedReleaseCatalog.js';
-import { getRelease as getReleaseFromService } from '../../../services/musicbrainz/releaseLookup.js';
+import {
+    getRelease as getReleaseFromService,
+    getReleaseTracks as getReleaseTracksFromService,
+} from '../../../services/musicbrainz/releaseLookup.js';
 import { fetchMusicBrainzWithStatus } from '../../../services/musicApi/musicBrainzClient.js';
 import { isConfirmedMissingFetchFailure } from '../../../services/musicApi/types.js';
 import type { CachedArtistReleases } from '../../../utils/types/cacheTypes.js';
@@ -19,10 +22,7 @@ import {
     decodeArtistReleasesCursor,
     encodeArtistReleasesCursor,
 } from '../domain/artistReleasePaging.js';
-import type {
-    ArtistReleasesPageResult,
-    ReleaseCatalogGateway,
-} from '../ports.js';
+import type { ArtistReleasesPageResult, ReleaseCatalogGateway } from '../ports.js';
 
 const logger = createLogger('features.releases.musicBrainzReleaseCatalog');
 
@@ -159,6 +159,7 @@ export const musicBrainzReleaseCatalog: ReleaseCatalogGateway = {
         });
     },
     getRelease: async (releaseId) => await getReleaseFromService(releaseId),
+    getReleaseTracks: async (releaseId) => await getReleaseTracksFromService(releaseId),
     releaseExists: async (releaseId) =>
         await resolveReleaseExistence(
             releaseId,
