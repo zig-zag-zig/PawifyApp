@@ -28,6 +28,8 @@ import {
 } from '../backgroundTaskMappers.js';
 import { syncArtistDetailsDiscogsUrls } from './artistProfileImageCacheSync.js';
 import { getArtistImageProviderLinksFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
+import { musicDbHasEntityImages } from '../../../infrastructure/musicDb/musicDbClient.js';
+import { persistResolvedEntityImage } from '../../musicApi/entityImageFreshness.js';
 
 const logger = createLogger('services.backgroundTasks.artistImages');
 
@@ -527,6 +529,21 @@ export const fetchAndUpsertArtistProfileImages = async (
             const context = createArtistImageResolutionContext(lookup, ttl, signal);
             let source: ArtistProfileImageSource = 'cache';
 
+            /**
+             * Persists one resolution.
+             *
+             * With the mirror present, `entity_images` is the store: writing the
+             * legacy `<id>_artistImages` Redis key as well is what kept artwork in
+             * the cache after the SQLite migration.
+             */
+            const persistArtistImage = async (state: CachedArtistImage) => {
+                if (musicDbHasEntityImages()) {
+                    persistResolvedEntityImage('artist', artistId, state.url);
+                    return;
+                }
+                await replaceCachedData(context.imageCacheKey, state, ttl);
+            };
+
             const recordResolvedImage = async (
                 imageUrl: string,
                 imageSource: ArtistImageProvider | undefined,
@@ -539,7 +556,7 @@ export const fetchAndUpsertArtistProfileImages = async (
                 }
 
                 const state = mapArtistImageToState(imageUrl);
-                await replaceCachedData(context.imageCacheKey, state, ttl);
+                await persistArtistImage(state);
                 artists[artistId] = state.url;
 
                 // Which provider is carrying the load is not stored in the cache;
@@ -556,7 +573,7 @@ export const fetchAndUpsertArtistProfileImages = async (
                 const cachedImage = await resolveCachedImage(context);
                 if (cachedImage.kind === 'cached') {
                     cacheHitCount += 1;
-                    if (cachedImage.legacyRewriteRequired) {
+                    if (cachedImage.legacyRewriteRequired && !musicDbHasEntityImages()) {
                         legacyRewriteCount += 1;
                         await replaceCachedData(context.imageCacheKey, cachedImage.state, ttl);
                     }
@@ -594,7 +611,7 @@ export const fetchAndUpsertArtistProfileImages = async (
                     if (musicBrainz.source === 'musicbrainz_not_found') {
                         musicBrainzNotFoundCount += 1;
                     }
-                    await replaceCachedData(context.imageCacheKey, musicBrainz.state, ttl);
+                    await persistArtistImage(musicBrainz.state);
                     artists[artistId] = musicBrainz.state.url;
                     return;
                 }
@@ -623,7 +640,7 @@ export const fetchAndUpsertArtistProfileImages = async (
                     }
 
                     source = 'artist_name_missing';
-                    await replaceCachedData(context.imageCacheKey, musicBrainz.state, ttl);
+                    await persistArtistImage(musicBrainz.state);
                     artists[artistId] = musicBrainz.state.url;
                     return;
                 }
@@ -648,7 +665,7 @@ export const fetchAndUpsertArtistProfileImages = async (
 
                 source = 'discogs';
                 const state = mapArtistImageToState(providers.imageUrl);
-                await replaceCachedData(context.imageCacheKey, state, ttl);
+                await persistArtistImage(state);
                 artists[artistId] = state.url;
 
                 if (providers.imageUrl === null) {

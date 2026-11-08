@@ -78,9 +78,18 @@ const resolveCurrentUrl = (entityType: EntityImageEntityType, entityId: string):
     return record.url;
 };
 
+/**
+ * Re-resolves artwork from the providers, never from the mirror.
+ *
+ * `bypassMirror` matters: the row was just cleared, and provider APIs can still hand
+ * back the same deleted CDN file (Deezer's `cover_xl` is not HEAD-checked). A
+ * candidate equal to `deadUrl` is therefore treated as a miss and the caller records
+ * a confirmed miss instead of re-saving the broken URL.
+ */
 const resolveFreshUrl = async (
     entityType: EntityImageEntityType,
     entityId: string,
+    deadUrl: string,
 ): Promise<string | null> => {
     if (entityType === 'artist') {
         const links = getArtistImageProviderLinksFromMirror(entityId);
@@ -90,15 +99,22 @@ const resolveFreshUrl = async (
             deezerUrls: links?.deezerUrls ?? [],
             tidalUrls: links?.tidalUrls ?? [],
             discogsUrls: links?.discogsUrls ?? [],
+            bypassMirror: true,
         });
-        return resolution.image ?? null;
+        return resolution.image === deadUrl ? null : (resolution.image ?? null);
     }
 
     if (entityType === 'release_group') {
-        return (await fetchReleaseGroupCover(entityId)) ?? null;
+        const url = await fetchReleaseGroupCover(entityId, undefined, undefined, undefined, {
+            bypassMirror: true,
+        });
+        return url === deadUrl ? null : (url ?? null);
     }
 
-    return (await fetchReleaseCover(entityId, null)) ?? null;
+    const url = await fetchReleaseCover(entityId, null, undefined, undefined, {
+        bypassMirror: true,
+    });
+    return url === deadUrl ? null : (url ?? null);
 };
 
 /**
@@ -133,7 +149,7 @@ export const invalidateEntityImage = async (
     // would just hand the same broken URL back.
     writeEntityImage({ entityType, entityId, service: 'pending', token: '', fetchedAt: 0 });
 
-    const nextUrl = await resolveFreshUrl(entityType, entityId);
+    const nextUrl = await resolveFreshUrl(entityType, entityId, currentUrl);
     const token = toEntityImageToken(nextUrl, entityId);
     if (token) {
         writeEntityImage({

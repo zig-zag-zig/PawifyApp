@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Image, ViewStyle, StyleProp } from 'react-native';
 import { CachedImageComponent } from './cachedImage/CachedImageComponent';
+import type { BrokenEntityImageType } from '../services/brokenEntityImageReporter';
 
 interface ResponsiveHeaderImageProps {
     imageUrl?: string | null;
@@ -8,8 +9,9 @@ interface ResponsiveHeaderImageProps {
     containerStyle?: StyleProp<ViewStyle>;
     borderRadius?: number;
     showSpinnerWhenNoImage?: boolean;
-    /** Fired when the stored URL no longer loads, so the owner can re-resolve it. */
-    onRemoteLoadError?: () => void;
+    /** Artwork identity, so a dead URL can be re-resolved and swapped in place. */
+    entityType?: BrokenEntityImageType;
+    entityId?: string;
 }
 
 export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
@@ -18,7 +20,8 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
     containerStyle,
     borderRadius = 8,
     showSpinnerWhenNoImage = false,
-    onRemoteLoadError,
+    entityType,
+    entityId,
 }) => {
     const [ratio, setRatio] = useState(1);
 
@@ -41,7 +44,8 @@ export const ResponsiveHeaderImage: React.FC<ResponsiveHeaderImageProps> = ({
                 imageUrl={imageUrl}
                 type={type}
                 showSpinnerWhenNoImage={showSpinnerWhenNoImage}
-                onRemoteLoadError={onRemoteLoadError}
+                entityType={entityType}
+                entityId={entityId}
                 style={{
                     width: '100%',
                     aspectRatio: ratio,

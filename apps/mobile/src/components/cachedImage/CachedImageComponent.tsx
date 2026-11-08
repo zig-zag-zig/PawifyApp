@@ -7,6 +7,10 @@ import { ENV } from '../../config/env';
 import { theme } from '../../styles/theme';
 import { captureAppError } from '../../services/monitoring/reportError';
 import {
+  useBrokenEntityImageReporter,
+  type BrokenEntityImageType,
+} from '../../services/brokenEntityImageReporter';
+import {
   deleteCachedImageFile,
   getCachedImageFileUri,
   getCacheKeyFromUrl,
@@ -39,10 +43,11 @@ interface CachedImageComponentProps {
   type: 'release' | 'profile';
   showSpinnerWhenNoImage?: boolean;
   /**
-   * Called once when the remote image itself cannot be loaded, so the owner can ask
-   * the server to re-resolve a file that was deleted upstream.
+   * Artwork identity. When both are given, a remote load failure that survives the
+   * retries asks the server to re-resolve the file and renders the repair inline.
    */
-  onRemoteLoadError?: () => void;
+  entityType?: BrokenEntityImageType;
+  entityId?: string;
 }
 
 interface DownloadAndCacheImageOptions {
@@ -54,12 +59,14 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   style,
   type,
   showSpinnerWhenNoImage = false,
-  onRemoteLoadError,
+  entityType,
+  entityId,
 }) => {
   const defaultImage = type === 'release' ? defaultReleaseImage : defaultArtistImage;
   const remoteImageUrl = normalizeRemoteImageUrl(imageUrl);
   const [activeRemoteImageUrl, setActiveRemoteImageUrl] = useState<string | null>(remoteImageUrl);
   const { updateAccessTime, cleanUpCache } = useCache();
+  const reportBrokenEntityImage = useBrokenEntityImageReporter();
   const [isLoading, setIsLoading] = useState(true);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -283,7 +290,6 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
       elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
       error: describeError(error),
     });
-    onRemoteLoadError?.();
     if (!prefixedCacheKey) {
       setIsLoading(false);
       return;
@@ -315,6 +321,21 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
           ...getImageDiagnosticPayload(),
           elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
         });
+
+        if (entityType && entityId) {
+          void reportBrokenEntityImage(entityType, entityId).then((result) => {
+            if (!result?.invalidated) {
+              return;
+            }
+            if (result.url && canCommitImageState()) {
+              remoteLoadRetryAttemptedRef.current = false;
+              setActiveRemoteImageUrl(result.url);
+              setLocalUri(result.url);
+              return;
+            }
+            setLocalUri(null);
+          });
+        }
       }
 
       setLocalUri(null);

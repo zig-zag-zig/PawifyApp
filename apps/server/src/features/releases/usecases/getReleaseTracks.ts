@@ -1,5 +1,10 @@
 import type { Media } from '@pawify/shared';
+import { createLogger } from '../../../common/logging/logger.js';
+import { assetKeys, writeAssetState } from '../../../services/cache/assetCache.js';
+import { mapLyricsToState } from '../../../services/tasks/backgroundTaskMappers.js';
 import type { ReleaseReadUseCaseDependencies } from '../ports.js';
+
+const logger = createLogger('features.releases.getReleaseTracks');
 
 export type GetReleaseTracksResult = {
     media: Media[];
@@ -36,6 +41,19 @@ export const createGetReleaseTracksUseCase =
                 if (typeof track.lyricsUrl === 'string' && track.lyricsUrl.trim().length > 0) {
                     knownLyrics[track.id] = track.lyricsUrl;
                 }
+            }
+        }
+
+        // Record the MusicBrainz answers in the lyrics cache too, so a later request
+        // that only reads `asset:lyrics:*` still sees them.
+        for (const [trackId, lyricsUrl] of Object.entries(knownLyrics)) {
+            if (typeof lyricsUrl === 'string' && lyricsUrl.length > 0) {
+                void writeAssetState(
+                    assetKeys.trackLyrics(releaseId, trackId),
+                    mapLyricsToState(lyricsUrl),
+                ).catch((error) => {
+                    logger.debug('musicbrainz lyrics cache write failed', { trackId, error });
+                });
             }
         }
 

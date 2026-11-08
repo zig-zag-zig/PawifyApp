@@ -119,11 +119,17 @@ const providerUrlsForUnknownGroup = async (
  * The streaming providers answer from their own CDNs; CAA is the last resort because
  * it redirects to Internet Archive storage, which is the slow part.
  */
+export type CoverLookupOptions = {
+    /** Ignore the mirror row and always walk the providers (revalidation/repair). */
+    bypassMirror?: boolean;
+};
+
 export const fetchReleaseCover = async (
     releaseId: string,
     releaseGroupId: string | null,
     signal?: AbortSignal,
     providerUrls?: { deezerUrls: string[]; tidalUrls: string[] },
+    options?: CoverLookupOptions,
 ): Promise<RemoteValueState> => {
     // Mirror first: the artwork was already resolved by the mirror builder, so this
     // is one primary-key lookup instead of a provider chain, and it is checked
@@ -131,10 +137,12 @@ export const fetchReleaseCover = async (
     // call. A confirmed release miss is authoritative for the release endpoint, so
     // it must not be re-probed; the group row is still consulted because that is
     // the cover a pressing without its own art inherits.
-    const releaseMirror = lookupMirrorImage('release', releaseId);
+    const releaseMirror = options?.bypassMirror
+        ? ({ kind: 'none' } as const)
+        : lookupMirrorImage('release', releaseId);
     if (releaseMirror.kind === 'resolved') {
         scheduleRevalidation(releaseMirror.freshness, 'release', releaseId, () =>
-            fetchReleaseCover(releaseId, null, signal, providerUrls),
+            fetchReleaseCover(releaseId, null, signal, providerUrls, { bypassMirror: true }),
         );
         return releaseMirror.url;
     }
@@ -223,11 +231,16 @@ export const fetchReleaseGroupCover = async (
     signal?: AbortSignal,
     releaseIds?: string[],
     aggregatedProviderUrls?: { deezerUrls: string[]; tidalUrls: string[] },
+    options?: CoverLookupOptions,
 ): Promise<RemoteValueState> => {
-    const mirrored = lookupMirrorImage('release_group', releaseGroupId);
+    const mirrored = options?.bypassMirror
+        ? ({ kind: 'none' } as const)
+        : lookupMirrorImage('release_group', releaseGroupId);
     if (mirrored.kind === 'resolved') {
         scheduleRevalidation(mirrored.freshness, 'release_group', releaseGroupId, () =>
-            fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls),
+            fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls, {
+                bypassMirror: true,
+            }),
         );
         return mirrored.url;
     }

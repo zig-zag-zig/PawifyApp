@@ -63,6 +63,8 @@ const ReleaseGroupResultItem = memo(({
                 imageUrl={coverUrl}
                 type="release"
                 showSpinnerWhenNoImage={isCoverPending}
+                entityType="release_group"
+                entityId={releaseGroup.id}
                 style={styles.cover}
             />
             <View style={styles.textColumn}>

@@ -98,6 +98,8 @@ const TrackResults = ({
                     imageUrl={isCoverPending ? undefined : trackCovers[release?.id ?? '']}
                     type="release"
                     showSpinnerWhenNoImage={isCoverPending}
+                    entityType={release?.id ? 'release' : undefined}
+                    entityId={release?.id}
                     style={styles.trackCover}
                 />
                 <View style={styles.trackTextColumn}>

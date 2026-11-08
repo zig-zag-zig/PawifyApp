@@ -19,6 +19,14 @@ export const ARTIST_IMAGE_PROVIDER_ORDER: readonly ArtistImageProvider[] = [
 export type ArtistImageProviderLookup = {
     /** Mirror key for the artist; the image-state tables are read by it. */
     artistId?: string;
+    /**
+     * Ignore the mirror row and always walk the providers.
+     *
+     * Background revalidation and the broken-image repair path set this: they are
+     * called precisely because the stored row is stale or dead, so reading it again
+     * would hand the same answer back.
+     */
+    bypassMirror?: boolean;
     /** Used only for Discogs, to pick between several same-named artists. */
     artistName?: string;
     deezerUrls?: string[];
@@ -70,7 +78,11 @@ const resolveMirroredArtistImage = (
         if (mirrored.freshness.revalidate && lookup.artistId) {
             const artistId = lookup.artistId;
             scheduleEntityImageRevalidation('artist', artistId, async () => {
-                const refreshed = await resolveArtistImage({ ...lookup, skipProviders: undefined });
+                const refreshed = await resolveArtistImage({
+                    ...lookup,
+                    skipProviders: undefined,
+                    bypassMirror: true,
+                });
                 return refreshed.image;
             });
         }
@@ -87,7 +99,11 @@ const resolveMirroredArtistImage = (
             const artistId = lookup.artistId;
             const { settlePermanent } = mirrored.freshness;
             scheduleEntityImageRevalidation('artist', artistId, async () => {
-                const refreshed = await resolveArtistImage({ ...lookup, skipProviders: undefined });
+                const refreshed = await resolveArtistImage({
+                    ...lookup,
+                    skipProviders: undefined,
+                    bypassMirror: true,
+                });
                 if (
                     settlePermanent &&
                     (refreshed.image === null || refreshed.image === undefined)
@@ -124,8 +140,9 @@ export const resolveArtistImage = async (
     signal?: AbortSignal,
 ): Promise<ArtistImageResolution> => {
     // A mirrored hit is the answer itself: these are the same providers, already
-    // asked once by the mirror builder, so no request is repeated here.
-    const mirrored = resolveMirroredArtistImage(lookup);
+    // asked once by the mirror builder, so no request is repeated here. Revalidation
+    // and repair pass `bypassMirror` so they interrogate the providers instead.
+    const mirrored = lookup.bypassMirror ? null : resolveMirroredArtistImage(lookup);
     if (mirrored) {
         return mirrored;
     }

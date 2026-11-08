@@ -10,7 +10,6 @@ import {
     savePreferredStreamingService,
 } from '../../../services/preferredStreamingService';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import { useBrokenEntityImageReporter } from '../../../services/brokenEntityImageReporter';
 import type { ArtistCredit, ExternalLinkService, Release } from '@pawify/shared';
 import { nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
@@ -34,7 +33,6 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
         [release]
     );
     const [preferredService, setPreferredService] = React.useState<ExternalLinkService | null>(null);
-    const reportBrokenEntityImage = useBrokenEntityImageReporter();
 
     React.useEffect(() => {
         let isCancelled = false;
@@ -75,7 +73,8 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                 type="release"
                 containerStyle={styles.releaseCoverContainer}
                 borderRadius={8}
-                onRemoteLoadError={() => reportBrokenEntityImage('release', release.id)}
+                entityType="release"
+                entityId={release.id}
             />
             <View style={styles.textContainer}>
                 <SelectableText style={styles.releaseTitle}>

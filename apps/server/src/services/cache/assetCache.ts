@@ -1,6 +1,7 @@
 import { cacheConfig } from '../../config/runtimeConfig.js';
 import { createLogger } from '../../common/logging/logger.js';
-import { getCachedData, replaceCachedData } from '../cacheService.js';
+import { deleteCachedData, getCachedData, replaceCachedData } from '../cacheService.js';
+import { musicDbHasEntityImages } from '../../infrastructure/musicDb/musicDbClient.js';
 import type { CoverState, LyricsState } from '../../utils/types/cacheTypes.js';
 import {
     shouldRefetchRemoteState,
@@ -47,7 +48,23 @@ const ttlFor = (state: RemoteState): number =>
         ? ASSET_TTL_HOURS.miss
         : ASSET_TTL_HOURS.success;
 
+/**
+ * Artwork keys are mirror-backed now; they only exist here as leftovers.
+ *
+ * Deleting on touch means a deployment drains the old entries as pages are visited,
+ * instead of keeping a second copy of artwork in Redis forever.
+ */
+const isLegacyArtworkKey = (key: string): boolean =>
+    key.startsWith('asset:artist-image:') ||
+    key.startsWith('asset:group-cover:') ||
+    key.startsWith('asset:release-cover:');
+
 export const readAssetState = async <T extends RemoteState>(key: string): Promise<T | null> => {
+    if (isLegacyArtworkKey(key) && musicDbHasEntityImages()) {
+        await deleteCachedData(key).catch(() => undefined);
+        return null;
+    }
+
     try {
         const state = await getCachedData<T>(key);
         return state && isUsable(state) ? state : null;
@@ -58,6 +75,11 @@ export const readAssetState = async <T extends RemoteState>(key: string): Promis
 };
 
 export const writeAssetState = async (key: string, state: RemoteState): Promise<void> => {
+    if (isLegacyArtworkKey(key) && musicDbHasEntityImages()) {
+        await deleteCachedData(key).catch(() => undefined);
+        return;
+    }
+
     try {
         await replaceCachedData(key, state, ttlFor(state));
     } catch (error) {

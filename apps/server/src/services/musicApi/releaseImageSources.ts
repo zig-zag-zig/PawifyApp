@@ -31,6 +31,8 @@ export type ReleaseImageLookup = {
     releaseId?: string;
     /** Release-group id, for the Cover Art Archive group endpoint. */
     releaseGroupId?: string;
+    /** Ignore the mirror rows and always walk the providers. */
+    bypassMirror?: boolean;
     signal?: AbortSignal;
 };
 
@@ -115,7 +117,7 @@ const resolveMirroredReleaseImage = (lookup: ReleaseImageLookup): ReleaseImageRe
             groupMirror.freshness,
             'release_group',
             lookup.releaseGroupId,
-            () => resolveReleaseImage({ ...lookup, releaseId: undefined }),
+            () => resolveReleaseImage({ ...lookup, releaseId: undefined, bypassMirror: true }),
         );
         return missingMirrorResolution();
     }
@@ -136,7 +138,11 @@ const scheduleReleaseRevalidation = (
         return;
     }
     scheduleEntityImageRevalidation('release', lookup.releaseId ?? '', async () => {
-        const result = await resolveReleaseImage({ ...lookup, releaseGroupId: undefined });
+        const result = await resolveReleaseImage({
+            ...lookup,
+            releaseGroupId: undefined,
+            bypassMirror: true,
+        });
         return result.image;
     });
 };
@@ -180,7 +186,7 @@ export const resolveReleaseImage = async (
 ): Promise<ReleaseImageResolution> => {
     // The mirror is a snapshot of what these same providers answered, so a hit is
     // the answer itself: no rate-limited request, no CloudFront redirect.
-    const mirrored = resolveMirroredReleaseImage(lookup);
+    const mirrored = lookup.bypassMirror ? null : resolveMirroredReleaseImage(lookup);
     if (mirrored) {
         return mirrored;
     }

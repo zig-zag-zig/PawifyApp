@@ -101,6 +101,39 @@ describe('invalidateEntityImage', () => {
         assert.equal(result.url, null);
     });
 
+    it('records a miss when the provider returns the same dead URL again', async () => {
+        // Deezer's cover_xl is not HEAD-checked, so a deleted CDN file can come back
+        // from the API. Re-saving it would leave the row pointing at a 404 forever.
+        const deadInApi = 'https://www.deezer.com/album/1';
+        stubFetch((call) => {
+            if (call.method === 'HEAD') {
+                return new Response(null, { status: 404 });
+            }
+            if (call.url.includes('/invoke/deezer/album/')) {
+                return new Response(JSON.stringify({ id: 1, cover_xl: DEAD_URL }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            return new Response(null, { status: 404 });
+        });
+        const { invalidateEntityImage, resetInvalidateEntityImageCooldownForTests } =
+            await import('../../../src/services/artwork/invalidateEntityImage.js');
+        resetInvalidateEntityImageCooldownForTests();
+
+        const { writeEntityImage } =
+            await import('../../../src/infrastructure/musicDb/entityImageRepository.js');
+        writeEntityImage({
+            entityType: 'release',
+            entityId: RELEASE_ID,
+            service: 'pending',
+            token: '',
+        });
+
+        const result = await invalidateEntityImage('release', RELEASE_ID);
+        assert.equal(result.url === DEAD_URL, false, `${deadInApi} must not be re-saved`);
+    });
+
     it('probes at most once per cooldown window', async () => {
         const calls = stubFetch(() => new Response(null, { status: 200 }));
         const { invalidateEntityImage, resetInvalidateEntityImageCooldownForTests } =

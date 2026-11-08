@@ -10,7 +10,6 @@ import {
     savePreferredStreamingService,
 } from '../../../services/preferredStreamingService';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import { useBrokenEntityImageReporter } from '../../../services/brokenEntityImageReporter';
 import type { Artist } from '@pawify/shared';
 import { formatDate } from '@pawify/shared';
 import { nameWithDisambiguation } from '@pawify/shared';
@@ -45,7 +44,6 @@ const ArtistHeader = ({
 }: ArtistHeaderProps) => {
     const styles = useMemo(() => getStyles(), []);
     const [preferredService, setPreferredService] = React.useState<ExternalLinkService | null>(null);
-    const reportBrokenEntityImage = useBrokenEntityImageReporter();
 
     React.useEffect(() => {
         let isCancelled = false;
@@ -118,7 +116,8 @@ const ArtistHeader = ({
                 containerStyle={styles.artistPageBlock}
                 borderRadius={8}
                 showSpinnerWhenNoImage={pendingArtistImageIds.includes(artist.id)}
-                onRemoteLoadError={() => reportBrokenEntityImage('artist', artist.id)}
+                entityType="artist"
+                entityId={artist.id}
             />
 
             <View style={[styles.artistHeaderTextContainer, { backgroundColor: styles.container.backgroundColor }]}>

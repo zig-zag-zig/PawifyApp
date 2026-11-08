@@ -45,6 +45,8 @@ const ReleaseGroupCard = ({
                         imageUrl={releaseCovers[release.id]}
                         type='release'
                         showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(release.id)}
+                        entityType='release'
+                        entityId={release.id}
                         style={styles.albumCover}
                     />
                     <SelectableText
