@@ -120,30 +120,53 @@ const ArtistHeader = ({
 
             <View style={[styles.artistHeaderTextContainer, { backgroundColor: styles.container.backgroundColor }]}>
                 {!isLoadingArtist && (
-                    <TouchableOpacity
-                        onPress={onToggleFollow}
-                        activeOpacity={0.72}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: isFollowButtonDisabled, busy: isFollowLoading }}
-                        style={[
-                            localStyles.followButton,
-                            {
-                                backgroundColor: followButtonColors.backgroundColor,
-                                borderColor: followButtonColors.borderColor,
-                                opacity: isFollowDisabled && !isFollowLoading ? 0.58 : 1,
-                            },
-                        ]}
-                        disabled={isFollowButtonDisabled}
-                    >
-                        <MaterialCommunityIcons
-                            name={followIconName}
-                            size={19}
-                            color={followButtonColors.textColor}
-                        />
-                        <Text style={[localStyles.followButtonText, { color: followButtonColors.textColor }]}>
-                            {followLabel}
-                        </Text>
-                    </TouchableOpacity>
+                    // Follow and Share sit side by side, left-aligned. The row hugs the
+                    // left edge instead of centring the follow button on its own, and a
+                    // fixed gap keeps them related without pushing them to opposite ends.
+                    <View style={localStyles.actionRow}>
+                        <TouchableOpacity
+                            onPress={onToggleFollow}
+                            activeOpacity={0.72}
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: isFollowButtonDisabled, busy: isFollowLoading }}
+                            style={[
+                                localStyles.followButton,
+                                {
+                                    backgroundColor: followButtonColors.backgroundColor,
+                                    borderColor: followButtonColors.borderColor,
+                                    opacity: isFollowDisabled && !isFollowLoading ? 0.58 : 1,
+                                },
+                            ]}
+                            disabled={isFollowButtonDisabled}
+                        >
+                            <MaterialCommunityIcons
+                                name={followIconName}
+                                size={19}
+                                color={followButtonColors.textColor}
+                            />
+                            <Text
+                                style={[
+                                    localStyles.followButtonText,
+                                    { color: followButtonColors.textColor },
+                                ]}
+                            >
+                                {followLabel}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={onShare}
+                            activeOpacity={0.72}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Share ${nameWithDisambiguation(artist.disambiguation, artist.name)}`}
+                            style={localStyles.shareButton}
+                        >
+                            <MaterialIcons name="share" size={16} color="#81ddff" />
+                            <SelectableText style={localStyles.shareText} selectable={false}>
+                                Share
+                            </SelectableText>
+                        </TouchableOpacity>
+                    </View>
                 )}
 
                 <SelectableText style={styles.title}>
@@ -176,18 +199,6 @@ const ArtistHeader = ({
                     </SelectableText>
                 )}
 
-                <TouchableOpacity
-                    onPress={onShare}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Share ${nameWithDisambiguation(artist.disambiguation, artist.name)}`}
-                    style={localStyles.shareButton}
-                >
-                    <MaterialIcons name="share" size={16} color="#81ddff" />
-                    <SelectableText style={localStyles.shareText} selectable={false}>
-                        Share
-                    </SelectableText>
-                </TouchableOpacity>
-
                 <ExternalLinksGrid
                     links={artist.externalLinks}
                     preferredService={preferredService}
@@ -207,15 +218,21 @@ const ArtistHeader = ({
 };
 
 const localStyles = StyleSheet.create({
+    actionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        flexWrap: 'wrap',
+        gap: 12,
+        marginBottom: 12,
+    },
     followButton: {
-        alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         minWidth: 132,
         height: 42,
         paddingHorizontal: 16,
-        marginBottom: 12,
         borderRadius: 21,
         borderWidth: 1,
     },
@@ -227,15 +244,15 @@ const localStyles = StyleSheet.create({
     shareButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        alignSelf: 'flex-start',
+        justifyContent: 'center',
         gap: 6,
-        borderRadius: 999,
+        // Same height and radius as the follow pill so the pair reads as one control group.
+        height: 42,
+        paddingHorizontal: 16,
+        borderRadius: 21,
         borderWidth: 1,
         borderColor: 'rgba(56, 189, 248, 0.52)',
         backgroundColor: 'rgba(56, 189, 248, 0.12)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        marginBottom: 12,
     },
     shareText: {
         color: '#81ddff',

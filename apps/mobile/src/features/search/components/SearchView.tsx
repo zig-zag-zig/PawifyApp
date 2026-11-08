@@ -153,7 +153,7 @@ const TrackResults = ({
                 onScrollToBottom={() =>
                     listRef.current?.scrollToEnd({ animated: true })
                 }
-                bottomOffset={20}
+                bottomOffset={10}
             />
         </View>
     );

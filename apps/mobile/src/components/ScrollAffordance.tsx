@@ -83,7 +83,13 @@ type ScrollButtonsProps = {
     showScrollToBottom?: boolean;
     onScrollToTop: () => void;
     onScrollToBottom?: () => void;
-    /** Distance from the bottom edge; keeps the buttons clear of tab bars/footers. */
+    /**
+     * Distance from the bottom edge. The list viewport already excludes the tab bar,
+     * so a large value here left a visible dead band under the buttons; the default
+     * keeps them just clear of the home indicator while both slots stay on the same
+     * baseline: the column is anchored at `bottom`, so a smaller value moves both
+     * buttons down by the same distance.
+     */
     bottomOffset?: number;
 };
 
@@ -92,7 +98,7 @@ const ScrollButtons = ({
     showScrollToBottom = false,
     onScrollToTop,
     onScrollToBottom,
-    bottomOffset = 24,
+    bottomOffset = 10,
 }: ScrollButtonsProps) => {
     const opacity = useRef(new Animated.Value(0)).current;
     const visible = showScrollToTop || showScrollToBottom;
