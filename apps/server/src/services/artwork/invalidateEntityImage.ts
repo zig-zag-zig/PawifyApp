@@ -1,3 +1,4 @@
+import type { ProviderValueState } from '../musicApi/types.js';
 import { createLogger } from '../../common/logging/logger.js';
 import { isAbortError } from '../../services/musicApi/httpClient.js';
 import { resolveArtistImage } from '../../services/musicApi/artistImageSources.js';
@@ -81,16 +82,19 @@ const resolveCurrentUrl = (entityType: EntityImageEntityType, entityId: string):
 /**
  * Re-resolves artwork from the providers, never from the mirror.
  *
- * `bypassMirror` matters: the row was just cleared, and provider APIs can still hand
- * back the same deleted CDN file (Deezer's `cover_xl` is not HEAD-checked). A
- * candidate equal to `deadUrl` is therefore treated as a miss and the caller records
- * a confirmed miss instead of re-saving the broken URL.
+ * `excludeUrls` passes `deadUrl` into the provider chain itself: when an upstream
+ * API still points at a deleted CDN file (Deezer's `cover_xl` is not HEAD-checked),
+ * that provider is treated as a transient failure so the chain continues to Tidal /
+ * Discogs / Cover Art Archive. If no later provider has a working image, the chain
+ * answers `undefined` and the row stays `pending` instead of being marked `none`.
  */
 const resolveFreshUrl = async (
     entityType: EntityImageEntityType,
     entityId: string,
     deadUrl: string,
-): Promise<string | null> => {
+): Promise<ProviderValueState> => {
+    const excludeUrls = new Set([deadUrl.trim()]);
+
     if (entityType === 'artist') {
         const links = getArtistImageProviderLinksFromMirror(entityId);
         const resolution = await resolveArtistImage({
@@ -100,21 +104,22 @@ const resolveFreshUrl = async (
             tidalUrls: links?.tidalUrls ?? [],
             discogsUrls: links?.discogsUrls ?? [],
             bypassMirror: true,
+            excludeUrls,
         });
-        return resolution.image === deadUrl ? null : (resolution.image ?? null);
+        return resolution.image;
     }
 
     if (entityType === 'release_group') {
-        const url = await fetchReleaseGroupCover(entityId, undefined, undefined, undefined, {
+        return await fetchReleaseGroupCover(entityId, undefined, undefined, undefined, {
             bypassMirror: true,
+            excludeUrls,
         });
-        return url === deadUrl ? null : (url ?? null);
     }
 
-    const url = await fetchReleaseCover(entityId, null, undefined, undefined, {
+    return await fetchReleaseCover(entityId, null, undefined, undefined, {
         bypassMirror: true,
+        excludeUrls,
     });
-    return url === deadUrl ? null : (url ?? null);
 };
 
 /**
@@ -149,8 +154,8 @@ export const invalidateEntityImage = async (
     // would just hand the same broken URL back.
     writeEntityImage({ entityType, entityId, service: 'pending', token: '', fetchedAt: 0 });
 
-    const nextUrl = await resolveFreshUrl(entityType, entityId, currentUrl);
-    const token = toEntityImageToken(nextUrl, entityId);
+    const nextState = await resolveFreshUrl(entityType, entityId, currentUrl);
+    const token = toEntityImageToken(nextState, entityId);
     if (token) {
         writeEntityImage({
             entityType,
@@ -160,11 +165,13 @@ export const invalidateEntityImage = async (
         });
     }
 
+    const nextUrl = typeof nextState === 'string' ? nextState : null;
     logger.info('entity image replaced after upstream removal', {
         entityType,
         entityId,
         hadUrl: currentUrl,
         hasUrl: nextUrl !== null,
+        leftPending: nextState === undefined,
     });
 
     return { invalidated: true, url: nextUrl };

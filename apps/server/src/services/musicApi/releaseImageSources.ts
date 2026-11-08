@@ -33,6 +33,12 @@ export type ReleaseImageLookup = {
     releaseGroupId?: string;
     /** Ignore the mirror rows and always walk the providers. */
     bypassMirror?: boolean;
+    /**
+     * Image URLs already proven broken on the CDN. A provider returning one of
+     * these is treated as a transient failure so the chain falls through to the
+     * next provider instead of stopping on the dead URL or marking a permanent miss.
+     */
+    excludeUrls?: ReadonlySet<string>;
     signal?: AbortSignal;
 };
 
@@ -202,20 +208,31 @@ export const resolveReleaseImage = async (
         }
     };
 
+    const isUsableImage = (image: ProviderValueState): image is string =>
+        hasImage(image) && !lookup.excludeUrls?.has(image.trim());
+
+    const recordExcludedOrMiss = (provider: ReleaseImageProvider, image: ProviderValueState) => {
+        if (hasImage(image) && lookup.excludeUrls?.has(image.trim())) {
+            transientFailures.push(provider);
+            return;
+        }
+        record(provider, image);
+    };
+
     if (hasUrls(lookup.deezerUrls)) {
         const image = await getDeezerAlbumImage(lookup.deezerUrls, lookup.signal);
-        if (hasImage(image)) {
+        if (isUsableImage(image)) {
             return { image, source: 'deezer', confirmedMisses, transientFailures };
         }
-        record('deezer', image);
+        recordExcludedOrMiss('deezer', image);
     }
 
     if (hasUrls(lookup.tidalUrls)) {
         const image = await getTidalAlbumImage(lookup.tidalUrls, lookup.signal);
-        if (hasImage(image)) {
+        if (isUsableImage(image)) {
             return { image, source: 'tidal', confirmedMisses, transientFailures };
         }
-        record('tidal', image);
+        recordExcludedOrMiss('tidal', image);
     }
 
     const caaPath = lookup.releaseGroupId
@@ -236,10 +253,10 @@ export const resolveReleaseImage = async (
             image = undefined;
         }
 
-        if (hasImage(image)) {
+        if (isUsableImage(image)) {
             return { image, source: 'coverartarchive', confirmedMisses, transientFailures };
         }
-        record('coverartarchive', image);
+        recordExcludedOrMiss('coverartarchive', image);
     }
 
     return {

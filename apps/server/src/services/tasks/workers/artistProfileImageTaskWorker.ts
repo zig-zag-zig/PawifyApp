@@ -196,6 +196,10 @@ const createArtistImageResolutionContext = (
 const resolveCachedImage = async (
     context: ArtistImageResolutionContext,
 ): Promise<CachedImageResolution> => {
+    if (musicDbHasEntityImages()) {
+        return { kind: 'refetch' };
+    }
+
     const cachedImage = await getCachedData<CachedArtistImage>(context.imageCacheKey);
 
     if (cachedImage && !shouldRefetchArtistImageState(cachedImage)) {
@@ -212,6 +216,10 @@ const resolveCachedImage = async (
 const resolveArtistDetailsFromCache = async (
     context: ArtistImageResolutionContext,
 ): Promise<void> => {
+    if (musicDbHasEntityImages()) {
+        return;
+    }
+
     const cachedArtistDetails = await getCachedData<CachedArtistDetails>(
         getCacheKey(context.artistId, 'artistDetails'),
     );
@@ -361,12 +369,14 @@ const resolveViaMirror = async (
     context.musicBrainzDiscogsUrlCount = fromMirror.discogsUrls.length;
     context.musicBrainzDeezerUrlCount = fromMirror.deezerUrls.length;
     context.musicBrainzTidalUrlCount = fromMirror.tidalUrls.length;
-    context.artistDetailsDiscogsSyncUpdated = await syncArtistDetailsDiscogsUrls(
-        context.artistId,
-        fromMirror.discogsUrls,
-        context.cachedArtistDetailsForSync,
-        context.ttl,
-    );
+    context.artistDetailsDiscogsSyncUpdated = musicDbHasEntityImages()
+        ? false
+        : await syncArtistDetailsDiscogsUrls(
+              context.artistId,
+              fromMirror.discogsUrls,
+              context.cachedArtistDetailsForSync,
+              context.ttl,
+          );
 
     if (!fromMirror.artistName) {
         return {

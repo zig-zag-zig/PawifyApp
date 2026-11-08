@@ -1,7 +1,6 @@
 import { getReleaseCover, getReleaseGroupCover } from '../../coverArtService.js';
 import { writeReleaseCoverState } from '../../coverArt/coverArtCache.js';
 import { musicDbHasEntityImages } from '../../../infrastructure/musicDb/musicDbClient.js';
-import { persistResolvedEntityImage } from '../../musicApi/entityImageFreshness.js';
 import { aggregateProviderUrls, getReleaseProviderUrls } from '../../coverArt/coverArtLookup.js';
 import { getReleaseIdsForGroupFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
@@ -171,9 +170,6 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
                     providerUrlsByRelease.get(releaseId),
                 );
                 covers[releaseId] = cover.state.url;
-                if (musicDbHasEntityImages()) {
-                    persistResolvedEntityImage('release', releaseId, cover.state.url);
-                }
             } catch (error) {
                 if (!firstError) {
                     firstError = error;

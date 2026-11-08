@@ -63,7 +63,15 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   entityId,
 }) => {
   const defaultImage = type === 'release' ? defaultReleaseImage : defaultArtistImage;
-  const remoteImageUrl = normalizeRemoteImageUrl(imageUrl);
+  const [repairedOverride, setRepairedOverride] = useState<{
+    forPropUrl: string | null | undefined;
+    url: string | null;
+  } | null>(null);
+  const effectiveImageUrl =
+    repairedOverride && repairedOverride.forPropUrl === imageUrl
+      ? repairedOverride.url
+      : imageUrl;
+  const remoteImageUrl = normalizeRemoteImageUrl(effectiveImageUrl);
   const [activeRemoteImageUrl, setActiveRemoteImageUrl] = useState<string | null>(remoteImageUrl);
   const { updateAccessTime, cleanUpCache } = useCache();
   const reportBrokenEntityImage = useBrokenEntityImageReporter();
@@ -259,7 +267,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   }, [localUri, isLoading, prefixedCacheKey, remoteImageUrl, type]);
 
   if (!remoteImageUrl) {
-    if (imageUrl === undefined && showSpinnerWhenNoImage) {
+    if (effectiveImageUrl === undefined && showSpinnerWhenNoImage) {
       return <PulsingPlaceholder style={style} />;
     }
 
@@ -323,17 +331,15 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
         });
 
         if (entityType && entityId) {
+          const failedPropUrl = imageUrl;
           void reportBrokenEntityImage(entityType, entityId).then((result) => {
-            if (!result?.invalidated) {
+            if (!result?.invalidated || !isMountedRef.current) {
               return;
             }
-            if (result.url && canCommitImageState()) {
-              remoteLoadRetryAttemptedRef.current = false;
-              setActiveRemoteImageUrl(result.url);
-              setLocalUri(result.url);
-              return;
-            }
-            setLocalUri(null);
+            // Feed the replacement (or null) through the same source pipeline so
+            // `remoteImageUrl` and `activeRemoteImageUrl` stay in lockstep and the
+            // replacement image is downloaded/cached normally.
+            setRepairedOverride({ forPropUrl: failedPropUrl, url: result.url });
           });
         }
       }

@@ -77,4 +77,75 @@ describe('bypassMirror', () => {
         assert.equal(row?.service, 'deezer');
         assert.equal(row?.url, 'https://cdn-images.dzcdn.net/images/cover/new/1000x1000.jpg');
     });
+
+    it('returns a stale artist portrait immediately and refreshes entity_images in the background using mirror links', async () => {
+        const path = createMusicDbFixture({
+            artists: [{ mbid: ARTIST_ID, name: 'Czarface' }],
+            externalLinks: [
+                {
+                    entity_type: 'artist',
+                    entity_mbid: ARTIST_ID,
+                    rel_type: 'free streaming',
+                    url: 'https://www.deezer.com/artist/860',
+                },
+            ],
+            entityImages: [
+                {
+                    entity_type: 'artist',
+                    entity_mbid: ARTIST_ID,
+                    service_id: 4,
+                    image_token: 'artist/old/1000x1000.jpg',
+                    fetched_at: STALE_SECONDS,
+                },
+            ],
+        });
+        process.env.MUSIC_DB_PATH = path;
+        process.env.DAPR_HTTP_ENDPOINT = 'http://dapr.test:3500';
+        process.env.RATE_LIMIT_FALLBACK_DELAY_MS = '1';
+        closeMusicDb();
+        resetEntityImageRepositoryForTests();
+
+        const freshUrl = 'https://cdn-images.dzcdn.net/images/artist/fresh/1000x1000.jpg';
+        globalThis.fetch = (async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url === freshUrl) {
+                return new Response(null, { status: 200 });
+            }
+            if (url.includes('/invoke/deezer/') && url.includes('/artist/860')) {
+                return new Response(
+                    JSON.stringify({ id: 860, name: 'Czarface', picture_xl: freshUrl }),
+                    {
+                        status: 200,
+                        headers: { 'content-type': 'application/json' },
+                    },
+                );
+            }
+            return new Response(null, { status: 404 });
+        }) as typeof fetch;
+
+        const { partitionArtistProfileImages } =
+            await import('../../../src/services/cache/partitionCachedAssets.js');
+
+        const partition = await partitionArtistProfileImages([{ artistId: ARTIST_ID }]);
+        assert.deepEqual(partition.pending, []);
+        assert.equal(
+            partition.resolved[ARTIST_ID],
+            'https://cdn-images.dzcdn.net/images/artist/old/1000x1000.jpg',
+            'current request must get the stored image immediately without waiting',
+        );
+
+        // Wait briefly for the detached revalidation to finish writing the refreshed token.
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+            if (readEntityImage('artist', ARTIST_ID)?.url === freshUrl) {
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 15));
+        }
+
+        assert.equal(
+            readEntityImage('artist', ARTIST_ID)?.url,
+            freshUrl,
+            'background revalidation must refresh entity_images using mirror links instead of wiping it',
+        );
+    });
 });

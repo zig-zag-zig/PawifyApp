@@ -44,18 +44,25 @@ export const createGetReleaseTracksUseCase =
             }
         }
 
-        // Record the MusicBrainz answers in the lyrics cache too, so a later request
-        // that only reads `asset:lyrics:*` still sees them.
-        for (const [trackId, lyricsUrl] of Object.entries(knownLyrics)) {
-            if (typeof lyricsUrl === 'string' && lyricsUrl.length > 0) {
-                void writeAssetState(
-                    assetKeys.trackLyrics(releaseId, trackId),
-                    mapLyricsToState(lyricsUrl),
-                ).catch((error) => {
-                    logger.debug('musicbrainz lyrics cache write failed', { trackId, error });
-                });
-            }
-        }
+        // Record the MusicBrainz answers in the lyrics cache before returning, so any
+        // caller reading `asset:lyrics:*` immediately sees them.
+        await Promise.all(
+            Object.entries(knownLyrics).flatMap(([trackId, lyricsUrl]) =>
+                typeof lyricsUrl === 'string' && lyricsUrl.length > 0
+                    ? [
+                          writeAssetState(
+                              assetKeys.trackLyrics(releaseId, trackId),
+                              mapLyricsToState(lyricsUrl),
+                          ).catch((error) => {
+                              logger.debug('musicbrainz lyrics cache write failed', {
+                                  trackId,
+                                  error,
+                              });
+                          }),
+                      ]
+                    : [],
+            ),
+        );
 
         const [lyricsPlan, profileImagesPlan] = await Promise.all([
             assetPlanner.planReleaseTrackLyrics({ userId, release, ttl: undefined }),

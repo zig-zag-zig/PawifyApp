@@ -27,9 +27,19 @@ const stubFetch = (handler: (call: Call) => Response | Promise<Response>): Call[
     return calls;
 };
 
-const useMirror = (): void => {
+const useMirror = (withDeezerLink = false): void => {
     const path = createMusicDbFixture({
         releases: [{ mbid: RELEASE_ID, title: 'No Competition', release_group_mbid: 'g1' }],
+        externalLinks: withDeezerLink
+            ? [
+                  {
+                      entity_type: 'release',
+                      entity_mbid: RELEASE_ID,
+                      rel_type: 'free streaming',
+                      url: 'https://www.deezer.com/album/1',
+                  },
+              ]
+            : [],
         entityImages: [
             {
                 entity_type: 'release',
@@ -101,37 +111,68 @@ describe('invalidateEntityImage', () => {
         assert.equal(result.url, null);
     });
 
-    it('records a miss when the provider returns the same dead URL again', async () => {
-        // Deezer's cover_xl is not HEAD-checked, so a deleted CDN file can come back
-        // from the API. Re-saving it would leave the row pointing at a 404 forever.
-        const deadInApi = 'https://www.deezer.com/album/1';
+    it('leaves the row pending when an upstream API still returns the dead URL and no fallback exists', async () => {
+        useMirror(true);
         stubFetch((call) => {
-            if (call.method === 'HEAD') {
+            if (call.url === DEAD_URL && call.method === 'HEAD') {
                 return new Response(null, { status: 404 });
             }
-            if (call.url.includes('/invoke/deezer/album/')) {
+            if (call.url.includes('/invoke/deezer/') && call.url.includes('/album/')) {
                 return new Response(JSON.stringify({ id: 1, cover_xl: DEAD_URL }), {
                     status: 200,
                     headers: { 'content-type': 'application/json' },
                 });
             }
+            if (call.url.includes('/invoke/coverartarchive/')) {
+                return new Response(null, { status: 404 });
+            }
             return new Response(null, { status: 404 });
         });
         const { invalidateEntityImage, resetInvalidateEntityImageCooldownForTests } =
             await import('../../../src/services/artwork/invalidateEntityImage.js');
+        const { readEntityImage } =
+            await import('../../../src/infrastructure/musicDb/entityImageRepository.js');
         resetInvalidateEntityImageCooldownForTests();
 
-        const { writeEntityImage } =
-            await import('../../../src/infrastructure/musicDb/entityImageRepository.js');
-        writeEntityImage({
-            entityType: 'release',
-            entityId: RELEASE_ID,
-            service: 'pending',
-            token: '',
+        const result = await invalidateEntityImage('release', RELEASE_ID);
+
+        assert.equal(result.invalidated, true);
+        assert.equal(result.url, null);
+        assert.equal(
+            readEntityImage('release', RELEASE_ID)?.service,
+            'pending',
+            'a broken upstream CDN link with no fallback must stay pending rather than none',
+        );
+    });
+
+    it('falls through past a dead Deezer URL to Cover Art Archive and saves the working cover', async () => {
+        useMirror(true);
+        stubFetch((call) => {
+            if (call.url === DEAD_URL && call.method === 'HEAD') {
+                return new Response(null, { status: 404 });
+            }
+            if (call.url.includes('/invoke/deezer/') && call.url.includes('/album/')) {
+                return new Response(JSON.stringify({ id: 1, cover_xl: DEAD_URL }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            if (call.url.includes('/invoke/coverartarchive/')) {
+                return new Response(null, { status: 200 });
+            }
+            return new Response(null, { status: 404 });
         });
+        const { invalidateEntityImage, resetInvalidateEntityImageCooldownForTests } =
+            await import('../../../src/services/artwork/invalidateEntityImage.js');
+        const { readEntityImage } =
+            await import('../../../src/infrastructure/musicDb/entityImageRepository.js');
+        resetInvalidateEntityImageCooldownForTests();
 
         const result = await invalidateEntityImage('release', RELEASE_ID);
-        assert.equal(result.url === DEAD_URL, false, `${deadInApi} must not be re-saved`);
+
+        assert.equal(result.invalidated, true);
+        assert.equal(result.url, `https://coverartarchive.org/release/${RELEASE_ID}/front-500`);
+        assert.equal(readEntityImage('release', RELEASE_ID)?.service, 'caa_rel');
     });
 
     it('probes at most once per cooldown window', async () => {

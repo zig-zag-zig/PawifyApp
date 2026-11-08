@@ -63,6 +63,7 @@ export function useReleasePage(): ReleasePageController {
     const releaseTracksLyricsRef = useRef(releaseTracksLyrics);
     const artistProfileImagesRef = useRef(artistProfileImages);
     const currentReleaseRef = useRef<Release | null>(null);
+    const retryGenerationRef = useRef(0);
 
     useEffect(() => {
         releaseTracksLyricsRef.current = releaseTracksLyrics;
@@ -346,6 +347,7 @@ export function useReleasePage(): ReleasePageController {
 
         return () => {
             isCancelled = true;
+            retryGenerationRef.current += 1;
         };
     }, [
         applyTracksResponse,
@@ -361,17 +363,20 @@ export function useReleasePage(): ReleasePageController {
         if (!releaseId || !baseRelease) {
             return;
         }
-        let cancelled = false;
+        retryGenerationRef.current += 1;
+        const generation = retryGenerationRef.current;
+        const isRetryCancelled = () => retryGenerationRef.current !== generation;
+
         dispatch({ type: 'tracksLoadStarted' });
         void getReleaseTracks(releaseId)
             .then(tracksResponse => {
-                if (!cancelled) {
-                    applyTracksResponse(baseRelease, tracksResponse, () => cancelled);
+                if (!isRetryCancelled()) {
+                    applyTracksResponse(baseRelease, tracksResponse, isRetryCancelled);
                 }
             })
             .catch(error => {
                 console.error('release-page: retry release tracks failed', error);
-                if (!cancelled) {
+                if (!isRetryCancelled()) {
                     dispatch({ type: 'tracksLoadFailed' });
                 }
             });

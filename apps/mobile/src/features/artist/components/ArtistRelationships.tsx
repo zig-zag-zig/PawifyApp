@@ -45,6 +45,8 @@ const RelationshipItem = React.memo(({
             type='profile'
             imageUrl={image}
             showSpinnerWhenNoImage={isPending || image === undefined}
+            entityType='artist'
+            entityId={member.id}
             style={styles.roundPictureSmall}
         />
         <View style={styles.relationshipInfo}>

@@ -11,7 +11,7 @@ import {
 } from './coverArt/coverArtCache.js';
 import { readAssetStates, assetKeys } from './cache/assetCache.js';
 import { musicDbHasEntityImages } from '../infrastructure/musicDb/musicDbClient.js';
-import { persistResolvedEntityImage } from './musicApi/entityImageFreshness.js';
+import { lookupMirrorImage } from './musicApi/mirrorEntityImages.js';
 import { fetchReleaseCover, fetchReleaseGroupCover } from './coverArt/coverArtLookup.js';
 import { dedupeStrings } from '../common/utils/array.js';
 
@@ -97,9 +97,7 @@ export const getReleaseGroupCover = async (
     );
 
     const state = mapCoverState(direct);
-    if (mirrorOwnsArtwork) {
-        persistResolvedEntityImage('release_group', releaseGroupId, direct);
-    } else {
+    if (!mirrorOwnsArtwork) {
         await writeGroupCoverState(releaseGroupId, state, ttl);
     }
     return { state, isFallback: false };
@@ -131,9 +129,7 @@ export const getReleaseCover = async (
 
     if (typeof direct === 'string' && direct.trim().length > 0) {
         const state = mapCoverState(direct);
-        if (mirrorOwnsArtwork) {
-            persistResolvedEntityImage('release', releaseId, direct);
-        } else {
+        if (!mirrorOwnsArtwork) {
             await writeReleaseCoverState(releaseId, state, ttl);
             if (releaseGroupId) {
                 // A real release cover is also a valid group cover; recording it saves
@@ -145,21 +141,32 @@ export const getReleaseCover = async (
     }
 
     if (releaseGroupId) {
-        const groupCover = mirrorOwnsArtwork ? null : await readGroupCoverState(releaseGroupId);
-        if (groupCover && hasUsableUrl(groupCover)) {
-            const state = fallbackCoverState(
-                groupCover.url as string,
-                isRemoteValueState(direct) && direct === undefined,
-            );
-            await writeReleaseCoverState(releaseId, state, ttl);
-            return { state, isFallback: true };
+        if (mirrorOwnsArtwork) {
+            const mirroredGroup = lookupMirrorImage('release_group', releaseGroupId);
+            if (mirroredGroup.kind === 'resolved') {
+                return {
+                    state: fallbackCoverState(
+                        mirroredGroup.url,
+                        isRemoteValueState(direct) && direct === undefined,
+                    ),
+                    isFallback: true,
+                };
+            }
+        } else {
+            const groupCover = await readGroupCoverState(releaseGroupId);
+            if (groupCover && hasUsableUrl(groupCover)) {
+                const state = fallbackCoverState(
+                    groupCover.url as string,
+                    isRemoteValueState(direct) && direct === undefined,
+                );
+                await writeReleaseCoverState(releaseId, state, ttl);
+                return { state, isFallback: true };
+            }
         }
     }
 
     const state = mapCoverState(direct);
-    if (mirrorOwnsArtwork) {
-        persistResolvedEntityImage('release', releaseId, direct);
-    } else {
+    if (!mirrorOwnsArtwork) {
         await writeReleaseCoverState(releaseId, state, ttl);
     }
     return { state, isFallback: false };

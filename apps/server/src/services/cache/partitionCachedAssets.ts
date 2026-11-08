@@ -28,6 +28,7 @@ import {
 } from '../musicApi/entityImageFreshness.js';
 import { resolveArtistImage } from '../musicApi/artistImageSources.js';
 import { fetchReleaseCover, fetchReleaseGroupCover } from '../coverArt/coverArtLookup.js';
+import { getArtistImageProviderLinksFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 
 const logger = createLogger('services.cache.partitionAssets');
 
@@ -179,14 +180,21 @@ export const partitionArtistProfileImages = async (
         }
 
         if (mirror) {
-            const mirrored = mirrorValue(
-                mirror.get(lookup.artistId),
-                'artist',
-                lookup.artistId,
-                async () => (await resolveArtistImage({ artistId: lookup.artistId })).image,
-            );
+            const artistId = lookup.artistId;
+            const mirrored = mirrorValue(mirror.get(artistId), 'artist', artistId, async () => {
+                const links = getArtistImageProviderLinksFromMirror(artistId);
+                const refreshed = await resolveArtistImage({
+                    artistId,
+                    artistName: lookup.artistName ?? links?.artistName,
+                    deezerUrls: lookup.deezerUrls ?? links?.deezerUrls,
+                    tidalUrls: lookup.tidalUrls ?? links?.tidalUrls,
+                    discogsUrls: lookup.discogsUrls ?? links?.discogsUrls,
+                    bypassMirror: true,
+                });
+                return refreshed.image;
+            });
             if (mirrored) {
-                resolved[lookup.artistId] = mirrored.value;
+                resolved[artistId] = mirrored.value;
                 return;
             }
             pending.push(lookup);
@@ -289,20 +297,36 @@ export const partitionReleaseGroupReleaseCovers = async (
 
     for (const entry of pageEntries) {
         const unresolvedReleaseIds: string[] = [];
-        const groupRecord = groupMirror?.get(entry.releaseGroupId ?? '');
+        const groupRecord = entry.releaseGroupId
+            ? groupMirror?.get(entry.releaseGroupId)
+            : undefined;
         const groupFallback =
             groupRecord && groupRecord.service !== 'none' && groupRecord.service !== 'pending'
                 ? groupRecord.url
                 : null;
+        const groupUnresolved =
+            Boolean(entry.releaseGroupId) && (!groupRecord || groupRecord.service === 'pending');
 
         for (const releaseId of entry.releaseIds) {
             if (mirror) {
                 const mirrored = mirrorValue(mirror.get(releaseId), 'release', releaseId, () =>
-                    fetchReleaseCover(releaseId, entry.releaseGroupId),
+                    fetchReleaseCover(releaseId, null, undefined, undefined, {
+                        bypassMirror: true,
+                    }),
                 );
                 if (mirrored) {
-                    resolved[releaseId] = mirrored.value ?? groupFallback;
-                    continue;
+                    if (mirrored.value !== null) {
+                        resolved[releaseId] = mirrored.value;
+                        continue;
+                    }
+                    if (groupFallback !== null) {
+                        resolved[releaseId] = groupFallback;
+                        continue;
+                    }
+                    if (!groupUnresolved) {
+                        resolved[releaseId] = null;
+                        continue;
+                    }
                 }
                 unresolvedReleaseIds.push(releaseId);
                 continue;
@@ -365,7 +389,10 @@ export const partitionArtistReleaseGroupCovers = async (
                 mirror.get(entry.releaseGroupId),
                 'release_group',
                 entry.releaseGroupId,
-                () => fetchReleaseGroupCover(entry.releaseGroupId),
+                () =>
+                    fetchReleaseGroupCover(entry.releaseGroupId, undefined, undefined, undefined, {
+                        bypassMirror: true,
+                    }),
             );
             if (mirrored) {
                 resolved[entry.releaseGroupId] = mirrored.value;

@@ -9,6 +9,8 @@ import { fetchMusicBrainz } from '../musicApi/musicBrainzClient.js';
 import { getReleaseMetadataFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import { createLogger } from '../../common/logging/logger.js';
 import { getCachedData, replaceCachedData } from '../cacheService.js';
+import { assetKeys, writeAssetState } from '../cache/assetCache.js';
+import { mapLyricsToState } from '../tasks/backgroundTaskMappers.js';
 import { cacheConfig } from '../../config/runtimeConfig.js';
 
 const logger = createLogger('services.musicbrainz.releaseLookup');
@@ -135,6 +137,78 @@ export const getRelease = async (releaseId: string): Promise<Release | null> => 
     }
 };
 
+type CachedReleaseTracklist = {
+    release: Release;
+    fetchedAt: number;
+};
+
+/**
+ * When a cached tracklist still has tracks without a MusicBrainz lyrics link,
+ * revalidate in the background once a day so newly added MusicBrainz lyrics
+ * relations land in both the tracklist cache and `asset:lyrics:*` without ever
+ * making the user wait.
+ */
+const TRACKLIST_LYRICS_REVALIDATE_MS = 24 * 60 * 60 * 1000;
+const tracklistRefreshInFlight = new Set<string>();
+
+const hasMissingMusicBrainzLyrics = (release: Release): boolean =>
+    release.media.some((medium) =>
+        (medium.tracks ?? []).some(
+            (track) => typeof track.lyricsUrl !== 'string' || track.lyricsUrl.trim().length === 0,
+        ),
+    );
+
+const persistMusicBrainzLyrics = async (releaseId: string, release: Release): Promise<void> => {
+    const writes: Promise<void>[] = [];
+    for (const medium of release.media) {
+        for (const track of medium.tracks ?? []) {
+            if (typeof track.lyricsUrl === 'string' && track.lyricsUrl.trim().length > 0) {
+                writes.push(
+                    writeAssetState(
+                        assetKeys.trackLyrics(releaseId, track.id),
+                        mapLyricsToState(track.lyricsUrl),
+                    ),
+                );
+            }
+        }
+    }
+    if (writes.length > 0) {
+        await Promise.all(writes);
+    }
+};
+
+const fetchAndCacheTracklist = async (
+    releaseId: string,
+    cacheKey: string,
+): Promise<Release | null> => {
+    const release = await fetchTracklistFromApi(releaseId);
+    if (release && release.media.length > 0) {
+        await persistMusicBrainzLyrics(releaseId, release);
+        try {
+            const entry: CachedReleaseTracklist = { release, fetchedAt: Date.now() };
+            await replaceCachedData(cacheKey, entry, cacheConfig.releaseTracksTtlHours);
+        } catch (error) {
+            logger.debug('tracklist cache write failed', { releaseId, error });
+        }
+    }
+    return release;
+};
+
+const unpackCachedTracklist = (
+    raw: CachedReleaseTracklist | Release | null,
+): CachedReleaseTracklist | null => {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    if ('release' in raw && raw.release && typeof raw.fetchedAt === 'number') {
+        return raw;
+    }
+    if ('media' in raw && Array.isArray(raw.media)) {
+        return { release: raw, fetchedAt: 0 };
+    }
+    return null;
+};
+
 /**
  * Release tracklist (`POST /getReleaseTracks`).
  *
@@ -146,24 +220,34 @@ export const getReleaseTracks = async (releaseId: string): Promise<Release | nul
     const cacheKey = `release:tracks:${releaseId}`;
 
     try {
-        const cached = await getCachedData<Release>(cacheKey);
+        const cached = unpackCachedTracklist(
+            await getCachedData<CachedReleaseTracklist | Release>(cacheKey),
+        );
         if (cached) {
-            return cached;
+            const shouldRevalidate =
+                hasMissingMusicBrainzLyrics(cached.release) &&
+                Date.now() - cached.fetchedAt > TRACKLIST_LYRICS_REVALIDATE_MS;
+            if (shouldRevalidate && !tracklistRefreshInFlight.has(releaseId)) {
+                tracklistRefreshInFlight.add(releaseId);
+                void fetchAndCacheTracklist(releaseId, cacheKey)
+                    .catch((error) => {
+                        logger.debug('background tracklist revalidation failed', {
+                            releaseId,
+                            error,
+                        });
+                    })
+                    .finally(() => {
+                        tracklistRefreshInFlight.delete(releaseId);
+                    });
+            }
+            return cached.release;
         }
     } catch (error) {
         logger.debug('tracklist cache read failed; asking MusicBrainz', { releaseId, error });
     }
 
     try {
-        const release = await fetchTracklistFromApi(releaseId);
-        if (release && release.media.length > 0) {
-            try {
-                await replaceCachedData(cacheKey, release, cacheConfig.releaseTracksTtlHours);
-            } catch (error) {
-                logger.debug('tracklist cache write failed', { releaseId, error });
-            }
-        }
-        return release;
+        return await fetchAndCacheTracklist(releaseId, cacheKey);
     } catch (error) {
         throw Object.assign(new Error('Failed to fetch release tracks'), { cause: error });
     }

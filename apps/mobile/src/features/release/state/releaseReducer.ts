@@ -141,7 +141,10 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
             return {
                 ...state,
                 release: action.release,
-                artistProfileImages: action.artistProfileImages,
+                artistProfileImages: {
+                    ...state.artistProfileImages,
+                    ...action.artistProfileImages,
+                },
                 pendingArtistImageIds: removeIds(
                     state.pendingArtistImageIds,
                     action.resolvedArtistImageIds

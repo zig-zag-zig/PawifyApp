@@ -122,6 +122,8 @@ const providerUrlsForUnknownGroup = async (
 export type CoverLookupOptions = {
     /** Ignore the mirror row and always walk the providers (revalidation/repair). */
     bypassMirror?: boolean;
+    /** Broken CDN URLs that must be skipped and treated as transient. */
+    excludeUrls?: ReadonlySet<string>;
 };
 
 export const fetchReleaseCover = async (
@@ -158,7 +160,7 @@ export const fetchReleaseCover = async (
             releaseMirror.freshness,
             'release',
             releaseId,
-            () => fetchReleaseCover(releaseId, null, signal, providerUrls),
+            () => fetchReleaseCover(releaseId, null, signal, providerUrls, { bypassMirror: true }),
             releaseMirror.freshness.settlePermanent,
         );
         return null;
@@ -179,10 +181,18 @@ export const fetchReleaseCover = async (
         // The release endpoint is preferred for a release's own cover; the group is
         // the fallback the caller reaches for only when this returns nothing.
         releaseId,
+        bypassMirror: options?.bypassMirror,
+        excludeUrls: options?.excludeUrls,
         signal,
     });
 
     persistResolvedEntityImage('release', releaseId, resolution.image);
+    if (typeof resolution.image === 'string' && releaseGroupId) {
+        const existingGroup = lookupMirrorImage('release_group', releaseGroupId);
+        if (existingGroup.kind === 'none') {
+            persistResolvedEntityImage('release_group', releaseGroupId, resolution.image);
+        }
+    }
     return resolution.image;
 };
 
@@ -250,7 +260,9 @@ export const fetchReleaseGroupCover = async (
             'release_group',
             releaseGroupId,
             () =>
-                fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls),
+                fetchReleaseGroupCover(releaseGroupId, signal, releaseIds, aggregatedProviderUrls, {
+                    bypassMirror: true,
+                }),
             mirrored.freshness.settlePermanent,
         );
         return null;
@@ -283,9 +295,12 @@ export const fetchReleaseGroupCover = async (
         deezerUrls,
         tidalUrls,
         releaseGroupId,
+        bypassMirror: options?.bypassMirror,
+        excludeUrls: options?.excludeUrls,
         signal,
     });
 
+    persistResolvedEntityImage('release_group', releaseGroupId, resolution.image);
     return resolution.image;
 };
 
