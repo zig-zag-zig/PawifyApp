@@ -1,6 +1,7 @@
 import type { ProviderValueState } from '../musicApi/types.js';
 import { createLogger } from '../../common/logging/logger.js';
 import { isAbortError } from '../../services/musicApi/httpClient.js';
+import { isDeezerPlaceholderAssetUrl } from '../../services/musicApi/deezerClient.js';
 import { resolveArtistImage } from '../../services/musicApi/artistImageSources.js';
 import {
     fetchReleaseCover,
@@ -96,6 +97,9 @@ const isUrlConfirmedDead = async (url: string): Promise<boolean> => {
                 const resolved = new URL(next, current).toString();
                 if (!isAllowedArtworkUrl(resolved)) {
                     return false;
+                }
+                if (isDeezerPlaceholderAssetUrl(resolved)) {
+                    return true;
                 }
                 current = resolved;
                 continue;

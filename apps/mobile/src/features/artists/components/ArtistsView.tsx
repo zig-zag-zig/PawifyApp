@@ -83,7 +83,10 @@ const ArtistsView = ({
                 <ArtistMinimalCard
                     artist={item}
                     profileImageUrl={artistProfileImages[item.id]}
-                    showProfileImageSpinnerWhenMissing={pendingArtistImageIds.includes(item.id)}
+                    showProfileImageSpinnerWhenMissing={
+                        pendingArtistImageIds.includes(item.id) ||
+                        artistProfileImages[item.id] === undefined
+                    }
                     isSelected={isSelected}
                     onPress={() => onArtistPressed(item.id, isInSelectionMode, onPress)}
                     onLongPress={onLongPress}

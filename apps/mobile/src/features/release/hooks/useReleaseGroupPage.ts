@@ -1,5 +1,5 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
@@ -16,12 +16,27 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const navigation = useNavigation<ReleaseNavigationProp>();
     const { releaseGroupReleaseCovers, setReleaseGroupReleaseCovers } = useCache();
     const { getReleaseGroupReleases, waitForTaskResultById } = useReleaseApi();
-    const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
+    const { releaseGroupId, releases: routeReleases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
+    const immediateRouteCovers = useMemo(
+        () => normalizeNullableStringMap(initialReleaseCovers),
+        [initialReleaseCovers],
+    );
+    const effectiveReleaseCovers = useMemo(
+        () => mergeNullableStringMaps(releaseGroupReleaseCovers, immediateRouteCovers),
+        [releaseGroupReleaseCovers, immediateRouteCovers],
+    );
+    const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>(() => {
+        if (!initialReleaseCoverTaskId || !routeReleases) {
+            return [];
+        }
+        return routeReleases
+            .map(release => release.id)
+            .filter(releaseId => effectiveReleaseCovers[releaseId] === undefined);
+    });
     const [fetchedReleases, setFetchedReleases] = useState<ReleaseGroupReleaseListItem[]>([]);
     const [lazyReleaseCoverTaskId, setLazyReleaseCoverTaskId] = useState<string | null>(null);
     const [isLoadingReleases, setIsLoadingReleases] = useState(false);
     const [releaseLoadFailed, setReleaseLoadFailed] = useState(false);
-    const { releaseGroupId, releases: routeReleases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
 
     // Deep links / share URLs carry only releaseGroupId — fetch the list when
     // the caller did not hand it over in params.
@@ -150,7 +165,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
 
     const state: ReleaseGroupPageUiState = {
         releases,
-        releaseGroupReleaseCovers,
+        releaseGroupReleaseCovers: effectiveReleaseCovers,
         pendingReleaseCoverIds,
         isLoadingReleases,
         releaseLoadFailed,

@@ -90,7 +90,9 @@ const ReleasesView = ({
                 <ReleaseItem
                     release={item}
                     isSelected={isSelected}
-                    isCoverLoading={pendingReleaseCoverIdSet.has(item.id)}
+                    isCoverLoading={
+                        pendingReleaseCoverIdSet.has(item.id) || item.cover_url === undefined
+                    }
                     onPress={() => onReleasePressed(item, isInSelectionMode, onPress)}
                     onLongPress={onLongPress}
                 />
