@@ -270,7 +270,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
   }, [localUri, isLoading, prefixedCacheKey, remoteImageUrl, type]);
 
   if (!remoteImageUrl) {
-    if (effectiveImageUrl === undefined && showSpinnerWhenNoImage) {
+    if (showSpinnerWhenNoImage) {
       return <PulsingPlaceholder style={style} />;
     }
 
@@ -307,10 +307,52 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
     }
 
     const fileUri = getCachedImageFileUri(prefixedCacheKey);
-    setIsLoading(false);
 
     if (localUri !== fileUri) {
       if (localUri === remoteImageUrl) {
+        // When `entityType` and `entityId` are provided, `File.downloadFileAsync`
+        // already failed once and native `<Image>` just failed a second time on the
+        // same URL. Ask the server to repair the broken link immediately while
+        // keeping `<PulsingPlaceholder />` visible instead of flashing the default
+        // image across a third retry.
+        if (entityType && entityId && !remoteLoadRetryAttemptedRef.current) {
+          remoteLoadRetryAttemptedRef.current = true;
+          diagnosticWarn('image', 'remote-load-retry-exhausted', {
+            ...getImageDiagnosticPayload(),
+            elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
+          });
+          const failedPropUrl = imageUrl;
+          setLocalUri(null);
+          setIsLoading(true);
+          nativeLoadStartedAtRef.current = null;
+          void reportBrokenEntityImage(entityType, entityId)
+            .then((result) => {
+              if (!isMountedRef.current) {
+                return;
+              }
+              if (!result?.invalidated) {
+                if (canCommitImageState()) {
+                  setIsLoading(false);
+                }
+                return;
+              }
+              // Feed the replacement (or null) through the same source pipeline so
+              // `remoteImageUrl` and `activeRemoteImageUrl` stay in lockstep and the
+              // replacement image is downloaded/cached normally.
+              setRepairedOverride({ forPropUrl: failedPropUrl, url: result.url });
+              onEffectiveUrlChange?.(result.url);
+              if (!result.url) {
+                setIsLoading(false);
+              }
+            })
+            .catch(() => {
+              if (canCommitImageState()) {
+                setIsLoading(false);
+              }
+            });
+          return;
+        }
+
         if (!remoteLoadRetryAttemptedRef.current) {
           remoteLoadRetryAttemptedRef.current = true;
           diagnosticWarn('image', 'remote-load-retry', {
@@ -318,6 +360,7 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
             elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
           });
           setLocalUri(null);
+          setIsLoading(true);
           remoteReloadTimeoutRef.current = setTimeout(() => {
             if (canCommitImageState()) {
               setLocalUri(remoteImageUrl);
@@ -332,27 +375,15 @@ const CachedImageComponentBase: React.FC<CachedImageComponentProps> = ({
           ...getImageDiagnosticPayload(),
           elapsedMs: elapsedSince(nativeLoadStartedAtRef.current),
         });
-
-        if (entityType && entityId) {
-          const failedPropUrl = imageUrl;
-          void reportBrokenEntityImage(entityType, entityId).then((result) => {
-            if (!result?.invalidated || !isMountedRef.current) {
-              return;
-            }
-            // Feed the replacement (or null) through the same source pipeline so
-            // `remoteImageUrl` and `activeRemoteImageUrl` stay in lockstep and the
-            // replacement image is downloaded/cached normally.
-            setRepairedOverride({ forPropUrl: failedPropUrl, url: result.url });
-            onEffectiveUrlChange?.(result.url);
-          });
-        }
       }
 
       setLocalUri(null);
+      setIsLoading(false);
       nativeLoadStartedAtRef.current = null;
       return;
     }
 
+    setIsLoading(true);
     void (async () => {
       await deleteCachedImageFile(prefixedCacheKey);
       if (canCommitImageState()) {

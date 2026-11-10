@@ -37,7 +37,8 @@ export const isDeezerPlaceholderAlbumCover = (url: string): boolean => {
         return false;
     }
 
-    return DEEZER_PLACEHOLDER_IMAGE_HASHES.has(hash.trim().toLowerCase());
+    const normalized = hash.trim().toLowerCase();
+    return normalized.length === 0 || DEEZER_PLACEHOLDER_IMAGE_HASHES.has(normalized);
 };
 
 /** Largest-first; Deezer serves the same asset at every size. */
@@ -62,10 +63,7 @@ export const extractDeezerAlbumId = (url: string): string | null => {
     }
 };
 
-type DeezerAlbumLookup =
-    | { kind: 'image'; url: string }
-    | { kind: 'miss' }
-    | { kind: 'transient' };
+type DeezerAlbumLookup = { kind: 'image'; url: string } | { kind: 'miss' } | { kind: 'transient' };
 
 const lookupDeezerAlbumCover = async (
     deezerUrl: string,
@@ -218,7 +216,45 @@ const DEEZER_PICTURE_FIELDS = [
  *
  * The placeholder sits at a fixed CDN hash: the MD5 of the empty string.
  */
-const DEEZER_PLACEHOLDER_IMAGE_HASHES = new Set(['d41d8cd98f00b204e9800998ecf8427e']);
+const DEEZER_PLACEHOLDER_IMAGE_HASHES = new Set([
+    'd41d8cd98f00b204e9800998ecf8427e',
+    'e23066163f21176a822b54001ee648a2',
+    'ebcf22e5c3a0eb3178b8a6f6bc1a5a6c',
+    '1fecff61b191427ec4d2760a77527bf5',
+    '4cc148453373e887d1956b6344a7b04f',
+    'ea5412738dfcaf1df3606a5dd3e77e0e',
+    'cd3568bb51e7d9e425797f9b4c10b7d3',
+    'e7234aeff0081367e7e856b5fd54058e',
+    'd0c8b1a4637dff406cc848e3e953dd63',
+    'e5c8891f20f2efd5cc8bbfff59ea6efc',
+    '96bc2f8cbab605ff6f5bb37e0e383758',
+    'f016ad615a7117339f474ee37dca9f38',
+    '88a1139d1346a66220b30ea37dca9f38',
+    '7a3464a158821d1da6d82f1ce94740ff',
+    '415714b66a5de709809dd3d05f58afe4',
+    'bb76c2ee3b068726ab4c37b0aabdb57a',
+    '58811c62614cff2335b7b925b5011aa0',
+    '57c9bec3606bb72c0452f9ff96fa8d07',
+    '62bf77663d769e5394d822868d2d8735',
+    '7c73d1d63a05e594125d87cf0dc17e44',
+    'a69dd9112ef5097c3d2641612791f2ef',
+    '456ec1e60024583fd4c3a311ba8286bb',
+    '072eba0568ff0fa42d540ce035774780',
+    '324f63945fcdfd6bee2dca5416c76fa8',
+    '35166c13f464371610f64f33805877ba',
+    'd028c6a774e5e24ab384e3141baffbab',
+    '762b80d2472f4b1490e307e357c5f790',
+    'd21e8382ab5e1fd28b2bb63a13f45f82',
+    '4ede85b4d56475a5e0edcb4c3b67c345',
+    '1c2cd7a1c69703b1d4adc0eb782b4207',
+    '3154bf8ff18c19e1e44a63d17a58ec79',
+    '261d12371d6fdd40c3f578bcf90c14df',
+    'ff4e14f369cf02544fb150e7bb86f9cc',
+    '8b16568eff95a4781f821176f4f734f3',
+    '1afc5d48047f775527934cbcfed6fdbd',
+    'c77f176737a8f1ce9e38df5f5d3694f3',
+    '9c37f6be17341071559a6d4c67afafa4',
+]);
 
 const DEEZER_CDN_ARTIST_PATH = /\/images\/artist\/([^/]*)\//i;
 
@@ -231,7 +267,7 @@ const isDeezerRedirectImage = (url: string): boolean => {
     }
 };
 
-const isDeezerPlaceholderImage = (url: string): boolean => {
+export const isDeezerPlaceholderImage = (url: string): boolean => {
     const hash = DEEZER_CDN_ARTIST_PATH.exec(url)?.[1];
     if (hash === undefined) {
         return false;
@@ -240,6 +276,9 @@ const isDeezerPlaceholderImage = (url: string): boolean => {
     const normalized = hash.trim().toLowerCase();
     return normalized.length === 0 || DEEZER_PLACEHOLDER_IMAGE_HASHES.has(normalized);
 };
+
+export const isDeezerPlaceholderAssetUrl = (url: string): boolean =>
+    isDeezerPlaceholderImage(url) || isDeezerPlaceholderAlbumCover(url);
 
 type DeezerImageProbe = 'ok' | 'placeholder' | 'missing' | 'unknown';
 
@@ -265,7 +304,7 @@ const probeDeezerImage = async (url: string, signal?: AbortSignal): Promise<Deez
 
         if (response.status >= 300 && response.status < 400) {
             const location = response.headers.get('location') ?? '';
-            return isDeezerPlaceholderImage(location) ? 'placeholder' : 'ok';
+            return isDeezerPlaceholderAssetUrl(location) ? 'placeholder' : 'ok';
         }
 
         return 'missing';

@@ -254,6 +254,11 @@ export function useNewReleaseFeedController(): NewReleaseFeedContextValue {
 
         const result = task.result as NewReleasesResponse | undefined;
         const immediateCovers = normalizeNullableStringMap(result?.releaseCovers);
+        for (const [releaseId, coverUrl] of Object.entries(immediateCovers)) {
+          if (coverUrl !== undefined) {
+            requestedCoverIdsRef.current.add(releaseId);
+          }
+        }
         const releases = (result?.releases ?? [])
           .filter(release => !removedReleasesRef.current.has(release.id))
           .map((release): NewReleaseListItem => ({
