@@ -122,9 +122,6 @@ const ArtistHeader = ({
 
             <View style={[styles.artistHeaderTextContainer, { backgroundColor: styles.container.backgroundColor }]}>
                 {!isLoadingArtist && (
-                    // Follow and Share sit side by side, left-aligned. The row hugs the
-                    // left edge instead of centring the follow button on its own, and a
-                    // fixed gap keeps them related without pushing them to opposite ends.
                     <View style={localStyles.actionRow}>
                         <TouchableOpacity
                             onPress={onToggleFollow}
@@ -162,11 +159,9 @@ const ArtistHeader = ({
                             accessibilityRole="button"
                             accessibilityLabel={`Share ${nameWithDisambiguation(artist.disambiguation, artist.name)}`}
                             style={localStyles.shareButton}
+                            hitSlop={8}
                         >
-                            <MaterialIcons name="share" size={16} color="#81ddff" />
-                            <SelectableText style={localStyles.shareText} selectable={false}>
-                                Share
-                            </SelectableText>
+                            <MaterialIcons name="share" size={20} color="#CBD5E1" />
                         </TouchableOpacity>
                     </View>
                 )}
@@ -223,19 +218,20 @@ const localStyles = StyleSheet.create({
     actionRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        alignSelf: 'flex-start',
+        alignSelf: 'stretch',
+        justifyContent: 'center',
         flexWrap: 'wrap',
-        gap: 12,
-        marginBottom: 12,
+        gap: 10,
+        marginBottom: 14,
     },
     followButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        minWidth: 132,
-        height: 42,
-        paddingHorizontal: 16,
-        borderRadius: 21,
+        minWidth: 136,
+        height: 44,
+        paddingHorizontal: 18,
+        borderRadius: 22,
         borderWidth: 1,
     },
     followButtonText: {
@@ -244,23 +240,14 @@ const localStyles = StyleSheet.create({
         fontWeight: '700',
     },
     shareButton: {
-        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
-        // Same height and radius as the follow pill so the pair reads as one control group.
-        height: 42,
-        paddingHorizontal: 16,
-        borderRadius: 21,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         borderWidth: 1,
-        borderColor: 'rgba(56, 189, 248, 0.52)',
-        backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    },
-    shareText: {
-        color: '#81ddff',
-        fontSize: 14,
-        fontWeight: '600',
+        borderColor: 'rgba(154, 160, 170, 0.35)',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
     },
 });
-
 export default ArtistHeader;

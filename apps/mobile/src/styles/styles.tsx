@@ -175,14 +175,20 @@ const styles = StyleSheet.create({
     },
     songCard: {
       backgroundColor: colors.relationshipBackground,
-      borderRadius: 8,
-      padding: 16,
+      borderRadius: 12,
+      padding: 15,
       marginVertical: 10,
+      borderWidth: 1,
+      borderColor: 'transparent',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.2,
       shadowRadius: 4,
       elevation: 5,
+    },
+    selectedReleaseCard: {
+      backgroundColor: theme.colors.selectionBackground,
+      borderColor: theme.colors.selectionBorder,
     },
     songTitle: {
       fontSize: 20,
@@ -290,6 +296,13 @@ const styles = StyleSheet.create({
       flexDirection: 'row',
       alignItems: 'center',
       padding: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    selectedArtistRow: {
+      backgroundColor: theme.colors.selectionBackground,
+      borderColor: theme.colors.selectionBorder,
     },
     roundPicture: {
       width: 90,
