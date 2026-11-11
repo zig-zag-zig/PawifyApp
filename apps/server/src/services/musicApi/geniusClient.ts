@@ -41,7 +41,8 @@ export const fetchGeniusLyrics = async (
         for (const hit of hits) {
             if (
                 hit.result.artist_names.toLowerCase().includes(artistName.toLowerCase().trim()) &&
-                hit.result.title.toLowerCase().trim() === trackName.toLowerCase().trim()
+                hit.result.title.toLowerCase().trim() === trackName.toLowerCase().trim() &&
+                hit.result.lyrics_state === 'complete'
             ) {
                 return hit.result.url ?? null;
             }
