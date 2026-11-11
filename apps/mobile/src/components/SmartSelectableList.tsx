@@ -51,12 +51,13 @@ export function SmartSelectableList<T extends { id: string }>(
         footer,
     }: SmartSelectableListProps<T>
 ) {
+    const selectableSource = selectionItems ?? items;
     const {
         selectedIds,
         toggleSelect,
         clearSelection,
         selectAll,
-    } = useSelectionManager(selectionItems ?? items);
+    } = useSelectionManager(selectableSource);
     const {
         animationRefs,
         handleRemoveSelected,
@@ -77,6 +78,7 @@ export function SmartSelectableList<T extends { id: string }>(
         <>
             <AnimatedActionBar
                 selectedCount={selectedIds.size}
+                totalCount={selectableSource.length}
                 onSelectAll={selectAll}
                 onDelete={removeSelected}
                 onCancel={clearSelection}
@@ -101,7 +103,7 @@ export function SmartSelectableList<T extends { id: string }>(
                 onEndReachedThreshold={onEndReachedThreshold}
                 initialNumToRender={initialNumToRender}
                 windowSize={windowSize}
-                contentContainerStyle={{ paddingBottom: 14 }}
+                contentContainerStyle={{ paddingBottom: isInSelectionMode ? 96 : 14 }}
                 showsVerticalScrollIndicator={false}
                 onScroll={scroll.onScroll}
                 scrollEventThrottle={scroll.scrollEventThrottle}
@@ -109,7 +111,7 @@ export function SmartSelectableList<T extends { id: string }>(
                 onContentSizeChange={onContentReady}
                 ListFooterComponent={footer ? <>{footer}</> : null}
             />
-            {/* Above the action bar (which is ~68px) so a selection cannot hide it. */}
+            {/* Above the bottom action bar so a selection cannot hide them. */}
             <ScrollButtons
                 showScrollToTop={scroll.showScrollToTop}
                 showScrollToBottom={scroll.showScrollToBottom}
