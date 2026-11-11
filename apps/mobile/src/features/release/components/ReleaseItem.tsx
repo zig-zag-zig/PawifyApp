@@ -3,7 +3,7 @@ import { TouchableOpacity, View, LayoutChangeEvent } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { SelectableText } from '../../../components/ui';
 import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
-import { nameWithDisambiguation } from '@pawify/shared';
+import { formatDisplayDate, nameWithDisambiguation } from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 
 interface ReleaseItemProps {
@@ -27,7 +27,7 @@ const ReleaseItem = ({
 
     const containerStyle = [
         styles.songCard,
-        isSelected && { backgroundColor: '#1a5276' }
+        isSelected && styles.selectedReleaseCard
     ];
     const releaseType = release['primary-type'] ?? 'Other';
     const artistNames = Object.values(release.artists).filter(Boolean).join(', ');
@@ -67,7 +67,7 @@ const ReleaseItem = ({
                         {nameWithDisambiguation(release.disambiguation, release.title)}
                     </SelectableText>
                     <SelectableText style={styles.releaseDate} numberOfLines={1} selectable={false}>
-                        {release.date_for_display}
+                        {formatDisplayDate(release.date, release.date_for_display)}
                     </SelectableText>
                     <SelectableText
                         style={styles.artists}

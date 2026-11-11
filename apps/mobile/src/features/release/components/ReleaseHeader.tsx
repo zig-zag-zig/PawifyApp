@@ -10,9 +10,15 @@ import {
     savePreferredStreamingService,
 } from '../../../services/preferredStreamingService';
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
-import type { ArtistCredit, ExternalLinkService, Release } from '@pawify/shared';
-import { nameWithDisambiguation } from '@pawify/shared';
+import {
+    formatDisplayDate,
+    nameWithDisambiguation,
+    type ArtistCredit,
+    type ExternalLinkService,
+    type Release,
+} from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
+import { theme } from '../../../styles/theme';
 import { ArtistNavigationProp } from '../../../types/navigation';
 
 interface ReleaseHeaderProps {
@@ -66,6 +72,18 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
         });
     }, [release]);
 
+    const releaseTitle = nameWithDisambiguation(release.disambiguation, release.title);
+    const displayDate = formatDisplayDate(release.date, release.date_for_display);
+    const releaseType = release['release-group']?.['primary-type'];
+    const trackCount = React.useMemo(
+        () =>
+            (release.media ?? []).reduce(
+                (total, medium) => total + (medium.tracks?.length ?? 0),
+                0,
+            ),
+        [release.media],
+    );
+
     return (
         <View style={{ backgroundColor: styles.container.backgroundColor }}>
             <ResponsiveHeaderImage
@@ -77,9 +95,22 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                 entityId={release.id}
             />
             <View style={styles.textContainer}>
-                <SelectableText style={styles.releaseTitle}>
-                    {nameWithDisambiguation(release.disambiguation, release.title)}
-                </SelectableText>
+                <View style={headerStyles.titleRow}>
+                    <SelectableText style={[styles.releaseTitle, headerStyles.titleText]}>
+                        {releaseTitle}
+                    </SelectableText>
+                    <TouchableOpacity
+                        onPress={onShare}
+                        activeOpacity={0.72}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Share ${releaseTitle}`}
+                        style={headerStyles.shareButton}
+                        hitSlop={8}
+                    >
+                        <MaterialIcons name="share" size={20} color="#CBD5E1" />
+                    </TouchableOpacity>
+                </View>
+
                 {artistCredits.length > 0 && (
                     <View style={chipStyles.chipsRow}>
                         {artistCredits.map((artist, index) => (
@@ -107,20 +138,29 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                         ))}
                     </View>
                 )}
-                <SelectableText style={styles.releaseDate}>
-                    Released {release.date_for_display}
-                </SelectableText>
-                <TouchableOpacity
-                    onPress={onShare}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Share ${nameWithDisambiguation(release.disambiguation, release.title)}`}
-                    style={shareStyles.shareButton}
-                >
-                    <MaterialIcons name="share" size={16} color="#81ddff" />
-                    <SelectableText style={shareStyles.shareText} selectable={false}>
-                        Share
-                    </SelectableText>
-                </TouchableOpacity>
+
+                <View style={tagStyles.tagsRow}>
+                    {releaseType ? (
+                        <View style={[tagStyles.tagPill, tagStyles.tagPillCyan]}>
+                            <SelectableText style={[tagStyles.tagText, tagStyles.tagTextCyan]} selectable={false}>
+                                {releaseType}
+                            </SelectableText>
+                        </View>
+                    ) : null}
+                    {trackCount > 0 ? (
+                        <View style={[tagStyles.tagPill, tagStyles.tagPillViolet]}>
+                            <SelectableText style={[tagStyles.tagText, tagStyles.tagTextViolet]} selectable={false}>
+                                {trackCount === 1 ? '1 track' : `${trackCount} tracks`}
+                            </SelectableText>
+                        </View>
+                    ) : null}
+                    <View style={[tagStyles.tagPill, tagStyles.tagPillAmber]}>
+                        <SelectableText style={[tagStyles.tagText, tagStyles.tagTextAmber]} selectable={false}>
+                            {displayDate}
+                        </SelectableText>
+                    </View>
+                </View>
+
                 <ExternalLinksGrid
                     links={release.externalLinks}
                     preferredService={preferredService}
@@ -130,6 +170,30 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
         </View>
     );
 };
+
+const headerStyles = StyleSheet.create({
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        paddingVertical: 18,
+    },
+    titleText: {
+        flex: 1,
+        paddingVertical: 0,
+    },
+    shareButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(154, 160, 170, 0.35)',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    },
+});
 
 const chipStyles = StyleSheet.create({
     chipsRow: {
@@ -157,24 +221,49 @@ const chipStyles = StyleSheet.create({
     },
 });
 
-const shareStyles = StyleSheet.create({
-    shareButton: {
+const tagStyles = StyleSheet.create({
+    tagsRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
-        alignSelf: 'flex-start',
-        gap: 6,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: 'rgba(56, 189, 248, 0.52)',
-        backgroundColor: 'rgba(56, 189, 248, 0.12)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        marginBottom: 12,
+        gap: 8,
+        marginBottom: 8,
     },
-    shareText: {
-        color: '#81ddff',
-        fontSize: 14,
+    tagPill: {
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: theme.colors.tagPillBorder,
+        backgroundColor: theme.colors.tagPillBackground,
+        paddingHorizontal: 9,
+        paddingVertical: 4,
+    },
+    tagPillCyan: {
+        borderColor: 'rgba(92, 225, 230, 0.58)',
+        backgroundColor: 'rgba(92, 225, 230, 0.14)',
+    },
+    tagPillViolet: {
+        borderColor: 'rgba(180, 160, 255, 0.58)',
+        backgroundColor: 'rgba(180, 160, 255, 0.14)',
+    },
+    tagPillAmber: {
+        borderColor: 'rgba(232, 184, 109, 0.58)',
+        backgroundColor: 'rgba(232, 184, 109, 0.14)',
+    },
+    tagText: {
+        color: theme.colors.tagPillText,
+        fontSize: 12,
         fontWeight: '600',
+        letterSpacing: 0.4,
+        lineHeight: 15,
+    },
+    tagTextCyan: {
+        color: '#5CE1E6',
+    },
+    tagTextViolet: {
+        color: '#B4A0FF',
+    },
+    tagTextAmber: {
+        color: '#E8B86D',
     },
 });
 
