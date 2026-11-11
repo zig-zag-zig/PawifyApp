@@ -1,10 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import {
-  createBottomTabNavigator,
-  type BottomTabBarProps,
-} from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Menu from '../features/menu/MenuPage';
 import ArtistsPage from '../features/artists/pages/ArtistsPage';
@@ -13,112 +10,111 @@ import SearchPage from '../features/search/pages/SearchPage';
 import { theme } from '../styles/theme';
 
 const Tab = createBottomTabNavigator();
+const TAB_BAR_HEIGHT = theme.tabBar.height;
 const TAB_BAR_ICON_SIZE = theme.tabBar.iconSize;
 
 type TabIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-const TAB_ICONS: Record<string, { icon: TabIconName; label: string }> = {
-  Search: { icon: 'magnify', label: 'Search' },
-  Artists: { icon: 'account-music', label: 'Artists' },
-  Releases: { icon: 'album', label: 'Releases' },
-  Menu: { icon: 'menu', label: 'Menu' },
-};
+const TabIcon = ({
+  name,
+  color,
+  focused,
+}: {
+  name: TabIconName;
+  color: string;
+  focused: boolean;
+}) => (
+  <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+    <MaterialCommunityIcons name={name} size={TAB_BAR_ICON_SIZE} color={color} />
+  </View>
+);
 
-const FloatingDockTabBar = ({ state, navigation }: BottomTabBarProps) => {
+export const TabNavigator = () => {
   const insets = useSafeAreaInsets();
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  if (keyboardVisible) {
-    return null;
-  }
+  const bottomInset = insets.bottom;
 
   return (
-    <View style={[styles.dockOuter, { paddingBottom: Math.max(insets.bottom, 6) + 8 }]}>
-      <View style={styles.dockPill}>
-        {state.routes.map((route, index) => {
-          const isFocused = state.index === index;
-          const meta = TAB_ICONS[route.name] ?? { icon: 'circle', label: route.name };
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
-
-          return (
-            <Pressable
-              key={route.key}
-              onPress={onPress}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isFocused }}
-              accessibilityLabel={meta.label}
-              style={[styles.tabSlot, isFocused && styles.tabSlotActive]}
-            >
-              <MaterialCommunityIcons
-                name={meta.icon}
-                size={TAB_BAR_ICON_SIZE}
-                color={isFocused ? theme.colors.tabBarActive : theme.colors.tabBarInactive}
-              />
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+    <Tab.Navigator
+      backBehavior="history"
+      screenOptions={{
+        tabBarActiveTintColor: theme.colors.tabBarActive,
+        tabBarInactiveTintColor: theme.colors.tabBarInactive,
+        tabBarShowLabel: false,
+        tabBarHideOnKeyboard: true,
+        tabBarStyle: {
+          height: TAB_BAR_HEIGHT + bottomInset,
+          paddingBottom: bottomInset,
+          paddingTop: 6,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.tabBarBorder,
+          elevation: 0,
+          backgroundColor: theme.colors.tabBarSurface,
+        },
+        tabBarIconStyle: {
+          height: 32,
+          width: 48,
+        },
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          paddingTop: 0,
+          paddingBottom: 0,
+        },
+        freezeOnBlur: true,
+      }}
+    >
+      <Tab.Screen
+        name="Search"
+        component={SearchPage}
+        options={{
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="magnify" color={color} focused={focused} />
+          ),
+          headerShown: false,
+        }}
+      />
+      <Tab.Screen
+        name="Artists"
+        component={ArtistsPage}
+        options={{
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="account-music" color={color} focused={focused} />
+          ),
+          headerShown: false,
+        }}
+      />
+      <Tab.Screen
+        name="Releases"
+        component={ReleasesPage}
+        options={{
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="album" color={color} focused={focused} />
+          ),
+          headerShown: false,
+        }}
+      />
+      <Tab.Screen
+        name="Menu"
+        component={Menu}
+        options={{
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="menu" color={color} focused={focused} />
+          ),
+          headerShown: false,
+        }}
+      />
+    </Tab.Navigator>
   );
 };
 
-export const TabNavigator = () => (
-  <Tab.Navigator
-    backBehavior="history"
-    tabBar={(props) => <FloatingDockTabBar {...props} />}
-    screenOptions={{
-      headerShown: false,
-      freezeOnBlur: true,
-    }}
-  >
-    <Tab.Screen name="Search" component={SearchPage} />
-    <Tab.Screen name="Artists" component={ArtistsPage} />
-    <Tab.Screen name="Releases" component={ReleasesPage} />
-    <Tab.Screen name="Menu" component={Menu} />
-  </Tab.Navigator>
-);
-
 const styles = StyleSheet.create({
-  dockOuter: {
-    backgroundColor: theme.colors.appBackground,
-    paddingHorizontal: 10,
-    paddingTop: 6,
-  },
-  dockPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-evenly',
-    backgroundColor: theme.colors.tabBarSurface,
-    borderRadius: 28,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-  },
-  tabSlot: {
-    flex: 1,
-    height: 52,
-    borderRadius: 24,
+  iconPill: {
+    width: 46,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabSlotActive: {
-    backgroundColor: theme.colors.tabBarItemActiveBg,
+  iconPillActive: {
+    backgroundColor: theme.colors.selectionBackground,
   },
 });
