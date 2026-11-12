@@ -45,7 +45,7 @@ const ArtistMinimalCard: React.FC<ArtistMinimalCardProps> = ({
       paddingHorizontal: 6,
       paddingVertical: 4,
     },
-    isSelected && { backgroundColor: '#1a5276' },
+    isSelected && styles.selectedArtistRow,
   ];
 
   return (

@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, TouchableOpacity, StyleSheet, View, Text, Platform } from 'react-native';
+import { Animated, TouchableOpacity, StyleSheet, View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { theme } from '../styles/theme';
 
 interface AnimatedActionBarProps {
     selectedCount: number;
+    totalCount?: number;
     onSelectAll: () => void;
     onDelete: () => void;
     onCancel: () => void;
@@ -12,6 +14,7 @@ interface AnimatedActionBarProps {
 
 const AnimatedActionBar: React.FC<AnimatedActionBarProps> = ({
     selectedCount,
+    totalCount,
     onSelectAll,
     onDelete,
     onCancel,
@@ -29,6 +32,12 @@ const AnimatedActionBar: React.FC<AnimatedActionBarProps> = ({
 
     if (!visible) return null;
 
+    const allSelected = typeof totalCount === 'number' && totalCount > 0 && selectedCount >= totalCount;
+    const countLabel =
+        typeof totalCount === 'number' && totalCount > 0
+            ? `${selectedCount}/${totalCount}`
+            : String(selectedCount);
+
     return (
         <Animated.View
             style={[
@@ -39,34 +48,42 @@ const AnimatedActionBar: React.FC<AnimatedActionBarProps> = ({
                         {
                             translateY: animValue.interpolate({
                                 inputRange: [0, 1],
-                                outputRange: [-40, 0],
+                                outputRange: [24, 0],
                             }),
                         },
                     ],
-                    backgroundColor: 'rgba(30,30,30,0.75)',
-                    shadowColor: '#000',
-                    shadowOpacity: 0.15,
-                    shadowRadius: 10,
-                    elevation: 8,
-                    alignSelf: 'center',
-                    width: undefined,
-                    maxWidth: '90%',
                 },
             ]}
             pointerEvents="auto"
         >
-            <TouchableOpacity onPress={onSelectAll} style={styles.iconButton} accessibilityLabel="Select all">
-                <Ionicons name="checkbox-outline" size={24} color="#007AFF" />
-            </TouchableOpacity>
-            <View style={styles.countBadge}>
-                <Text style={styles.countText}>{selectedCount}</Text>
+            <Text style={styles.counterText}>{countLabel}</Text>
+            <View style={styles.actionsRow}>
+                <TouchableOpacity
+                    onPress={onSelectAll}
+                    style={[styles.iconButton, allSelected && styles.iconButtonActive]}
+                    accessibilityLabel="Select all"
+                >
+                    <Ionicons
+                        name="checkmark-done"
+                        size={21}
+                        color={allSelected ? theme.colors.selectionAccent : '#CBD5E1'}
+                    />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    onPress={onDelete}
+                    style={styles.iconButton}
+                    accessibilityLabel="Delete selected"
+                >
+                    <Ionicons name="trash-outline" size={20} color="#FF707A" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    onPress={onCancel}
+                    style={styles.iconButton}
+                    accessibilityLabel="Cancel"
+                >
+                    <Ionicons name="close" size={21} color="#A4A8B1" />
+                </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onDelete} style={styles.iconButton} accessibilityLabel="Delete selected">
-                <Ionicons name="trash-outline" size={24} color="#FF3B30" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onCancel} style={styles.iconButton} accessibilityLabel="Cancel">
-                <Ionicons name="close-outline" size={24} color="#888" />
-            </TouchableOpacity>
         </Animated.View>
     );
 };
@@ -75,33 +92,51 @@ const styles = StyleSheet.create({
     bar: {
         flexDirection: 'row',
         position: 'absolute',
+        bottom: 10,
+        alignSelf: 'center',
         alignItems: 'center',
-        marginTop: Platform.OS === 'ios' ? 60 : 40,
-        marginBottom: 10,
-        borderRadius: 18,
-        paddingHorizontal: 18,
-        paddingVertical: 8,
-        minHeight: 44,
-        minWidth: 200,
+        justifyContent: 'center',
+        gap: 10,
+        borderRadius: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        minHeight: 52,
+        backgroundColor: '#111317',
+        borderWidth: 1,
+        borderColor: 'rgba(154, 160, 170, 0.24)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 12,
+        elevation: 10,
         zIndex: 100,
     },
-    iconButton: {
-        padding: 8,
-        marginHorizontal: 2,
+    counterText: {
+        color: '#F5F6F7',
+        fontWeight: '600',
+        fontSize: 15,
+        lineHeight: 18,
+        minWidth: 38,
+        textAlign: 'center',
     },
-    countBadge: {
-        backgroundColor: '#007AFF',
-        borderRadius: 12,
-        minWidth: 24,
-        height: 24,
-        justifyContent: 'center',
+    actionsRow: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginHorizontal: 8,
+        gap: 6,
     },
-    countText: {
-        color: '#fff',
-        fontWeight: 'bold',
-        fontSize: 14,
+    iconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(154, 160, 170, 0.22)',
+    },
+    iconButtonActive: {
+        borderColor: theme.colors.selectionBorder,
+        backgroundColor: theme.colors.selectionBackground,
     },
 });
 
