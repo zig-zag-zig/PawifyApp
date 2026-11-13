@@ -147,6 +147,11 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                             </SelectableText>
                         </View>
                     ) : null}
+                    <View style={[tagStyles.tagPill, tagStyles.tagPillAmber]}>
+                        <SelectableText style={[tagStyles.tagText, tagStyles.tagTextAmber]} selectable={false}>
+                            {displayDate}
+                        </SelectableText>
+                    </View>
                     {trackCount > 0 ? (
                         <View style={[tagStyles.tagPill, tagStyles.tagPillViolet]}>
                             <SelectableText style={[tagStyles.tagText, tagStyles.tagTextViolet]} selectable={false}>
@@ -154,11 +159,6 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                             </SelectableText>
                         </View>
                     ) : null}
-                    <View style={[tagStyles.tagPill, tagStyles.tagPillAmber]}>
-                        <SelectableText style={[tagStyles.tagText, tagStyles.tagTextAmber]} selectable={false}>
-                            {displayDate}
-                        </SelectableText>
-                    </View>
                 </View>
 
                 <ExternalLinksGrid
