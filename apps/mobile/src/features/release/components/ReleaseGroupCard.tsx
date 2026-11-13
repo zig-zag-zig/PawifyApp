@@ -4,8 +4,7 @@ import React from 'react';
 import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { InlineLink, ScreenContainer, SelectableText } from '../../../components/ui';
-import { ReleaseGroupReleaseListItem } from '@pawify/shared';
-import { getStyles } from '../../../styles/styles';
+import { formatDisplayDate, ReleaseGroupReleaseListItem } from '@pawify/shared';
 
 interface ReleaseGroupCardProps {
     releases: ReleaseGroupReleaseListItem[];
@@ -28,52 +27,11 @@ const ReleaseGroupCard = ({
     onRetryLoadReleases,
     onContentReady,
 }: ReleaseGroupCardProps) => {
-    const styles = getStyles();
     const pendingReleaseCoverIdSet = new Set(pendingReleaseCoverIds);
-
-    const renderRow = (rowReleases: ReleaseGroupReleaseListItem[]) => (
-
-        <View style={styles.row}>
-            {rowReleases.map((release) => (
-                <TouchableOpacity
-                    key={`release-${release.id}`}
-                    onPress={() => onPress(release)}
-                    activeOpacity={1}
-                    style={styles.albumContainer}
-                >
-                    <CachedImageComponent
-                        imageUrl={releaseCovers[release.id]}
-                        type='release'
-                        showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(release.id)}
-                        entityType='release'
-                        entityId={release.id}
-                        style={styles.albumCover}
-                    />
-                    <SelectableText
-                        style={styles.albumNameGrid}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                        selectable={false}
-                    >
-                        {release.title}
-                    </SelectableText>
-                </TouchableOpacity>
-            ))}
-            {rowReleases.length === 1 && <View style={styles.albumContainer} />}
-        </View>
-    );
-
-    const renderReleases = () => {
-        const rows = [];
-        for (let i = 0; i < releases.length; i += 2) {
-            rows.push(
-                <View key={`row-${i / 2}`}>
-                    {renderRow(releases.slice(i, i + 2))}
-                </View>
-            );
-        }
-        return rows;
-    };
+    const releaseCountLabel =
+        releases.length > 0
+            ? `${releases.length} ${releases.length === 1 ? 'release' : 'releases'}`
+            : 'Releases';
 
     const onShare = React.useCallback(() => {
         if (!releaseGroupId) {
@@ -92,20 +50,24 @@ const ReleaseGroupCard = ({
 
     return (
         <ScreenContainer>
-            {releaseGroupId && (
-                <View style={cardStyles.headerRow}>
+            <View style={cardStyles.headerRow}>
+                <Text style={cardStyles.headerTitle}>{releaseCountLabel}</Text>
+                {releaseGroupId && (
                     <TouchableOpacity
                         onPress={onShare}
+                        activeOpacity={0.72}
                         accessibilityRole="button"
                         accessibilityLabel="Share this release group"
                         style={cardStyles.shareButton}
+                        hitSlop={8}
                     >
-                        <MaterialIcons name="share" size={16} color="#81ddff" />
-                        <Text style={cardStyles.shareText}>Share</Text>
+                        <MaterialIcons name="share" size={20} color="#CBD5E1" />
                     </TouchableOpacity>
-                </View>
-            )}
+                )}
+            </View>
             <ScrollView
+                style={cardStyles.releaseList}
+                contentContainerStyle={cardStyles.releaseListContent}
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={onContentReady}
             >
@@ -115,7 +77,50 @@ const ReleaseGroupCard = ({
                         <InlineLink onPress={onRetryLoadReleases}>Retry</InlineLink>
                     </View>
                 ) : (
-                    renderReleases()
+                    <>
+                        {releases.map((release) => (
+                            <TouchableOpacity
+                                key={`release-${release.id}`}
+                                onPress={() => onPress(release)}
+                                activeOpacity={0.72}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Open release ${release.title}`}
+                                style={cardStyles.releaseRow}
+                            >
+                                <CachedImageComponent
+                                    imageUrl={releaseCovers[release.id]}
+                                    type="release"
+                                    showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(
+                                        release.id,
+                                    )}
+                                    entityType="release"
+                                    entityId={release.id}
+                                    style={cardStyles.releaseCover}
+                                />
+                                <View style={cardStyles.releaseTextGroup}>
+                                    <SelectableText
+                                        style={cardStyles.releaseTitle}
+                                        numberOfLines={2}
+                                        ellipsizeMode="tail"
+                                        selectable={false}
+                                    >
+                                        {release.title}
+                                    </SelectableText>
+                                    <SelectableText
+                                        style={cardStyles.releaseDate}
+                                        numberOfLines={1}
+                                        selectable={false}
+                                    >
+                                        {formatDisplayDate(release.date)}
+                                    </SelectableText>
+                                </View>
+                                <MaterialIcons name="chevron-right" size={22} color="#64748B" />
+                            </TouchableOpacity>
+                        ))}
+                        {releases.length === 0 && (
+                            <Text style={cardStyles.emptyText}>No releases available.</Text>
+                        )}
+                    </>
                 )}
             </ScrollView>
         </ScreenContainer>
@@ -125,19 +130,69 @@ const ReleaseGroupCard = ({
 const cardStyles = StyleSheet.create({
     headerRow: {
         flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginBottom: 8,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginBottom: 14,
+        minHeight: 44,
+    },
+    headerTitle: {
+        color: '#94A3B8',
+        fontSize: 13,
+        fontWeight: '600',
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
     },
     shareButton: {
-        flexDirection: 'row',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         alignItems: 'center',
-        gap: 6,
-        borderRadius: 999,
+        justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(56, 189, 248, 0.52)',
-        backgroundColor: 'rgba(56, 189, 248, 0.12)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+        borderColor: 'rgba(154, 160, 170, 0.35)',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    },
+    releaseList: {
+        flex: 1,
+    },
+    releaseListContent: {
+        paddingBottom: 24,
+    },
+    releaseRow: {        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 10,
+        padding: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(148, 163, 184, 0.14)',
+        backgroundColor: 'rgba(30, 41, 59, 0.34)',
+    },
+    releaseCover: {
+        width: 64,
+        height: 64,
+        borderRadius: 8,
+    },
+    releaseTextGroup: {
+        flex: 1,
+        gap: 4,
+    },
+    releaseTitle: {
+        color: '#F1F5F9',
+        fontSize: 14,
+        fontWeight: '600',
+        lineHeight: 18,
+    },
+    releaseDate: {
+        color: '#94A3B8',
+        fontSize: 13,
+    },
+    emptyText: {
+        color: '#94A3B8',
+        fontSize: 14,
+        textAlign: 'center',
+        paddingVertical: 24,
     },
     errorState: {
         alignItems: 'center',
@@ -148,11 +203,6 @@ const cardStyles = StyleSheet.create({
         color: '#FCA5A5',
         fontSize: 14,
         textAlign: 'center',
-    },
-    shareText: {
-        color: '#81ddff',
-        fontSize: 14,
-        fontWeight: '600',
     },
 });
 

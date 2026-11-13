@@ -104,6 +104,7 @@ export const mapReleaseGroupReleasesList = (releases: Release[]): ReleaseGroupRe
     return releases.map((release) => ({
         id: release.id,
         title: nameWithDisambiguation(release.disambiguation, release.title),
+        date: release.date ?? null,
     }));
 };
 
