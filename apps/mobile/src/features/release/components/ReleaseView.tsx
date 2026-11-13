@@ -27,8 +27,6 @@ interface ReleaseViewProps {
     onRetryTracks?: () => void;
 }
 
-const SKELETON_TRACK_WIDTHS = ['68%', '54%', '74%', '48%'] as const;
-
 const ReleaseView = ({
     state,
     onSongPressed,
@@ -108,26 +106,6 @@ const ReleaseView = ({
                                         </Text>
                                     </View>
                                 </View>
-                                {SKELETON_TRACK_WIDTHS.map((titleWidth, index) => (
-                                    <View
-                                        key={`track-skeleton-${index}`}
-                                        style={[
-                                            trackStatusStyles.skeletonRow,
-                                            index % 2 === 0
-                                                ? trackStatusStyles.skeletonRowEven
-                                                : trackStatusStyles.skeletonRowOdd,
-                                        ]}
-                                    >
-                                        <View style={trackStatusStyles.skeletonIndex} />
-                                        <View
-                                            style={[
-                                                trackStatusStyles.skeletonTitle,
-                                                { width: titleWidth },
-                                            ]}
-                                        />
-                                        <View style={trackStatusStyles.skeletonDuration} />
-                                    </View>
-                                ))}
                             </View>
                         )}
 
@@ -193,38 +171,6 @@ const trackStatusStyles = StyleSheet.create({
     subtitle: {
         color: '#94a3b8',
         fontSize: 13,
-    },
-    skeletonRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        height: 48,
-        paddingHorizontal: 14,
-        borderRadius: 8,
-        gap: 12,
-    },
-    skeletonRowEven: {
-        backgroundColor: 'rgba(30, 41, 59, 0.42)',
-    },
-    skeletonRowOdd: {
-        backgroundColor: 'rgba(15, 23, 42, 0.42)',
-    },
-    skeletonIndex: {
-        width: 18,
-        height: 12,
-        borderRadius: 4,
-        backgroundColor: 'rgba(148, 163, 184, 0.22)',
-    },
-    skeletonTitle: {
-        height: 13,
-        borderRadius: 4,
-        backgroundColor: 'rgba(148, 163, 184, 0.26)',
-    },
-    skeletonDuration: {
-        marginLeft: 'auto',
-        width: 34,
-        height: 12,
-        borderRadius: 4,
-        backgroundColor: 'rgba(148, 163, 184, 0.18)',
     },
     retryButton: {
         flexDirection: 'row',

@@ -519,8 +519,8 @@ describe('musicDb repositories', () => {
 
             assert.ok(releases);
             assert.deepEqual(releases, [
-                { id: RELEASE_OLDER, title: 'Hunger for More' },
-                { id: RELEASE_NEWER, title: 'Hunger for More (digital)' },
+                { id: RELEASE_OLDER, title: 'Hunger for More', date: '2003-04-29' },
+                { id: RELEASE_NEWER, title: 'Hunger for More (digital)', date: '2003-06-17' },
             ]);
         });
 

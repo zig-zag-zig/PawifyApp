@@ -1,4 +1,10 @@
-import type { Artist, ArtistCredit, Release, ReleaseGroup } from '@pawify/shared';
+import type {
+    Artist,
+    ArtistCredit,
+    Release,
+    ReleaseGroup,
+    ReleaseGroupReleaseListItem,
+} from '@pawify/shared';
 
 import type { CachedArtistReleases } from '../../utils/types/cacheTypes.js';
 import type { ReleaseGroupCandidate } from '../../features/releases/domain/releaseGroupProcessing.js';
@@ -273,7 +279,7 @@ export const getReleaseGroupReleasesFromMirror = (
         releaseIds: string[],
         isLastPage: boolean,
     ) => Promise<void> | void,
-): { id: string; title: string }[] | null => {
+): ReleaseGroupReleaseListItem[] | null => {
     const db = getMusicDb();
     if (!db) return null;
 
@@ -285,6 +291,7 @@ export const getReleaseGroupReleasesFromMirror = (
     return rows.map((row) => ({
         id: row.mbid,
         title: nameWithDisambiguation(row.disambiguation, row.title),
+        date: row.date,
     }));
 };
 

@@ -187,4 +187,6 @@ export type NewReleaseCoverTaskResult = {
 export type ReleaseGroupReleaseListItem = {
   id: string;
   title: string;
+  /** Release date as MusicBrainz returns it (e.g. `2025-03-14` or `2025-03`), null when unknown. */
+  date: string | null;
 };
