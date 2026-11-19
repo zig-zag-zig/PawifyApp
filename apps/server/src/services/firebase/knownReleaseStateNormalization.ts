@@ -67,6 +67,24 @@ const normalizeStateValue = (stored: unknown): KnownReleaseGroupStateValue | nul
         return null;
     }
 
+    // Runtime state is canonical only when all fields are present. Partial objects
+    // are migration input, not a safe baseline: accepting them as a complete state
+    // can turn a missing max-track count into a false content notification.
+    if (
+        !Object.prototype.hasOwnProperty.call(stored, 'lastNotifiedDate') ||
+        !Object.prototype.hasOwnProperty.call(stored, 'maxOfficialTrackCount') ||
+        !Object.prototype.hasOwnProperty.call(stored, 'editionKeywords') ||
+        !(stored.contentBaselined === undefined || stored.contentBaselined === false) ||
+        (stored.lastNotifiedDate !== null && typeof stored.lastNotifiedDate !== 'string') ||
+        (stored.maxOfficialTrackCount !== null &&
+            (typeof stored.maxOfficialTrackCount !== 'number' ||
+                !Number.isFinite(stored.maxOfficialTrackCount) ||
+                stored.maxOfficialTrackCount < 0)) ||
+        !Array.isArray(stored.editionKeywords)
+    ) {
+        return null;
+    }
+
     return {
         lastNotifiedDate: normalizeLastNotifiedDate(stored.lastNotifiedDate),
         maxOfficialTrackCount: normalizeMaxOfficialTrackCount(stored.maxOfficialTrackCount),
@@ -106,6 +124,9 @@ export const normalizeKnownReleaseGroupStateWithStatus = (
     for (const [artistId, groupMap] of Object.entries(value)) {
         assertRtdbKey('artistId', artistId);
         if (!isPlainObject(groupMap)) {
+            if (groupMap !== null && groupMap !== undefined) {
+                unmigratedArtistIds.push(artistId);
+            }
             continue;
         }
 

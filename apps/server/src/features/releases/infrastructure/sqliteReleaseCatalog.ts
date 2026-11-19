@@ -4,6 +4,7 @@ import {
     getArtistReleasesFromMirror,
     getReleaseFromMirror,
     getReleaseGroupFromMirror,
+    getReleaseGroupReleaseIdsFromMirror,
     releaseExistsInMirror,
 } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import {
@@ -49,6 +50,9 @@ export const sqliteReleaseCatalog: ReleaseCatalogGateway = {
     },
     getReleaseGroupReleases: async (releaseGroupId) => {
         return getReleaseGroupFromMirror(releaseGroupId);
+    },
+    getReleaseGroupReleaseIds: async (releaseGroupId) => {
+        return getReleaseGroupReleaseIdsFromMirror(releaseGroupId);
     },
     getRelease: async (releaseId) => getReleaseFromMirror(releaseId),
     releaseExists: async (releaseId) => releaseExistsInMirror(releaseId),

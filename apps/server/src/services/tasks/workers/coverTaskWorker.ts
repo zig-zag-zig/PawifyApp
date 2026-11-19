@@ -77,8 +77,6 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
 ): Promise<{ covers: { [releaseId: string]: string | null | undefined } }> => {
     const covers: { [releaseId: string]: string | null | undefined } = {};
     const startedAt = Date.now();
-    let firstError: unknown;
-
     // Entries written before new-release detection switched to release groups carry
     // no `releaseGroupId`. Skipping them (the old behaviour) left them with no cover
     // plan at all, so the placeholder never cleared no matter how often the feed was
@@ -141,9 +139,9 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
                 covers[releaseId] = cover.state.url;
             }
         } catch (error) {
-            if (!firstError) {
-                firstError = error;
-            }
+            logger.debug('new release cover entry failed; preserving partial task result', {
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
     });
 
@@ -161,20 +159,13 @@ export const fetchAndUpsertNewReleaseGroupCovers = async (
                 );
                 covers[releaseId] = cover.state.url;
             } catch (error) {
-                if (!firstError) {
-                    firstError = error;
-                }
+                logger.debug('standalone release cover failed; preserving partial task result', {
+                    releaseId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
             }
         },
     );
-
-    if (firstError) {
-        logger.warn('new release cover batch completed with errors', {
-            releaseGroupCount: pageEntries.length,
-            durationMs: Date.now() - startedAt,
-        });
-        throw firstError;
-    }
 
     logger.debug('new release cover batch completed', {
         releaseGroupCount: pageEntries.length,
@@ -192,8 +183,6 @@ export const fetchAndUpsertArtistReleaseGroupCovers = async (
 ): Promise<ReleaseGroupCoverTaskResult> => {
     const resultMap: { [releaseGroupId: string]: string | null | undefined } = {};
     const startedAt = Date.now();
-    let firstError: unknown;
-
     // Search pages carry group ids but no release ids. The artist page carries the
     // ids, which is why it was fast: it could use Deezer/Tidal before CAA. Previously
     // an empty entry produced an empty provider-url aggregate and silently forced
@@ -237,20 +226,12 @@ export const fetchAndUpsertArtistReleaseGroupCovers = async (
             );
             resultMap[entry.releaseGroupId] = cover.state.url;
         } catch (error) {
-            if (!firstError) {
-                firstError = error;
-            }
+            logger.debug('release-group cover entry failed; preserving partial task result', {
+                releaseGroupId: entry.releaseGroupId,
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
     });
-
-    if (firstError) {
-        logger.warn('release-group cover batch completed with errors', {
-            artistId,
-            releaseGroupCount: pageEntries.length,
-            durationMs: Date.now() - startedAt,
-        });
-        throw firstError;
-    }
 
     logger.debug('release-group cover batch completed', {
         artistId,

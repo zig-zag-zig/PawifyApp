@@ -89,22 +89,19 @@ describe('normalizeKnownReleaseGroupState', () => {
         assert.equal(plan.groupsChanged, false);
     });
 
-    it('normalizes partial object values without inventing content', () => {
-        const state = normalizeKnownReleaseGroupState({
+    it('marks partial object values as unmigrated instead of inventing content', () => {
+        const result = normalizeKnownReleaseGroupStateWithStatus({
             'artist-1': {
                 'group-1': {
                     lastNotifiedDate: ' 2026-05-01 ',
                     maxOfficialTrackCount: -3,
-                    editionKeywords: ['deluxe', 'deluxe', 'not-a-keyword', 5],
+                    editionKeywords: ['deluxe', 'deluxe'],
                 },
             },
         });
 
-        assert.deepEqual(state['artist-1']?.['group-1'], {
-            lastNotifiedDate: '2026-05-01',
-            maxOfficialTrackCount: null,
-            editionKeywords: ['deluxe'],
-        });
+        assert.deepEqual(result.state['artist-1'], {});
+        assert.deepEqual(result.unmigratedArtistIds, ['artist-1']);
     });
 
     it('ignores other value types instead of guessing', () => {

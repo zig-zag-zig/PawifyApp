@@ -30,12 +30,16 @@ export const createResolveReleaseGroupReleaseCoversUseCase =
             return { releaseCovers: {}, releaseCoverTaskId: null };
         }
 
-        const group = await releaseCatalogGateway.getReleaseGroupReleases(releaseGroupId);
-        if (!group) {
+        const knownIdsResult = releaseCatalogGateway.getReleaseGroupReleaseIds
+            ? await releaseCatalogGateway.getReleaseGroupReleaseIds(releaseGroupId)
+            : ((await releaseCatalogGateway.getReleaseGroupReleases(releaseGroupId))?.releases.map(
+                  (release) => release.id,
+              ) ?? null);
+        if (!knownIdsResult) {
             return { releaseCovers: {}, releaseCoverTaskId: null };
         }
 
-        const knownIds = new Set(group.releases.map((release) => release.id));
+        const knownIds = new Set(knownIdsResult);
         const requested = releaseIds.filter((releaseId) => knownIds.has(releaseId));
         if (requested.length === 0) {
             return { releaseCovers: {}, releaseCoverTaskId: null };

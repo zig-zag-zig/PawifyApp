@@ -48,6 +48,8 @@ export interface ReleaseCatalogGateway {
         page: ArtistReleasesPage,
     ): Promise<ArtistReleasesPageResult>;
     getReleaseGroupReleases(releaseGroupId: string): Promise<ReleaseGroupReleasesResult | null>;
+    /** Id-only variant for cover-task replay; avoids loading edition metadata. */
+    getReleaseGroupReleaseIds?(releaseGroupId: string): Promise<string[] | null>;
     getRelease(releaseId: string): Promise<Release | null>;
     releaseExists(releaseId: string): Promise<boolean>;
 }

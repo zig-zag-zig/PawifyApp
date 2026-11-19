@@ -54,7 +54,10 @@ export const parseLegacyKnownValue = (value: unknown): ParsedKnownValue | null =
           )
         : [];
     const complete =
-        hasCount && Array.isArray(value.editionKeywords) && value.contentBaselined !== false;
+        hasCount &&
+        Array.isArray(value.editionKeywords) &&
+        value.contentBaselined !== false &&
+        (value.lastNotifiedDate === null || typeof value.lastNotifiedDate === 'string');
 
     return {
         lastNotifiedDate: date,
