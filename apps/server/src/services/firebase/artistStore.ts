@@ -1,5 +1,6 @@
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { StoredNewRelease } from './types.js';
+import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { readFollowingArtistsMap, writeFollowingArtistsMap } from './followingStore.js';
 import {
     deleteKnownArtistReleaseGroupStateFromDb,
@@ -55,7 +56,7 @@ const removeUnfollowedArtistNewReleases = async (
 export const saveArtistAndKnownReleasesToDb = async (
     userId: string,
     artistId: string,
-    groupState: ReadonlyMap<string, string>,
+    groupState: ReadonlyMap<string, KnownReleaseGroupStateValue>,
     newReleases: StoredNewRelease[],
     artistSummary?: FollowedArtistSummary,
 ): Promise<void> => {

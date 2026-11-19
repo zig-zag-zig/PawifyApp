@@ -1,26 +1,23 @@
 import {
     getKnownArtistReleaseGroupStateFromDb,
-    getKnownArtistReleaseIdsFromDb,
-    getKnownReleasesFromDb,
     getKnownReleaseGroupStateFromDb,
 } from './knownReleasesStore.js';
 import { getNewReleasesSnapshotFromDb, removeNewReleasesFromDb } from './newReleasesStore.js';
+import type { KnownReleaseGroupStateMap } from './knownReleaseStateNormalization.js';
+import { collectPrunedNewReleaseIds } from './newReleasePruning.js';
+import { getReleaseToGroupIdMapFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 
-export const getCurrentReleases = async (userId: string, artistId: string): Promise<string[]> => {
-    return await getKnownArtistReleaseIdsFromDb(userId, artistId);
-};
-
-/** Known release groups with their last notification event date. */
+/** Known release groups with their notification and content baseline. */
 export const getCurrentReleaseGroupState = async (
     userId: string,
     artistId: string,
-): Promise<{ [groupId: string]: string }> => {
+) => {
     return await getKnownArtistReleaseGroupStateFromDb(userId, artistId);
 };
 
 export const getAllKnownReleaseGroupStates = async (
     userId: string,
-): Promise<{ [artistId: string]: { [groupId: string]: string } }> => {
+): Promise<KnownReleaseGroupStateMap> => {
     return await getKnownReleaseGroupStateFromDb(userId);
 };
 
@@ -38,50 +35,27 @@ export const removePrunedNewReleaseGroups = async (
 ): Promise<boolean> => {
     if (releaseGroupIds.length === 0) return false;
 
-    const prunedGroupIds = new Set(releaseGroupIds);
     const { newReleasesMap } = await getNewReleasesSnapshotFromDb(userId);
     const knownStatesByArtist = await getKnownReleaseGroupStateFromDb(userId);
 
-    const releaseIdsToRemove = Object.entries(newReleasesMap)
-        .filter(([, entry]) => {
-            const groupId = entry.releaseGroupId;
-            // Entries stored before the migration carry no group id; they are keyed
-            // by a release id and are handled by the release-id path below.
-            return groupId !== null && groupId !== undefined && prunedGroupIds.has(groupId);
-        })
-        .map(([releaseId]) => releaseId)
-        .filter((releaseId) => {
-            const groupId = newReleasesMap[releaseId]?.releaseGroupId;
-            return !Object.values(knownStatesByArtist).some(
-                (state) =>
-                    Object.prototype.hasOwnProperty.call(state, releaseId) ||
-                    (groupId !== null && groupId !== undefined && Object.prototype.hasOwnProperty.call(state, groupId)),
-            );
-        });
-
-    if (releaseIdsToRemove.length > 0) {
-        await removeNewReleasesFromDb(userId, releaseIdsToRemove);
+    const legacyReleaseIds = Object.values(newReleasesMap)
+        .filter((entry) => !entry.releaseGroupId)
+        .map((entry) => entry.id);
+    let releaseToGroupId = new Map<string, string>();
+    if (legacyReleaseIds.length > 0) {
+        try {
+            releaseToGroupId =
+                getReleaseToGroupIdMapFromMirror(legacyReleaseIds) ?? releaseToGroupId;
+        } catch {
+            // Mirror unavailable: leave legacy entries rather than guessing.
+        }
     }
 
-    return releaseIdsToRemove.length > 0;
-};
-
-export const removePrunedNewReleases = async (
-    userId: string,
-    releaseIds: string[],
-): Promise<boolean> => {
-    if (releaseIds.length === 0) return false;
-
-    const { newReleasesMap } = await getNewReleasesSnapshotFromDb(userId);
-    const knownReleasesByArtist = await getKnownReleasesFromDb(userId);
-    const releaseIdsToRemove = releaseIds.filter((releaseId) => {
-        if (!newReleasesMap[releaseId]) {
-            return false;
-        }
-
-        return !Object.values(knownReleasesByArtist).some((knownReleaseIds) =>
-            knownReleaseIds.includes(releaseId),
-        );
+    const releaseIdsToRemove = collectPrunedNewReleaseIds({
+        newReleasesMap,
+        knownStatesByArtist,
+        prunedGroupIds: releaseGroupIds,
+        releaseToGroupId,
     });
 
     if (releaseIdsToRemove.length > 0) {

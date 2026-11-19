@@ -16,13 +16,12 @@ import { cacheConfig } from '../../config/runtimeConfig.js';
 const logger = createLogger('services.musicbrainz.releaseLookup');
 
 /**
- * Combines the API release (authoritative for the tracklist) with mirror metadata.
+ * Combines API release data with mirror metadata.
  *
- * The API wins where a wrong value would break playback or navigation: the media
- * list, the release group it was fetched with, and the artist it belongs to. The
- * mirror wins for fields it stores verbatim and the API only echoes back, and it is
- * only used where it actually has a value — an empty mirror list must not blank out
- * credits or links that the API did return.
+ * Tracklists are mirror-first when the mirror's track data is ready; the API is the
+ * fallback. For header metadata the API wins where a wrong value would break
+ * navigation (release group, artist), while mirror values fill fields the API omitted
+ * and never blank out valid API credits or links.
  */
 export const mergeReleaseMetadata = (
     apiRelease: Release,
@@ -42,6 +41,9 @@ export const mergeReleaseMetadata = (
     externalLinks:
         metadata.externalLinks.length > 0 ? metadata.externalLinks : apiRelease.externalLinks,
     artistId: apiRelease.artistId || metadata.artistId,
+    barcode: metadata.barcode ?? apiRelease.barcode ?? null,
+    status: metadata.status ?? apiRelease.status ?? null,
+    country: metadata.country ?? apiRelease.country ?? null,
 });
 
 const fetchReleaseMetadataFromApi = async (releaseId: string): Promise<Release | null> => {
@@ -212,9 +214,9 @@ const unpackCachedTracklist = (
 /**
  * Release tracklist (`POST /getReleaseTracks`).
  *
- * The mirror does not store recordings/tracks, so the tracklist is fetched on its
- * own endpoint while the client already displays and interacts with the release
- * header.
+ * Served from the mirror when `tracksReadiness` says its media/track data is ready,
+ * with the MusicBrainz API as fallback. Kept on its own endpoint so the release
+ * header can render while the tracklist is still loading.
  */
 export const getReleaseTracks = async (releaseId: string): Promise<Release | null> => {
     const cacheKey = `release:tracks:${releaseId}`;

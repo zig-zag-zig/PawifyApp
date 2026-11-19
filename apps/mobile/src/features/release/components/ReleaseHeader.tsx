@@ -2,7 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import React from 'react';
-import { Share, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SelectableText } from '../../../components/ui';
 import ExternalLinksGrid from '../../../components/ExternalLinksGrid';
 import {
@@ -12,6 +12,8 @@ import {
 import { ResponsiveHeaderImage } from '../../../components/ResponsiveHeaderImage';
 import {
     formatDisplayDate,
+    deriveReleaseGroupReleaseListMetadata,
+    isOfficialReleaseStatus,
     nameWithDisambiguation,
     type ArtistCredit,
     type ExternalLinkService,
@@ -83,6 +85,40 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
             ),
         [release.media],
     );
+    const editionMetadata = React.useMemo(
+        () => deriveReleaseGroupReleaseListMetadata(release),
+        [release.media],
+    );
+    const editionDetails = React.useMemo(() => {
+        const details: Array<{ label: string; value: string }> = [];
+
+        if (release.barcode?.trim()) {
+            details.push({ label: 'Barcode', value: release.barcode.trim() });
+        }
+        if (release.country?.trim()) {
+            details.push({ label: 'Country', value: release.country.trim() });
+        }
+        if (release.status?.trim() && !isOfficialReleaseStatus(release.status)) {
+            details.push({ label: 'Status', value: release.status.trim() });
+        }
+        if (editionMetadata.formats.length > 0) {
+            details.push({ label: 'Format', value: editionMetadata.formats.join(' + ') });
+        }
+        if (
+            typeof editionMetadata.trackCount === 'number' &&
+            editionMetadata.trackCount > 0
+        ) {
+            details.push({
+                label: 'Tracks',
+                value:
+                    editionMetadata.trackCount === 1
+                        ? '1 track'
+                        : `${editionMetadata.trackCount} tracks`,
+            });
+        }
+
+        return details;
+    }, [editionMetadata, release.barcode, release.country, release.status]);
 
     return (
         <View style={{ backgroundColor: styles.container.backgroundColor }}>
@@ -160,6 +196,20 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
                         </View>
                     ) : null}
                 </View>
+
+                {editionDetails.length > 0 && (
+                    <View style={editionStyles.container} accessibilityLabel="Edition details">
+                        <Text style={editionStyles.heading}>Edition details</Text>
+                        {editionDetails.map((detail) => (
+                            <View key={detail.label} style={editionStyles.row}>
+                                <Text style={editionStyles.label}>{detail.label}</Text>
+                                <SelectableText style={editionStyles.value} selectable={false}>
+                                    {detail.value}
+                                </SelectableText>
+                            </View>
+                        ))}
+                    </View>
+                )}
 
                 <ExternalLinksGrid
                     links={release.externalLinks}
@@ -264,6 +314,46 @@ const tagStyles = StyleSheet.create({
     },
     tagTextAmber: {
         color: '#E8B86D',
+    },
+});
+
+const editionStyles = StyleSheet.create({
+    container: {
+        marginTop: 4,
+        marginBottom: 14,
+        padding: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(148, 163, 184, 0.18)',
+        backgroundColor: 'rgba(30, 41, 59, 0.28)',
+    },
+    heading: {
+        color: '#94A3B8',
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+        marginBottom: 8,
+    },
+    row: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 16,
+        paddingVertical: 3,
+    },
+    label: {
+        color: '#94A3B8',
+        fontSize: 13,
+        lineHeight: 18,
+    },
+    value: {
+        color: '#E2E8F0',
+        fontSize: 13,
+        fontWeight: '600',
+        lineHeight: 18,
+        flexShrink: 1,
+        textAlign: 'right',
     },
 });
 

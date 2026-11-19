@@ -4,7 +4,11 @@ import React from 'react';
 import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { InlineLink, ScreenContainer, SelectableText } from '../../../components/ui';
-import { formatDisplayDate, ReleaseGroupReleaseListItem } from '@pawify/shared';
+import { ReleaseGroupReleaseListItem } from '@pawify/shared';
+import {
+    formatReleaseEditionAccessibilityLabel,
+    formatReleaseEditionSummary,
+} from '../domain/releaseEditionSummary';
 
 interface ReleaseGroupCardProps {
     releases: ReleaseGroupReleaseListItem[];
@@ -78,45 +82,64 @@ const ReleaseGroupCard = ({
                     </View>
                 ) : (
                     <>
-                        {releases.map((release) => (
-                            <TouchableOpacity
-                                key={`release-${release.id}`}
-                                onPress={() => onPress(release)}
-                                activeOpacity={0.72}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Open release ${release.title}`}
-                                style={cardStyles.releaseRow}
-                            >
-                                <CachedImageComponent
-                                    imageUrl={releaseCovers[release.id]}
-                                    type="release"
-                                    showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(
-                                        release.id,
+                        {releases.map((release) => {
+                            const editionSummary = formatReleaseEditionSummary({
+                                formats: release.formats,
+                                trackCount: release.trackCount,
+                                date: release.date,
+                                status: release.status,
+                            });
+
+                            return (
+                                <TouchableOpacity
+                                    key={`release-${release.id}`}
+                                    onPress={() => onPress(release)}
+                                    activeOpacity={0.72}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={formatReleaseEditionAccessibilityLabel(
+                                        release.title,
+                                        editionSummary,
                                     )}
-                                    entityType="release"
-                                    entityId={release.id}
-                                    style={cardStyles.releaseCover}
-                                />
-                                <View style={cardStyles.releaseTextGroup}>
-                                    <SelectableText
-                                        style={cardStyles.releaseTitle}
-                                        numberOfLines={2}
-                                        ellipsizeMode="tail"
-                                        selectable={false}
-                                    >
-                                        {release.title}
-                                    </SelectableText>
-                                    <SelectableText
-                                        style={cardStyles.releaseDate}
-                                        numberOfLines={1}
-                                        selectable={false}
-                                    >
-                                        {formatDisplayDate(release.date)}
-                                    </SelectableText>
-                                </View>
-                                <MaterialIcons name="chevron-right" size={22} color="#64748B" />
-                            </TouchableOpacity>
-                        ))}
+                                    style={cardStyles.releaseRow}
+                                >
+                                    <CachedImageComponent
+                                        imageUrl={releaseCovers[release.id]}
+                                        type="release"
+                                        showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(
+                                            release.id,
+                                        )}
+                                        entityType="release"
+                                        entityId={release.id}
+                                        style={cardStyles.releaseCover}
+                                    />
+                                    <View style={cardStyles.releaseTextGroup}>
+                                        <SelectableText
+                                            style={cardStyles.releaseTitle}
+                                            numberOfLines={2}
+                                            ellipsizeMode="tail"
+                                            selectable={false}
+                                        >
+                                            {release.title}
+                                        </SelectableText>
+                                        {editionSummary ? (
+                                            <SelectableText
+                                                style={cardStyles.releaseEdition}
+                                                numberOfLines={2}
+                                                ellipsizeMode="tail"
+                                                selectable={false}
+                                            >
+                                                {editionSummary}
+                                            </SelectableText>
+                                        ) : null}
+                                    </View>
+                                    <MaterialIcons
+                                        name="chevron-right"
+                                        size={22}
+                                        color="#64748B"
+                                    />
+                                </TouchableOpacity>
+                            );
+                        })}
                         {releases.length === 0 && (
                             <Text style={cardStyles.emptyText}>No releases available.</Text>
                         )}
@@ -159,7 +182,8 @@ const cardStyles = StyleSheet.create({
     releaseListContent: {
         paddingBottom: 24,
     },
-    releaseRow: {        flexDirection: 'row',
+    releaseRow: {
+        flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
         marginBottom: 10,
@@ -184,9 +208,10 @@ const cardStyles = StyleSheet.create({
         fontWeight: '600',
         lineHeight: 18,
     },
-    releaseDate: {
+    releaseEdition: {
         color: '#94A3B8',
         fontSize: 13,
+        lineHeight: 18,
     },
     emptyText: {
         color: '#94A3B8',

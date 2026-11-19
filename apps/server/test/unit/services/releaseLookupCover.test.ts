@@ -58,6 +58,8 @@ const apiReleasePayload = (includeDeezerRelation: boolean) => ({
     date: '2026-10-04',
     disambiguation: '',
     country: 'XW',
+    status: 'Official',
+    barcode: '0123456789012',
     'release-group': {
         id: GROUP_ID,
         title: 'No Competition',
@@ -84,6 +86,23 @@ const apiReleasePayload = (includeDeezerRelation: boolean) => ({
     'cover-art-archive': { artwork: false, count: 0 },
 });
 
+
+const createReleaseUseCaseForTest = async () => {
+    const [{ createGetReleaseUseCase }, { getRelease }] = await Promise.all([
+        import('../../../src/features/releases/usecases/getRelease.js'),
+        import('../../../src/services/musicbrainz/releaseLookup.js'),
+    ]);
+    return createGetReleaseUseCase({
+        releaseCatalogGateway: { getRelease },
+        assetPlanner: {
+            planReleaseArtistProfileImages: async () => ({ resolved: {}, taskId: null }),
+        },
+        requestDeduper: {
+            run: async <T,>(_key: string, worker: () => Promise<T>) => await worker(),
+        },
+    } as any);
+};
+
 const installApiStubs = (includeDeezerRelation: boolean): Call[] =>
     stubFetch((call) => {
         if (call.url.includes(`/ws/2/release/${RELEASE_ID}`)) {
@@ -107,6 +126,15 @@ describe('getRelease cover resolution', () => {
 
         assert.ok(release);
         assert.equal(release.cover_url, DEEZER_COVER);
+        assert.equal(release.country, 'XW');
+        assert.equal(release.status, 'Official');
+        assert.equal(release.barcode, '0123456789012');
+
+        const useCase = await createReleaseUseCaseForTest();
+        const result = await useCase('user-1', RELEASE_ID);
+        assert.equal(result?.release.country, 'XW');
+        assert.equal(result?.release.status, 'Official');
+        assert.equal(result?.release.barcode, '0123456789012');
 
         const coverArtCalls = calls.filter((call) => call.url.includes('/invoke/coverartarchive/'));
         assert.equal(coverArtCalls.length, 0);
@@ -144,6 +172,9 @@ describe('getRelease cover resolution', () => {
                     title: 'No Competition',
                     date: '2026-10-04',
                     release_group_mbid: GROUP_ID,
+                    country: 'US',
+                    status: 'Official',
+                    barcode: '9876543210987',
                 },
             ],
             releaseArtists: [
@@ -197,6 +228,16 @@ describe('getRelease cover resolution', () => {
         const release = await getRelease(RELEASE_ID);
         assert.ok(release);
         assert.equal(release.title, 'No Competition');
+        assert.equal(release.country, 'US');
+        assert.equal(release.status, 'Official');
+        assert.equal(release.barcode, '9876543210987');
+
+        const useCase = await createReleaseUseCaseForTest();
+        const result = await useCase('user-1', RELEASE_ID);
+        assert.equal(result?.release.country, 'US');
+        assert.equal(result?.release.status, 'Official');
+        assert.equal(result?.release.barcode, '9876543210987');
+
         assert.equal(
             release.cover_url,
             `https://coverartarchive.org/release/${RELEASE_ID}/front-500`,

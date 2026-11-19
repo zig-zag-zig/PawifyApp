@@ -1,7 +1,7 @@
 import { formatDate, type ArtistCredit } from '@pawify/shared';
 
 import type { StoredNewRelease } from '../../../services/firebase/types.js';
-import type { ReleaseGroupCandidate } from './releaseGroupProcessing.js';
+import type { ReleaseGroupEvent } from './releaseGroupProcessing.js';
 
 const mapArtistsById = (credits: ArtistCredit[]): { [artistId: string]: string } => {
     const artists: { [artistId: string]: string } = {};
@@ -14,27 +14,32 @@ const mapArtistsById = (credits: ArtistCredit[]): { [artistId: string]: string }
 };
 
 /**
- * Builds the feed entry for a newly discovered release group.
+ * Builds the feed entry for a new release-group event.
  *
- * `id` stays a release id (the group's newest pressing) because that is what the
- * release screen and the cover task understand, while `releaseGroupId` is what
- * detection, notification identity and pruning are keyed by. `releaseCount` lets a
- * tap decide between the release screen and the group screen without a second call.
+ * `id` stays a release id because that is what the release screen and the cover
+ * task understand. It is the edition that caused the event (the newest Official
+ * pressing for a new group, the track/keyword carrier for a content event), not an
+ * unrelated pressing. `releaseGroupId` remains the detection identity, and
+ * `notificationReason`/`trackCount`/`editionKeywords` let the client explain what
+ * changed.
  *
  * Pure on purpose: the entry shape is what other code relies on, and it lives here
  * rather than next to the scan so it can be tested without Firebase.
  */
 export const toStoredNewRelease = (
-    group: ReleaseGroupCandidate,
+    event: ReleaseGroupEvent,
     credits: ArtistCredit[],
 ): StoredNewRelease => ({
-    id: group.newestReleaseId,
-    title: group.title,
-    date: group.date,
-    disambiguation: group.disambiguation,
+    id: event.edition?.releaseId ?? event.group.newestReleaseId,
+    title: event.group.title,
+    date: event.date,
+    disambiguation: event.group.disambiguation,
     artists: mapArtistsById(credits),
-    date_for_display: formatDate(group.date),
-    'primary-type': group.primaryType,
-    releaseGroupId: group.id,
-    releaseCount: group.releaseIds.length,
+    date_for_display: formatDate(event.date),
+    'primary-type': event.group.primaryType,
+    releaseGroupId: event.group.id,
+    releaseCount: event.group.releaseIds.length,
+    trackCount: event.trackCount,
+    editionKeywords: event.editionKeywords,
+    notificationReason: event.reason,
 });

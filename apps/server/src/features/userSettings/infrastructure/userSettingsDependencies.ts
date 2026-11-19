@@ -3,7 +3,10 @@ import {
     getReleaseNotificationSettingsFromDb,
     saveReleaseNotificationSettingsToDb,
 } from '../../../services/firebase/userSettingsStore.js';
-import { replaceKnownArtistReleaseGroupStateInDb } from '../../../services/firebase/knownReleasesStore.js';
+import {
+    getKnownArtistReleaseGroupStateFromDb,
+    replaceKnownArtistReleaseGroupStateInDb,
+} from '../../../services/firebase/knownReleasesStore.js';
 import {
     readNewReleasesState,
     writeNewReleasesState,
@@ -22,6 +25,8 @@ export const userSettingsDependencies: UserSettingsUseCaseDependencies = {
         getFollowedArtistIds: async (userId) => await getFollowingFromDb(userId),
     },
     knownReleaseRepository: {
+        getArtistReleaseGroupState: async (userId, artistId) =>
+            await getKnownArtistReleaseGroupStateFromDb(userId, artistId),
         replaceArtistReleaseGroupState: async (userId, artistId, groupState) => {
             await replaceKnownArtistReleaseGroupStateInDb(userId, artistId, groupState);
         },
@@ -41,8 +46,8 @@ export const userSettingsDependencies: UserSettingsUseCaseDependencies = {
         },
     },
     releaseCatalogGateway: {
-        getArtistReleases: async (artistId) =>
-            (await getArtistReleaseGroupCatalog(artistId)).groups,
+        getArtistReleaseCatalog: async (artistId) =>
+            await getArtistReleaseGroupCatalog(artistId),
     },
     releaseNotificationSettingsRepository: {
         getSettings: async (userId) => await getReleaseNotificationSettingsFromDb(userId),

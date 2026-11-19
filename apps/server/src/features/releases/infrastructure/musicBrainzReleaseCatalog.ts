@@ -12,6 +12,7 @@ import type { CachedArtistReleases } from '../../../utils/types/cacheTypes.js';
 import {
     getArtistReleasesFromMirror,
     getReleaseGroupReleasesFromMirror,
+    getReleaseTracksFromMirror,
     releaseExistsInMirror,
 } from '../../../infrastructure/musicDb/musicDbRepositories.js';
 import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
@@ -159,7 +160,20 @@ export const musicBrainzReleaseCatalog: ReleaseCatalogGateway = {
         });
     },
     getRelease: async (releaseId) => await getReleaseFromService(releaseId),
-    getReleaseTracks: async (releaseId) => await getReleaseTracksFromService(releaseId),
+    getReleaseTracks: async (releaseId) => {
+        if (isMusicDbEnabled()) {
+            try {
+                const fromMirror = getReleaseTracksFromMirror(releaseId);
+                if (fromMirror !== null) {
+                    const metadata = await getReleaseFromService(releaseId);
+                    if (metadata) return { ...metadata, media: fromMirror };
+                }
+            } catch (error) {
+                logger.warn('mirror release tracks failed; using MusicBrainz API', { releaseId, error });
+            }
+        }
+        return await getReleaseTracksFromService(releaseId);
+    },
     releaseExists: async (releaseId) =>
         await resolveReleaseExistence(
             releaseId,

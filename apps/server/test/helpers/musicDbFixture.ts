@@ -15,7 +15,8 @@ import Database from 'better-sqlite3';
  */
 export const MUSIC_DB_SCHEMA = `
 CREATE TABLE artists (
-    mbid TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mbid TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     disambiguation TEXT,
     type TEXT,
@@ -25,12 +26,13 @@ CREATE TABLE artists (
     begin_area_name TEXT
 );
 CREATE TABLE artist_aliases (
-    artist_mbid TEXT NOT NULL,
+    artist_id INTEGER NOT NULL,
     name TEXT NOT NULL,
-    PRIMARY KEY (artist_mbid, name)
+    PRIMARY KEY (artist_id, name)
 );
 CREATE TABLE artist_relationships (
-    artist_mbid TEXT NOT NULL,
+    artist_id INTEGER NOT NULL,
+    related_artist_id INTEGER,
     related_artist_mbid TEXT NOT NULL,
     related_artist_name TEXT NOT NULL,
     related_artist_type TEXT,
@@ -38,35 +40,91 @@ CREATE TABLE artist_relationships (
     direction TEXT NOT NULL,
     begin_date TEXT,
     end_date TEXT,
-    PRIMARY KEY (artist_mbid, related_artist_mbid, type, direction)
+    PRIMARY KEY (artist_id, related_artist_mbid, type, direction)
 );
 CREATE TABLE release_groups (
-    mbid TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mbid TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     primary_type TEXT,
     disambiguation TEXT,
     first_release_date TEXT
 );
 CREATE TABLE release_group_artists (
-    release_group_mbid TEXT NOT NULL,
-    artist_mbid TEXT NOT NULL,
+    release_group_id INTEGER NOT NULL,
+    artist_id INTEGER NOT NULL,
     artist_name TEXT NOT NULL,
     join_phrase TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL
 );
 CREATE TABLE releases (
-    mbid TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mbid TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     date TEXT,
     disambiguation TEXT,
-    release_group_mbid TEXT
+    release_group_mbid TEXT,
+    country TEXT,
+    barcode TEXT,
+    status TEXT
 );
 CREATE TABLE release_artists (
-    release_mbid TEXT NOT NULL,
-    artist_mbid TEXT NOT NULL,
+    release_id INTEGER NOT NULL,
+    artist_id INTEGER NOT NULL,
     artist_name TEXT NOT NULL,
     join_phrase TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL
+);
+CREATE INDEX idx_release_artists_artist_rel ON release_artists(artist_id, release_id);
+CREATE TABLE media (
+    release_id INTEGER NOT NULL REFERENCES releases(id),
+    position INTEGER NOT NULL,
+    format TEXT,
+    track_count INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (release_id, position)
+) WITHOUT ROWID;
+CREATE TABLE recordings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mbid TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    length INTEGER,
+    disambiguation TEXT NOT NULL DEFAULT '',
+    first_release_date TEXT,
+    video INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE recording_artists (
+    recording_id INTEGER NOT NULL REFERENCES recordings(id),
+    artist_id INTEGER NOT NULL,
+    artist_name TEXT NOT NULL,
+    join_phrase TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL,
+    PRIMARY KEY (recording_id, position)
+) WITHOUT ROWID;
+CREATE TABLE tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    release_id INTEGER NOT NULL REFERENCES releases(id),
+    medium_position INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    number TEXT NOT NULL DEFAULT '',
+    title TEXT,
+    length INTEGER,
+    recording_id INTEGER REFERENCES recordings(id),
+    UNIQUE (release_id, medium_position, position)
+);
+CREATE TABLE track_artists (
+    track_id INTEGER NOT NULL REFERENCES tracks(id),
+    artist_id INTEGER NOT NULL,
+    artist_name TEXT NOT NULL,
+    join_phrase TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL,
+    PRIMARY KEY (track_id, position)
+) WITHOUT ROWID;
+CREATE TABLE recording_lyrics (
+    recording_id INTEGER NOT NULL REFERENCES recordings(id),
+    url TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (recording_id, url)
 );
 CREATE TABLE external_links (
     entity_type TEXT NOT NULL,
@@ -119,9 +177,17 @@ CREATE VIRTUAL TABLE search_fts_release_group USING fts5(
     ref_count UNINDEXED,
     tokenize = 'unicode61 remove_diacritics 2'
 );
-CREATE VIRTUAL TABLE search_fts_release USING fts5(
-    entity_mbid UNINDEXED,
-    heading,
+CREATE VIRTUAL TABLE search_fts_recording USING fts5(
+    recording,
+    recordingaccent,
+    artist,
+    artistname,
+    creditname,
+    release,
+    comment,
+    aux,
+    content = '',
+    contentless_delete = 1,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 `;
@@ -134,6 +200,12 @@ export type MusicDbSeed = {
     releaseGroupArtists?: Record<string, unknown>[];
     releases?: Record<string, unknown>[];
     releaseArtists?: Record<string, unknown>[];
+    media?: Record<string, unknown>[];
+    recordings?: Record<string, unknown>[];
+    tracks?: Record<string, unknown>[];
+    trackArtists?: Record<string, unknown>[];
+    recordingArtists?: Record<string, unknown>[];
+    recordingLyrics?: Record<string, unknown>[];
     externalLinks?: Record<string, unknown>[];
     /** Overrides are unnecessary in practice; kept so a test can pin a template. */
     imageServices?: Record<string, unknown>[];
@@ -177,6 +249,68 @@ export const IMAGE_SERVICE_SEED: Array<{ id: number; name: string; url_template:
     { id: 6, name: 'discogs', url_template: '{token}' },
 ];
 
+// Relation tables store integer ids; test seeds are written with MBIDs for
+// readability. Translate each MBID reference to the parent's integer id at insert
+// time so the seeds stay declarative. related_artist_mbid is kept as a string.
+const MBID_REFERENCE_COLUMNS: Record<string, Record<string, string>> = {
+    artist_aliases: { artist_mbid: 'artists' },
+    artist_relationships: { artist_mbid: 'artists', related_artist_mbid: 'artists' },
+    release_group_artists: { release_group_mbid: 'release_groups', artist_mbid: 'artists' },
+    release_artists: { release_mbid: 'releases', artist_mbid: 'artists' },
+    media: { release_mbid: 'releases' },
+    recording_artists: { artist_mbid: 'artists' },
+    track_artists: { artist_mbid: 'artists' },
+};
+const INT_COLUMN_FOR: Record<string, string> = {
+    artist_mbid: 'artist_id',
+    related_artist_mbid: 'related_artist_id',
+    release_group_mbid: 'release_group_id',
+    release_mbid: 'release_id',
+};
+
+const resolveMbidReferences = (
+    db: Database.Database,
+    table: string,
+    row: Record<string, unknown>,
+): Record<string, unknown> => {
+    if (table === 'tracks' && 'mbid' in row) {
+        const stripped = { ...row };
+        delete stripped.mbid;
+        return stripped;
+    }
+    const references = MBID_REFERENCE_COLUMNS[table];
+    if (!references) return row;
+    const resolved: Record<string, unknown> = { ...row };
+    for (const [column, parent] of Object.entries(references)) {
+        if (!(column in resolved)) continue;
+        const mbid = resolved[column];
+        const intColumn = INT_COLUMN_FOR[column];
+        if (table === 'artist_relationships' && column === 'related_artist_mbid') {
+            // Keep the MBID string; add a nullable int id when the artist exists.
+            const found = db
+                .prepare(`SELECT id FROM ${parent} WHERE mbid = ?`)
+                .get(mbid) as { id: number } | undefined;
+            resolved[intColumn] = found?.id ?? null;
+            continue;
+        }
+        let found = db
+            .prepare(`SELECT id FROM ${parent} WHERE mbid = ?`)
+            .get(mbid) as { id: number } | undefined;
+        if (!found && parent === 'artists' && typeof mbid === 'string') {
+            db.prepare('INSERT OR IGNORE INTO artists (mbid, name) VALUES (?, ?)').run(
+                mbid,
+                typeof resolved.artist_name === 'string' ? resolved.artist_name : mbid,
+            );
+            found = db.prepare('SELECT id FROM artists WHERE mbid = ?').get(mbid) as
+                | { id: number }
+                | undefined;
+        }
+        resolved[intColumn] = found?.id ?? null;
+        delete resolved[column];
+    }
+    return resolved;
+};
+
 const insertRows = (
     db: Database.Database,
     table: string,
@@ -184,11 +318,12 @@ const insertRows = (
 ): void => {
     if (!rows || rows.length === 0) return;
 
-    const columns = Object.keys(rows[0]);
+    const resolvedRows = rows.map((row) => resolveMbidReferences(db, table, row));
+    const columns = Object.keys(resolvedRows[0]);
     const statement = db.prepare(
         `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map((c) => `@${c}`).join(', ')})`,
     );
-    for (const row of rows) {
+    for (const row of resolvedRows) {
         statement.run(row);
     }
 };
@@ -210,6 +345,12 @@ export const createMusicDbFixture = (seed: MusicDbSeed = {}): string => {
     insertRows(db, 'release_group_artists', seed.releaseGroupArtists);
     insertRows(db, 'releases', seed.releases);
     insertRows(db, 'release_artists', seed.releaseArtists);
+    insertRows(db, 'media', seed.media);
+    insertRows(db, 'recordings', seed.recordings);
+    insertRows(db, 'tracks', seed.tracks);
+    insertRows(db, 'track_artists', seed.trackArtists);
+    insertRows(db, 'recording_artists', seed.recordingArtists);
+    insertRows(db, 'recording_lyrics', seed.recordingLyrics);
     insertRows(db, 'external_links', seed.externalLinks);
 
     const serviceStatement = db.prepare(

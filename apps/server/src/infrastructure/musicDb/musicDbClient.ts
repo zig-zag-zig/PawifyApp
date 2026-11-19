@@ -19,6 +19,7 @@ export type MusicDb = Database.Database;
  */
 const READER_CONTRACT: Record<string, string[]> = {
     artists: [
+        'id',
         'mbid',
         'name',
         'disambiguation',
@@ -28,9 +29,10 @@ const READER_CONTRACT: Record<string, string[]> = {
         'ended',
         'begin_area_name',
     ],
-    artist_aliases: ['artist_mbid', 'name'],
+    artist_aliases: ['artist_id', 'name'],
     artist_relationships: [
-        'artist_mbid',
+        'artist_id',
+        'related_artist_id',
         'related_artist_mbid',
         'related_artist_name',
         'related_artist_type',
@@ -39,16 +41,41 @@ const READER_CONTRACT: Record<string, string[]> = {
         'begin_date',
         'end_date',
     ],
-    release_groups: ['mbid', 'title', 'primary_type', 'disambiguation', 'first_release_date'],
+    release_groups: ['id', 'mbid', 'title', 'primary_type', 'disambiguation', 'first_release_date'],
     release_group_artists: [
-        'release_group_mbid',
-        'artist_mbid',
+        'release_group_id',
+        'artist_id',
         'artist_name',
         'join_phrase',
         'position',
     ],
-    releases: ['mbid', 'title', 'date', 'disambiguation', 'release_group_mbid'],
-    release_artists: ['release_mbid', 'artist_mbid', 'artist_name', 'join_phrase', 'position'],
+    releases: [
+        'id',
+        'mbid',
+        'title',
+        'date',
+        'disambiguation',
+        'release_group_mbid',
+        'country',
+        'barcode',
+        'status',
+    ],
+    media: ['release_id', 'position', 'format', 'track_count', 'title'],
+    recordings: ['id', 'mbid', 'title', 'length', 'disambiguation', 'first_release_date', 'video'],
+    recording_artists: ['recording_id', 'artist_id', 'artist_name', 'join_phrase', 'position'],
+    tracks: [
+        'id',
+        'release_id',
+        'medium_position',
+        'position',
+        'number',
+        'title',
+        'length',
+        'recording_id',
+    ],
+    track_artists: ['track_id', 'artist_id', 'artist_name', 'join_phrase', 'position'],
+    recording_lyrics: ['recording_id', 'url', 'source'],
+    release_artists: ['release_id', 'artist_id', 'artist_name', 'join_phrase', 'position'],
     external_links: ['entity_type', 'entity_mbid', 'rel_type', 'url'],
     _meta: ['key', 'value'],
 };
@@ -322,6 +349,22 @@ export const musicDbHasSearchIndex = (): boolean => {
 };
 
 /** True when the mirror carries the optional image-state tables. */
+export const musicDbHasRecordingIndex = (): boolean => {
+    const db = getMusicDb();
+    if (!db) return false;
+    const columns = readColumns(db, 'search_fts_recording');
+    return [
+        'recording',
+        'recordingaccent',
+        'artist',
+        'artistname',
+        'creditname',
+        'release',
+        'comment',
+        'aux',
+    ].every((c) => columns.has(c));
+};
+
 export const musicDbHasEntityImages = (): boolean => {
     const db = getMusicDb();
     if (!db) return false;

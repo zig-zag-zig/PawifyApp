@@ -1,8 +1,7 @@
 import type { NewRelease, ReleaseNotificationSettings } from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
-import {
-    getKnownReleaseGroupStateFromDb,
-} from '../firebase/knownReleasesStore.js';
+import { getKnownReleaseGroupStateFromDb } from '../firebase/knownReleasesStore.js';
+import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
@@ -21,7 +20,9 @@ const getCatalogForProcessing = async (artistId: string): Promise<ArtistReleaseG
 const processSingleArtist = async (
     userId: string,
     artistId: string,
-    currentReleaseGroupStateByArtist: { [artistId: string]: { [groupId: string]: string } },
+    currentReleaseGroupStateByArtist: {
+        [artistId: string]: { [groupId: string]: KnownReleaseGroupStateValue };
+    },
     releaseNotificationSettings: ReleaseNotificationSettings,
 ): Promise<ArtistProcessResult> => {
     return await processArtistReleases(

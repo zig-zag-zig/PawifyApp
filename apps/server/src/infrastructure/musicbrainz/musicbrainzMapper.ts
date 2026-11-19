@@ -163,7 +163,12 @@ const mapToTrack = (data: any): Track => ({
 });
 
 const mapToMedia = (data: any): Media => ({
-    'track-count': data['track-count'],
+    'track-count':
+        typeof data['track-count'] === 'number' && Number.isFinite(data['track-count'])
+            ? data['track-count']
+            : 0,
+    format: typeof data.format === 'string' && data.format.trim() ? data.format.trim() : null,
+    position: typeof data.position === 'number' ? data.position : undefined,
     tracks: data.tracks?.map(mapToTrack) ?? [],
 });
 
@@ -172,9 +177,26 @@ export const getPrimaryArtistId = (data: any): string => {
     return typeof artistId === 'string' ? artistId : '';
 };
 
-export const mapToRelease = (data: any, artistId: string = getPrimaryArtistId(data)): Release => {
-    const media = [];
-    const filteredMedia = data.media?.filter((m: any) => m.tracks && m.tracks.length > 0) ?? [];
+export type MapToReleaseOptions = {
+    /**
+     * Keep media entries that carry only metadata (`track-count`, `format`) and no
+     * tracklist. The release-group list asks for `inc=media` precisely for that
+     * metadata; tracklist responses keep the historical filter.
+     */
+    keepMediaWithoutTracks?: boolean;
+};
+
+export const mapToRelease = (
+    data: any,
+    artistId: string = getPrimaryArtistId(data),
+    options: MapToReleaseOptions = {},
+): Release => {
+    const media: Media[] = [];
+    const filteredMedia =
+        data.media?.filter(
+            (m: any) =>
+                options.keepMediaWithoutTracks || (m.tracks && m.tracks.length > 0),
+        ) ?? [];
 
     for (const m of filteredMedia) {
         const resolvedMedia = mapToMedia(m);
@@ -208,6 +230,9 @@ export const mapToRelease = (data: any, artistId: string = getPrimaryArtistId(da
         'artist-credit': data['artist-credit']?.map(mapToArtistCredit) ?? [],
         media,
         externalLinks: mapRelationsToExternalLinks(data.relations),
+        barcode: typeof data.barcode === 'string' ? data.barcode : null,
+        status: typeof data.status === 'string' ? data.status : null,
+        country: typeof data.country === 'string' ? data.country : null,
     };
 };
 
@@ -235,7 +260,11 @@ export interface ReleaseResult {
     'release-count': number;
 }
 
-export const mapToReleaseResult = (data: any, artistId?: string): ReleaseResult => ({
-    releases: data.releases?.map((d: any) => mapToRelease(d, artistId)) ?? [],
+export const mapToReleaseResult = (
+    data: any,
+    artistId?: string,
+    options?: MapToReleaseOptions,
+): ReleaseResult => ({
+    releases: data.releases?.map((d: any) => mapToRelease(d, artistId, options)) ?? [],
     'release-count': data['release-count'],
 });

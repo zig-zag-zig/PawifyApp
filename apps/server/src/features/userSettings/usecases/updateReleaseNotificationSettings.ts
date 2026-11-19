@@ -1,6 +1,6 @@
 import { ReleaseNotificationSettings } from '@pawify/shared';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
-import { releaseDateMatchesNotificationSettings } from '../../../utils/helpers/releaseNotificationFilter.js';
+import { emptyKnownReleaseGroupState } from '../../releases/domain/releaseGroupProcessing.js';
 import type { UserSettingsUseCaseDependencies } from '../ports.js';
 
 const KNOWN_RELEASE_REBUILD_CONCURRENCY = 3;
@@ -24,15 +24,26 @@ const rebuildKnownReleasesForSettings = async (
     const artistIds = await followedArtistsRepository.getFollowedArtistIds(userId);
 
     await mapWithConcurrency(artistIds, KNOWN_RELEASE_REBUILD_CONCURRENCY, async (artistId) => {
-        const releaseGroups = await releaseCatalogGateway.getArtistReleases(artistId);
-        // Known state is a set of release groups: widen or narrow it by each group's
-        // own date, so the next scan neither re-notifies an album the user has seen
-        // nor keeps one that has fallen outside the window.
-        const groupState = new Map(
-            releaseGroups
-                .filter((group) => releaseDateMatchesNotificationSettings(group.date, settings))
-                .map((group) => [group.id, ''] as const),
-        );
+        const catalog = await releaseCatalogGateway.getArtistReleaseCatalog(artistId);
+        // A partial catalogue must not rewrite known state: dropping groups that
+        // merely failed to load would make the next complete scan re-notify them.
+        if (!catalog.complete) {
+            return;
+        }
+
+        const currentState =
+            await knownReleaseRepository.getArtistReleaseGroupState(userId, artistId);
+        // Feed eligibility and remembered content are separate concerns: keep the
+        // complete history, including groups currently outside the date window.
+        // Deleting history here makes a later unchanged pressing look like a new
+        // group and re-notifies. Newly encountered groups are marked unbaselined so
+        // the next scan records content silently.
+        const groupState = new Map(Object.entries(currentState));
+        for (const group of catalog.groups) {
+            if (!groupState.has(group.id)) {
+                groupState.set(group.id, emptyKnownReleaseGroupState('', false));
+            }
+        }
 
         await knownReleaseRepository.replaceArtistReleaseGroupState(userId, artistId, groupState);
     });

@@ -2,12 +2,48 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { installFirebaseServiceFake } from './helpers/moduleFakes.js';
-import { createRelease, createReleaseNotificationSettings } from './helpers/releaseFixtures.js';
+import { createReleaseNotificationSettings } from './helpers/releaseFixtures.js';
 import { createUserSettingsDependencies } from './helpers/userSettingsUseCaseFakes.js';
+import {
+    emptyKnownReleaseGroupState,
+    type ReleaseEditionCandidate,
+    type ReleaseGroupCandidate,
+} from '../src/features/releases/domain/releaseGroupProcessing.js';
 
 // Prevent Firebase store modules from loading and triggering firebaseInit.js
 // which requires credentials. The fake prevents transitive load of firebaseInit.
 installFirebaseServiceFake();
+
+
+const catalogGroup = (
+    id: string,
+    date: string | null,
+    officialEditions: ReleaseEditionCandidate[] = [],
+): ReleaseGroupCandidate => ({
+    id,
+    title: id,
+    date,
+    disambiguation: null,
+    primaryType: 'Album',
+    releaseIds: [`release-${id}`],
+    newestReleaseId: `release-${id}`,
+    newestReleaseDate: date,
+    officialEditions,
+});
+
+const officialEdition = (
+    releaseId: string,
+    date: string | null,
+): ReleaseEditionCandidate => ({
+    releaseId,
+    date,
+    status: 'Official',
+    trackCount: 12,
+    formats: ['CD'],
+    title: releaseId,
+    disambiguation: null,
+    editionKeywords: [],
+});
 
 describe('user settings use cases', () => {
     it('saves notification settings, rebuilds known releases, prunes new releases, and notifies clients', async () => {
@@ -16,18 +52,16 @@ describe('user settings use cases', () => {
         const nextSettings = createReleaseNotificationSettings();
         const state = createUserSettingsDependencies({
             catalog: {
-                'artist-1': [
-                    createRelease({ id: 'tracked', artistId: 'artist-1', date: '2026-01-01' }),
-                    createRelease({ id: 'missing-date', artistId: 'artist-1', date: null }),
-                    createRelease({ id: 'future', artistId: 'artist-1', date: '2999-01-01' }),
-                ],
-                'artist-2': [
-                    createRelease({
-                        id: 'older-included',
-                        artistId: 'artist-2',
-                        date: '2020-01-01',
-                    }),
-                ],
+                'artist-1': {
+                    groups: [
+                        catalogGroup('tracked', '2026-01-01'),
+                        catalogGroup('missing-date', null),
+                        catalogGroup('future', '2999-01-01'),
+                    ],
+                },
+                'artist-2': {
+                    groups: [catalogGroup('older-included', '2020-01-01')],
+                },
             },
         });
         const useCase = createUpdateReleaseNotificationSettingsUseCase(state.dependencies);
@@ -43,8 +77,22 @@ describe('user settings use cases', () => {
                 groupState: Array.from(groupState.entries()),
             })),
             [
-                { userId: 'user-1', artistId: 'artist-1', groupState: [['tracked', '']] },
-                { userId: 'user-1', artistId: 'artist-2', groupState: [['older-included', '']] },
+                {
+                    userId: 'user-1',
+                    artistId: 'artist-1',
+                    groupState: [
+                        ['tracked', emptyKnownReleaseGroupState('', false)],
+                        ['missing-date', emptyKnownReleaseGroupState('', false)],
+                        ['future', emptyKnownReleaseGroupState('', false)],
+                    ],
+                },
+                {
+                    userId: 'user-1',
+                    artistId: 'artist-2',
+                    groupState: [
+                        ['older-included', emptyKnownReleaseGroupState('', false)],
+                    ],
+                },
             ],
         );
         assert.deepEqual(state.removeCalls, [{ userId: 'user-1', settings: nextSettings }]);
@@ -52,6 +100,93 @@ describe('user settings use cases', () => {
             'releases:push-token-1',
             'settings:push-token-1',
         ]);
+    });
+
+    it('keeps an old group with a recent Official edition and preserves its baseline', async () => {
+        const { createUpdateReleaseNotificationSettingsUseCase } =
+            await import('../src/features/userSettings/usecases/updateReleaseNotificationSettings.js');
+        const nextSettings = createReleaseNotificationSettings({
+            oldestReleaseDateMonths: 12,
+            includeReleasesWithoutDate: false,
+        });
+        const existing = {
+            lastNotifiedDate: '2020-01-01',
+            maxOfficialTrackCount: 18,
+            editionKeywords: ['deluxe'],
+        };
+        const state = createUserSettingsDependencies({
+            catalog: {
+                'artist-1': {
+                    groups: [
+                        catalogGroup('old-with-deluxe', '2001-01-01', [
+                            officialEdition('recent-deluxe', '2026-05-01'),
+                        ]),
+                        catalogGroup('old-only', '2001-01-01'),
+                    ],
+                },
+            },
+            currentState: { 'artist-1': { 'old-with-deluxe': existing } },
+            previousSettings: nextSettings,
+        });
+        const useCase = createUpdateReleaseNotificationSettingsUseCase(state.dependencies);
+
+        await useCase('user-1', nextSettings);
+
+        assert.deepEqual(
+            Array.from(state.replaceCalls[0]?.groupState.entries() ?? []),
+            [
+                ['old-with-deluxe', existing],
+                ['old-only', emptyKnownReleaseGroupState('', false)],
+            ],
+        );
+    });
+
+    it('keeps history for a group outside the narrowed date window', async () => {
+        const { createUpdateReleaseNotificationSettingsUseCase } =
+            await import('../src/features/userSettings/usecases/updateReleaseNotificationSettings.js');
+        const nextSettings = createReleaseNotificationSettings({
+            oldestReleaseDateMonths: 12,
+            includeReleasesWithoutDate: false,
+        });
+        const historical = {
+            lastNotifiedDate: '2015-01-01',
+            maxOfficialTrackCount: 12,
+            editionKeywords: [],
+        };
+        const state = createUserSettingsDependencies({
+            catalog: {
+                'artist-1': { groups: [catalogGroup('historical', '2015-01-01')] },
+            },
+            currentState: { 'artist-1': { historical } },
+            previousSettings: nextSettings,
+        });
+        const useCase = createUpdateReleaseNotificationSettingsUseCase(state.dependencies);
+
+        await useCase('user-1', nextSettings);
+
+        assert.deepEqual(
+            Array.from(state.replaceCalls[0]?.groupState.entries() ?? []),
+            [['historical', historical]],
+        );
+    });
+
+    it('does not rewrite state from an incomplete catalogue', async () => {
+        const { createUpdateReleaseNotificationSettingsUseCase } =
+            await import('../src/features/userSettings/usecases/updateReleaseNotificationSettings.js');
+        const nextSettings = createReleaseNotificationSettings();
+        const state = createUserSettingsDependencies({
+            catalog: {
+                'artist-1': {
+                    complete: false,
+                    groups: [catalogGroup('partial', '2026-01-01')],
+                },
+            },
+        });
+        const useCase = createUpdateReleaseNotificationSettingsUseCase(state.dependencies);
+
+        await useCase('user-1', nextSettings);
+
+        assert.deepEqual(state.replaceCalls, []);
     });
 
     it('rolls settings back and skips notifications when known release rebuild fails', async () => {
@@ -64,8 +199,8 @@ describe('user settings use cases', () => {
         const nextSettings = createReleaseNotificationSettings();
         const state = createUserSettingsDependencies({
             catalog: {
-                'artist-1': [createRelease({ id: 'tracked', artistId: 'artist-1' })],
-                'artist-2': [createRelease({ id: 'never-read', artistId: 'artist-2' })],
+                'artist-1': { groups: [catalogGroup('tracked', '2026-01-01')] },
+                'artist-2': { groups: [catalogGroup('never-read', '2026-01-01')] },
             },
             failArtistId: 'artist-2',
             previousSettings,

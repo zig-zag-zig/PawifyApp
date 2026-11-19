@@ -2,7 +2,12 @@ import { rtdb } from '../../infrastructure/firebase/firebaseInit.js';
 import type { ArtistsAndReleasesMap } from './types.js';
 import { isPlainObject } from '../../common/utils/objectGuards.js';
 import { assertRtdbKey } from './rtdbKeys.js';
-import { normalizeKnownReleaseGroupState } from './knownReleaseStateNormalization.js';
+import {
+    buildKnownReleaseGroupStatePayload,
+    normalizeKnownReleaseGroupState,
+    type KnownReleaseGroupStateMap,
+} from './knownReleaseStateNormalization.js';
+import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 
 const KNOWN_RELEASES_ROOT = 'knownReleases';
 
@@ -23,7 +28,7 @@ const normalizeReleaseIds = (releaseIds: string[]): string[] =>
 
 export const getKnownReleaseGroupStateFromDb = async (
     userId: string,
-): Promise<{ [artistId: string]: { [groupId: string]: string } }> => {
+): Promise<KnownReleaseGroupStateMap> => {
     assertRtdbKey('userId', userId);
     const snapshot = await rtdb.ref(`${KNOWN_RELEASES_ROOT}/${userId}`).get();
     return normalizeKnownReleaseGroupState(snapshot.val());
@@ -32,7 +37,7 @@ export const getKnownReleaseGroupStateFromDb = async (
 export const getKnownArtistReleaseGroupStateFromDb = async (
     userId: string,
     artistId: string,
-): Promise<{ [groupId: string]: string }> => {
+): Promise<{ [groupId: string]: KnownReleaseGroupStateValue }> => {
     assertRtdbKey('userId', userId);
     assertRtdbKey('artistId', artistId);
 
@@ -41,36 +46,28 @@ export const getKnownArtistReleaseGroupStateFromDb = async (
 };
 
 /**
- * Replaces one artist's known groups. The stored value is the group's last
- * notification event date, so a later scan knows whether a new pressing belongs to
- * the same event. Empty string marks a baselined (migrated) group.
+ * Replaces one artist's known groups.
+ *
+ * Each value carries the last notified event date plus the Official content
+ * baseline (maximum track count and edition keywords). The migration-only marker
+ * is stripped here, so every object read back from Firebase is a complete baseline.
  */
 export const replaceKnownArtistReleaseGroupStateInDb = async (
     userId: string,
     artistId: string,
-    state: ReadonlyMap<string, string>,
+    state: ReadonlyMap<string, KnownReleaseGroupStateValue>,
 ): Promise<void> => {
     assertRtdbKey('userId', userId);
     assertRtdbKey('artistId', artistId);
 
-    const entries = Array.from(state.entries()).flatMap(([groupId, eventDate]) => {
-        const trimmed = groupId.trim();
-        if (!trimmed) {
-            return [];
-        }
+    const payload = buildKnownReleaseGroupStatePayload(state);
 
-        assertRtdbKey('groupId', trimmed);
-        return [[trimmed, eventDate] as const];
-    });
-
-    if (entries.length === 0) {
+    if (Object.keys(payload).length === 0) {
         await rtdb.ref(`${KNOWN_RELEASES_ROOT}/${userId}/${artistId}`).remove();
         return;
     }
 
-    await rtdb
-        .ref(`${KNOWN_RELEASES_ROOT}/${userId}/${artistId}`)
-        .set(Object.fromEntries(entries));
+    await rtdb.ref(`${KNOWN_RELEASES_ROOT}/${userId}/${artistId}`).set(payload);
 };
 
 const normalizeKnownReleases = (value: unknown): ArtistsAndReleasesMap => {

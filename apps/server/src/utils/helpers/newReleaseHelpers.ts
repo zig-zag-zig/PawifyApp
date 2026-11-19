@@ -8,7 +8,9 @@ import { saveArtistAndKnownReleasesToDb } from '../../services/firebase/artistSt
 import type { StoredNewRelease } from '../../services/firebase/types.js';
 import {
     planArtistScan,
+    type KnownReleaseGroupStateValue,
     type ReleaseGroupCandidate,
+    type ReleaseGroupEvent,
 } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { toStoredNewRelease } from '../../features/releases/domain/newReleaseEntry.js';
 import {
@@ -63,7 +65,9 @@ export const processArtistReleases = async (
     userId: string,
     artistId: string,
     getCatalog: (artistId: string) => Promise<ArtistReleaseGroupCatalog>,
-    currentReleaseGroupStateByArtist?: { [artistId: string]: { [groupId: string]: string } },
+    currentReleaseGroupStateByArtist?: {
+        [artistId: string]: { [groupId: string]: KnownReleaseGroupStateValue };
+    },
     releaseNotificationSettings: ReleaseNotificationSettings = DEFAULT_RELEASE_NOTIFICATION_SETTINGS,
 ): Promise<ProcessArtistResult> => {
     const catalog = await getCatalog(artistId);
@@ -73,21 +77,24 @@ export const processArtistReleases = async (
         (await getCurrentReleaseGroupState(userId, artistId));
 
     // Plan first (pure, tested): this is where the user's release-id history is
-    // migrated to release-group ids and where the 45-day event window decides
-    // whether a pressing is the same event or a genuinely new one. Credits are
-    // resolved only for whatever turned out to be new.
+    // migrated to release-group ids and where content-based dedupe decides whether
+    // a pressing is the same edition or a genuinely new one. Credits are resolved
+    // only for whatever turned out to be new.
     const plan = planArtistScan(
         new Map(Object.entries(storedState)),
         catalog.groups,
         releaseNotificationSettings,
+        new Date(),
+        catalog.complete,
     );
+    const eventGroups = plan.newEvents.map((event) => event.group);
     const creditsByGroupId =
-        plan.newEvents.length === 0
+        eventGroups.length === 0
             ? catalog.creditsByGroupId
-            : resolveCredits(catalog, plan.newEvents);
+            : resolveCredits(catalog, eventGroups);
 
-    const mappedNewReleases: StoredNewRelease[] = plan.newEvents.map((group) =>
-        toStoredNewRelease(group, creditsByGroupId.get(group.id) ?? []),
+    const mappedNewReleases: StoredNewRelease[] = plan.newEvents.map((event) =>
+        toStoredNewRelease(event, creditsByGroupId.get(event.group.id) ?? []),
     );
 
     if (plan.groupsChanged) {
@@ -108,8 +115,8 @@ export const processArtistReleases = async (
 type HandleGroupChangesOptions = {
     userId: string;
     artistId: string;
-    groupState: Map<string, string>;
-    newEvents: ReleaseGroupCandidate[];
+    groupState: Map<string, KnownReleaseGroupStateValue>;
+    newEvents: ReleaseGroupEvent[];
     storedNewReleases: StoredNewRelease[];
 };
 
@@ -136,8 +143,13 @@ const handleGroupChanges = async ({
     );
 };
 
-const cacheNewReleaseCovers = async (groups: ReleaseGroupCandidate[]): Promise<void> => {
-    await mapWithConcurrency(groups, NEW_RELEASE_COVER_CACHE_CONCURRENCY, async (group) => {
-        await getReleaseCover(group.newestReleaseId, group.id, undefined);
+const cacheNewReleaseCovers = async (events: ReleaseGroupEvent[]): Promise<void> => {
+    await mapWithConcurrency(events, NEW_RELEASE_COVER_CACHE_CONCURRENCY, async (event) => {
+        // Cover the release the event is about, not an unrelated newest pressing.
+        await getReleaseCover(
+            event.edition?.releaseId ?? event.group.newestReleaseId,
+            event.group.id,
+            undefined,
+        );
     });
 };

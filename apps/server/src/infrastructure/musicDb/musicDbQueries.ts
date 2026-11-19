@@ -156,7 +156,7 @@ export const readArtistRow = (db: MusicDb, artistId: string) =>
 export const readArtistAliases = (db: MusicDb, artistId: string): string[] =>
     (
         db
-            .prepare('SELECT name FROM artist_aliases WHERE artist_mbid = ? ORDER BY name')
+            .prepare('SELECT name FROM artist_aliases WHERE artist_id = (SELECT id FROM artists WHERE mbid = ?) ORDER BY name')
             .all(artistId) as { name: string }[]
     ).map((row) => row.name);
 
@@ -165,7 +165,7 @@ export const readArtistRelationships = (db: MusicDb, artistId: string): ArtistRe
         .prepare(
             `SELECT related_artist_mbid, related_artist_name, related_artist_type,
                     type, direction, begin_date, end_date
-             FROM artist_relationships WHERE artist_mbid = ?`,
+             FROM artist_relationships WHERE artist_id = (SELECT id FROM artists WHERE mbid = ?)`,
         )
         .all(artistId) as ArtistRelationshipRow[];
 
@@ -280,9 +280,9 @@ export const readArtistReleaseGroups = (
         WITH paged AS (
             SELECT DISTINCT r2.release_group_mbid AS gid, rg2.first_release_date AS sort_date
             FROM releases r2
-            JOIN release_artists ra2 ON ra2.release_mbid = r2.mbid
+            JOIN release_artists ra2 ON ra2.release_id = r2.id
             JOIN release_groups rg2 ON rg2.mbid = r2.release_group_mbid
-            WHERE ra2.artist_mbid = ? AND r2.release_group_mbid IS NOT NULL
+            WHERE ra2.artist_id = (SELECT id FROM artists WHERE mbid = ?) AND r2.release_group_mbid IS NOT NULL
             ${cursorClause}
             ORDER BY sort_date IS NULL, sort_date DESC, gid ASC
             LIMIT ? OFFSET ?
@@ -313,13 +313,129 @@ export const readArtistReleaseGroups = (
     return db.prepare(sql).all(...params) as ArtistReleaseGroupRow[];
 };
 
+/**
+ * One row per release+medium for the notification catalogue.
+ *
+ * This is the single scan that feeds new-release detection: group identity, every
+ * release's edition metadata and its media aggregate arrive together, so detection
+ * does not repeat a full release scan or materialize a second edition map. Releases
+ * without media rows are retained by the left join.
+ */
+export type ArtistNotificationCatalogRow = {
+    /** r.release_group_mbid; always non-null in this result. */
+    referenced_group_mbid: string;
+    /** Null when the referenced release_groups row is missing (partial import). */
+    group_mbid: string | null;
+    group_title: string | null;
+    group_primary_type: string | null;
+    group_disambiguation: string | null;
+    group_first_release_date: string | null;
+    release_mbid: string;
+    release_title: string;
+    release_disambiguation: string | null;
+    release_date: string | null;
+    release_status: string | null;
+    media_format: string | null;
+    media_track_count: number | null;
+    /**
+     * Distinct releases selected by the bounded CTE. With a positive limit this is
+     * at most limit + 1, which is enough to detect overflow; it is not necessarily
+     * the artist's full catalogue size.
+     */
+    artist_release_count: number;
+};
+
+/**
+ * Cheap budget probe that never materializes the artist's release list.
+ *
+ * `LIMIT limit + 1` makes SQLite stop as soon as the bound is exceeded, so a
+ * 338k-release artist costs the bound, not the full catalogue. Returns null when
+ * the artist is unknown (the caller falls back to the API).
+ */
+export const countArtistNotificationReleasesUpTo = (
+    db: MusicDb,
+    artistId: string,
+    limit: number,
+): number | null => {
+    if (!readArtistRow(db, artistId)) {
+        return null;
+    }
+    if (limit <= 0) {
+        const row = db
+            .prepare(
+                `SELECT COUNT(DISTINCT ra.release_id) AS total
+                 FROM release_artists ra
+                 JOIN releases r ON r.id = ra.release_id
+                 WHERE ra.artist_id = (SELECT id FROM artists WHERE mbid = ?)
+                   AND r.release_group_mbid IS NOT NULL`,
+            )
+            .get(artistId) as { total: number } | undefined;
+        return row?.total ?? 0;
+    }
+
+    const row = db
+        .prepare(
+            `SELECT COUNT(*) AS total FROM (
+                 SELECT ra.release_id
+                 FROM release_artists ra
+                 JOIN releases r ON r.id = ra.release_id
+                 WHERE ra.artist_id = (SELECT id FROM artists WHERE mbid = ?)
+                   AND r.release_group_mbid IS NOT NULL
+                 GROUP BY ra.release_id
+                 LIMIT ?
+             )`,
+        )
+        .get(artistId, limit + 1) as { total: number } | undefined;
+    return row?.total ?? 0;
+};
+
+export const readArtistNotificationCatalogRows = (
+    db: MusicDb,
+    artistId: string,
+    limit: number,
+): ArtistNotificationCatalogRow[] =>
+    db
+        .prepare(
+            `WITH artist_release_ids AS (
+                 SELECT ra.release_id AS release_id
+                 FROM release_artists ra
+                 JOIN releases r0 ON r0.id = ra.release_id
+                 WHERE ra.artist_id = (SELECT id FROM artists WHERE mbid = ?)
+                   AND r0.release_group_mbid IS NOT NULL
+                 GROUP BY ra.release_id
+                 ORDER BY ra.release_id
+                 LIMIT ?
+             )
+             SELECT r.release_group_mbid AS referenced_group_mbid,
+                    rg.mbid AS group_mbid,
+                    rg.title AS group_title,
+                    rg.primary_type AS group_primary_type,
+                    rg.disambiguation AS group_disambiguation,
+                    rg.first_release_date AS group_first_release_date,
+                    r.mbid AS release_mbid,
+                    r.title AS release_title,
+                    r.disambiguation AS release_disambiguation,
+                    r.date AS release_date,
+                    r.status AS release_status,
+                    m.format AS media_format,
+                    m.track_count AS media_track_count,
+                    (SELECT COUNT(*) FROM artist_release_ids) AS artist_release_count
+             FROM artist_release_ids s
+             JOIN releases r ON r.id = s.release_id
+             LEFT JOIN release_groups rg ON rg.mbid = r.release_group_mbid
+             LEFT JOIN media m ON m.release_id = r.id
+             ORDER BY r.release_group_mbid, r.date IS NULL, r.date ASC,
+                      r.mbid, m.position`,
+        )
+        .all(artistId, limit > 0 ? limit + 1 : -1) as ArtistNotificationCatalogRow[];
+
 export const countArtistReleaseGroups = (db: MusicDb, artistId: string): number => {
     const row = db
         .prepare(
             `SELECT COUNT(DISTINCT r.release_group_mbid) AS total
              FROM releases r
-             JOIN release_artists ra ON ra.release_mbid = r.mbid
-             WHERE ra.artist_mbid = ? AND r.release_group_mbid IS NOT NULL`,
+             JOIN release_artists ra ON ra.release_id = r.id
+             WHERE ra.artist_id = (SELECT id FROM artists WHERE mbid = ?) AND r.release_group_mbid IS NOT NULL`,
         )
         .get(artistId) as { total: number } | undefined;
     return row?.total ?? 0;
@@ -337,8 +453,8 @@ export const readArtistReleaseGroupIds = (db: MusicDb, artistId: string): string
             .prepare(
                 `SELECT DISTINCT r.release_group_mbid AS mbid
                  FROM releases r
-                 JOIN release_artists ra ON ra.release_mbid = r.mbid
-                 WHERE ra.artist_mbid = ? AND r.release_group_mbid IS NOT NULL
+                 JOIN release_artists ra ON ra.release_id = r.id
+                 WHERE ra.artist_id = (SELECT id FROM artists WHERE mbid = ?) AND r.release_group_mbid IS NOT NULL
                  ORDER BY r.release_group_mbid`,
             )
             .all(artistId) as { mbid: string }[]
@@ -349,8 +465,8 @@ export const readArtistReleaseIds = (db: MusicDb, artistId: string): string[] =>
         db
             .prepare(
                 `SELECT r.mbid FROM releases r
-                 JOIN release_artists ra ON ra.release_mbid = r.mbid
-                 WHERE ra.artist_mbid = ?
+                 JOIN release_artists ra ON ra.release_id = r.id
+                 WHERE ra.artist_id = (SELECT id FROM artists WHERE mbid = ?)
                  ORDER BY r.mbid`,
             )
             .all(artistId) as { mbid: string }[]
@@ -451,23 +567,56 @@ export const readReleaseIdsForGroup = (db: MusicDb, releaseGroupId: string): str
 export const readReleaseGroupExists = (db: MusicDb, releaseGroupId: string): boolean =>
     db.prepare('SELECT 1 FROM release_groups WHERE mbid = ?').get(releaseGroupId) !== undefined;
 
-/** Releases in a group, ordered the way the release-group screen lists them. */
+/**
+ * Releases in a group, ordered the way the release-group screen lists them.
+ *
+ * Media metadata is aggregated with correlated subqueries rather than a join: a
+ * join would multiply one release into one row per medium (and again per track),
+ * and a release without media rows must still appear with `track_count` NULL and no
+ * formats instead of disappearing from the list.
+ */
+export type ReleaseGroupReleaseRow = {
+    mbid: string;
+    title: string;
+    disambiguation: string | null;
+    date: string | null;
+    country: string | null;
+    status: string | null;
+    /** SUM(media.track_count); NULL when the release has no media rows. */
+    track_count: number | null;
+    /** Distinct non-empty media formats, `\u001f`-separated (never in a format name). */
+    formats: string | null;
+};
+
+export const RELEASE_GROUP_FORMAT_SEPARATOR = '\u001f';
+
 export const readReleaseGroupReleases = (
     db: MusicDb,
     releaseGroupId: string,
-): { mbid: string; title: string; disambiguation: string | null; date: string | null }[] =>
+): ReleaseGroupReleaseRow[] =>
     db
         .prepare(
-            `SELECT mbid, title, disambiguation, date FROM releases
-             WHERE release_group_mbid = ?
-             ORDER BY date IS NULL, date ASC, mbid ASC`,
+            `SELECT r.mbid,
+                    r.title,
+                    r.disambiguation,
+                    r.date,
+                    r.country,
+                    r.status,
+                    (SELECT SUM(m.track_count) FROM media m WHERE m.release_id = r.id) AS track_count,
+                    (SELECT group_concat(format, '${RELEASE_GROUP_FORMAT_SEPARATOR}')
+                     FROM (
+                         SELECT DISTINCT m.format AS format
+                         FROM media m
+                         WHERE m.release_id = r.id
+                           AND m.format IS NOT NULL
+                           AND TRIM(m.format) <> ''
+                         ORDER BY m.format
+                     )) AS formats
+             FROM releases r
+             WHERE r.release_group_mbid = ?
+             ORDER BY r.date IS NULL, r.date ASC, r.mbid ASC`,
         )
-        .all(releaseGroupId) as {
-        mbid: string;
-        title: string;
-        disambiguation: string | null;
-        date: string | null;
-    }[];
+        .all(releaseGroupId) as ReleaseGroupReleaseRow[];
 
 export const readReleaseGroupRow = (db: MusicDb, releaseGroupId: string) =>
     db
@@ -502,7 +651,8 @@ export const buildReleaseGroup = (row: {
 export const readReleaseRow = (db: MusicDb, releaseId: string) =>
     db
         .prepare(
-            `SELECT mbid, title, date, disambiguation, release_group_mbid
+            `SELECT mbid, title, date, disambiguation, release_group_mbid,
+                    country, barcode, status
              FROM releases WHERE mbid = ?`,
         )
         .get(releaseId) as
@@ -512,8 +662,89 @@ export const readReleaseRow = (db: MusicDb, releaseId: string) =>
               date: string | null;
               disambiguation: string | null;
               release_group_mbid: string | null;
+              country: string | null;
+              barcode: string | null;
+              status: string | null;
           }
         | undefined;
+
+export const readReleaseMedia = (db: MusicDb, releaseId: string) =>
+    db
+        .prepare(
+            `SELECT position, format, track_count, title FROM media WHERE release_id = (SELECT id FROM releases WHERE mbid = ?) ORDER BY position`,
+        )
+        .all(releaseId) as {
+        position: number;
+        format: string | null;
+        track_count: number;
+        title: string;
+    }[];
+
+export const readReleaseTracks = (db: MusicDb, releaseId: string) =>
+    db
+        .prepare(
+            `
+        SELECT t.id AS track_id,
+               ? || ':' || t.medium_position || ':' || t.position AS mbid,
+               t.medium_position,
+               t.position,
+               t.number,
+               COALESCE(t.title, rec.title) AS title,
+               t.length,
+               rec.mbid AS recording_mbid
+        FROM tracks t LEFT JOIN recordings rec ON rec.id = t.recording_id
+        WHERE t.release_id = (SELECT id FROM releases WHERE mbid = ?) ORDER BY t.medium_position, t.position
+    `,
+        )
+        .all(releaseId, releaseId) as {
+        track_id: number;
+        mbid: string;
+        medium_position: number;
+        position: number;
+        number: string;
+        title: string;
+        length: number | null;
+        recording_mbid: string | null;
+    }[];
+
+export const readTrackArtists = (db: MusicDb, trackId: number): ArtistCredit[] =>
+    (
+        db
+            .prepare(
+                `SELECT a.mbid AS artist_mbid, ta.artist_name, ta.join_phrase
+                 FROM track_artists ta JOIN artists a ON a.id = ta.artist_id
+                 WHERE ta.track_id = ? ORDER BY ta.position`,
+            )
+            .all(trackId) as { artist_mbid: string; artist_name: string; join_phrase: string }[]
+    ).map((row) => ({
+        id: row.artist_mbid,
+        name: row.artist_name,
+        joinphrase: row.join_phrase || null,
+    }));
+
+export const readRecordingArtists = (db: MusicDb, recordingId: string): ArtistCredit[] =>
+    (
+        db
+            .prepare(
+                `SELECT a.mbid AS artist_mbid, ra.artist_name, ra.join_phrase
+                 FROM recording_artists ra JOIN artists a ON a.id = ra.artist_id
+                 WHERE ra.recording_id = (SELECT id FROM recordings WHERE mbid = ?) ORDER BY ra.position`,
+            )
+            .all(recordingId) as { artist_mbid: string; artist_name: string; join_phrase: string }[]
+    ).map((row) => ({
+        id: row.artist_mbid,
+        name: row.artist_name,
+        joinphrase: row.join_phrase || null,
+    }));
+
+export const readRecordingLyrics = (db: MusicDb, recordingId: string): string | null =>
+    (
+        db
+            .prepare(
+                `SELECT url FROM recording_lyrics WHERE recording_id = (SELECT id FROM recordings WHERE mbid = ?) ORDER BY source, url LIMIT 1`,
+            )
+            .get(recordingId) as { url: string } | undefined
+    )?.url ?? null;
 
 export const readReleaseExists = (db: MusicDb, releaseId: string): boolean =>
     db.prepare('SELECT 1 FROM releases WHERE mbid = ?').get(releaseId) !== undefined;
@@ -522,8 +753,9 @@ export const readReleaseArtists = (db: MusicDb, releaseId: string): ArtistCredit
     (
         db
             .prepare(
-                `SELECT artist_mbid, artist_name, join_phrase FROM release_artists
-                 WHERE release_mbid = ? ORDER BY position`,
+                `SELECT a.mbid AS artist_mbid, ra.artist_name, ra.join_phrase
+                 FROM release_artists ra JOIN artists a ON a.id = ra.artist_id
+                 WHERE ra.release_id = (SELECT id FROM releases WHERE mbid = ?) ORDER BY ra.position`,
             )
             .all(releaseId) as { artist_mbid: string; artist_name: string; join_phrase: string }[]
     ).map((row) => ({
@@ -536,8 +768,9 @@ export const readReleaseGroupArtists = (db: MusicDb, releaseGroupId: string): Ar
     (
         db
             .prepare(
-                `SELECT artist_mbid, artist_name, join_phrase FROM release_group_artists
-                 WHERE release_group_mbid = ? ORDER BY position`,
+                `SELECT a.mbid AS artist_mbid, rga.artist_name, rga.join_phrase
+                 FROM release_group_artists rga JOIN artists a ON a.id = rga.artist_id
+                 WHERE rga.release_group_id = (SELECT id FROM release_groups WHERE mbid = ?) ORDER BY rga.position`,
             )
             .all(releaseGroupId) as {
             artist_mbid: string;
@@ -575,6 +808,7 @@ export type SearchRow = {
 const SEARCH_TABLES = {
     artist: 'search_fts_artist',
     release_group: 'search_fts_release_group',
+    recording: 'search_fts_recording',
 } as const;
 
 export const searchTableFor = (entityType: keyof typeof SEARCH_TABLES): string =>

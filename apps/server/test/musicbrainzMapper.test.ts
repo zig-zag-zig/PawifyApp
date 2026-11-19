@@ -130,6 +130,45 @@ describe('mapToRelease', () => {
         assert.equal(result.releaseGroupId, 'rg-1');
     });
 
+    it('maps release status, country, barcode and media format', () => {
+        const result = mapToRelease(
+            makeMbRelease({
+                status: 'Official',
+                country: 'US',
+                barcode: '0123456789012',
+            }),
+        );
+
+        assert.equal(result.status, 'Official');
+        assert.equal(result.country, 'US');
+        assert.equal(result.barcode, '0123456789012');
+        assert.equal(result.media[0]?.format, null);
+    });
+
+    it('keeps media metadata without a tracklist when asked', () => {
+        const result = mapToRelease(
+            makeMbRelease({
+                media: [
+                    { 'track-count': 18, format: 'CD', position: 1, tracks: null },
+                    { 'track-count': 6, format: 'DVD', position: 2 },
+                ],
+            }),
+            'artist-1',
+            { keepMediaWithoutTracks: true },
+        );
+
+        assert.deepEqual(
+            result.media.map((medium) => ({
+                trackCount: medium['track-count'],
+                format: medium.format,
+            })),
+            [
+                { trackCount: 18, format: 'CD' },
+                { trackCount: 6, format: 'DVD' },
+            ],
+        );
+    });
+
     it('filters out media with no tracks', () => {
         const result = mapToRelease(
             makeMbRelease({

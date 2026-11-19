@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { installFetch } from './helpers/daprTestHelpers.js';
 import {
     fetchAllReleasesForArtist,
+    fetchAllReleasesForArtistWithCompleteness,
     fetchAllReleasesForReleaseGroup,
 } from '../src/services/musicbrainz/releaseQueries.js';
 
@@ -90,6 +91,70 @@ describe('fetchAllReleasesForArtist pagination guards', () => {
             assert.equal(callCount(), row.pages.length);
         });
     }
+
+    it('marks a catalogue incomplete when the declared count is not reached', async () => {
+        installPageFetch([
+            { releases: pageOf(['r1', 'r2'], '2020-01-01'), 'release-count': 3 },
+            { releases: [], 'release-count': 3 },
+        ]);
+
+        const result = await fetchAllReleasesForArtistWithCompleteness('artist-1', false);
+
+        assert.equal(result.complete, false);
+        assert.deepEqual(
+            result.releases.map((release) => release.id),
+            ['r1', 'r2'],
+        );
+    });
+
+    it('marks a declared catalogue incomplete when a later page is malformed', async () => {
+        installPageFetch([
+            { releases: pageOf(fullPageIds('a'), '2020-01-01'), 'release-count': 200 },
+            {},
+        ]);
+
+        const result = await fetchAllReleasesForArtistWithCompleteness('artist-1', false);
+
+        assert.equal(result.complete, false);
+    });
+
+    it('treats an explicit null release-count as incomplete', async () => {
+        installPageFetch([{ releases: pageOf(['r1'], '2020-01-01'), 'release-count': null }]);
+
+        const result = await fetchAllReleasesForArtistWithCompleteness('artist-1', false);
+
+        assert.equal(result.complete, false);
+    });
+
+    it('marks changing totals incomplete', async () => {
+        installPageFetch([
+            { releases: pageOf(fullPageIds('a'), '2020-01-01'), 'release-count': 200 },
+            { releases: pageOf(fullPageIds('b'), '2020-01-01'), 'release-count': 201 },
+        ]);
+
+        const result = await fetchAllReleasesForArtistWithCompleteness('artist-1', false);
+
+        assert.equal(result.complete, false);
+    });
+
+    it('marks duplicate pages incomplete', async () => {
+        installPageFetch([
+            { releases: pageOf(fullPageIds('a'), '2020-01-01'), 'release-count': 200 },
+            { releases: pageOf(fullPageIds('a'), '2020-01-01'), 'release-count': 200 },
+        ]);
+
+        const result = await fetchAllReleasesForArtistWithCompleteness('artist-1', false);
+
+        assert.equal(result.complete, false);
+    });
+
+    it('accepts a valid complete zero-result page', async () => {
+        installPageFetch([{ releases: [], 'release-count': 0 }]);
+
+        const result = await fetchAllReleasesForArtistWithCompleteness('artist-1', false);
+
+        assert.deepEqual(result, { releases: [], complete: true });
+    });
 
     it('reports isLastPage to the page handler, including when release-count is missing', async () => {
         const { callCount } = installPageFetch([
