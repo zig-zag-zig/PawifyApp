@@ -3,7 +3,11 @@ import { TouchableOpacity, View, LayoutChangeEvent } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { SelectableText } from '../../../components/ui';
 import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
-import { formatDisplayDate, nameWithDisambiguation } from '@pawify/shared';
+import {
+    formatDisplayDate,
+    formatReleaseEventMetadata,
+    nameWithDisambiguation,
+} from '@pawify/shared';
 import { getStyles } from '../../../styles/styles';
 
 interface ReleaseItemProps {
@@ -34,6 +38,11 @@ const ReleaseItem = ({
     const artistText = artistNames
         ? `${releaseType} by ${artistNames}`
         : releaseType;
+    const eventMetadata = formatReleaseEventMetadata({
+        notificationReason: release.notificationReason,
+        trackCount: release.trackCount,
+        editionKeywords: release.editionKeywords,
+    });
 
     return (
         <View style={containerStyle}>
@@ -69,6 +78,15 @@ const ReleaseItem = ({
                     <SelectableText style={styles.releaseDate} numberOfLines={1} selectable={false}>
                         {formatDisplayDate(release.date, release.date_for_display)}
                     </SelectableText>
+                    {eventMetadata ? (
+                        <SelectableText
+                            style={styles.releaseEventMetadata}
+                            numberOfLines={1}
+                            selectable={false}
+                        >
+                            {eventMetadata}
+                        </SelectableText>
+                    ) : null}
                     <SelectableText
                         style={styles.artists}
                         numberOfLines={2}

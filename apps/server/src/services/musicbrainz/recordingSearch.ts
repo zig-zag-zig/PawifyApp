@@ -9,9 +9,10 @@ import { createLogger } from '../../common/logging/logger.js';
 const logger = createLogger('services.musicbrainz.recordingSearch');
 
 /**
- * Track search is the only search category that still costs a MusicBrainz request
- * (1 req/s), so a page is cached for a day. The key is normalised so trailing
- * whitespace and casing do not fragment the cache.
+ * Recording search is served from the mirror's FTS index when available; this cache
+ * only covers the MusicBrainz API fallback, where a page costs a rate-limited
+ * request. The key is normalised so trailing whitespace and casing do not fragment
+ * the cache.
  */
 const trackSearchCacheKey = (query: string, offset: number, limit: number): string =>
     `search:tracks:${query.trim().toLowerCase()}:${offset}:${limit}`;

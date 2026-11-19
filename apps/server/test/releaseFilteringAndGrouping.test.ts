@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import type { Release } from '@pawify/shared';
 import { releaseDateMatchesNotificationSettings } from '../src/utils/helpers/releaseNotificationFilter.js';
 import {
-    dedupeReleaseGroupReleases,
     groupByReleaseGroup,
     mapReleaseGroupsToArtistReleases,
     normalizeReleaseGroups,
@@ -31,15 +30,7 @@ const release = (overrides: Partial<Release> = {}): Release => {
               }
             : null,
         'artist-credit': [],
-        media: [
-            {
-                'track-count': 2,
-                tracks: [
-                    { id: `${id}-track-1`, title: 'Intro', 'artist-credit': [], length: null },
-                    { id: `${id}-track-2`, title: 'Finale', 'artist-credit': [], length: null },
-                ],
-            },
-        ],
+        media: [],
         releaseGroupId,
         cover_url: null,
         externalLinks: [],
@@ -121,90 +112,22 @@ describe('release notification filtering', () => {
 });
 
 describe('release grouping helpers', () => {
-    it('dedupes releases whose tracklists match ignoring order and case', () => {
-        const tracks = (titles: string[]) => ({
-            'track-count': titles.length,
-            tracks: titles.map((title, index) => ({
-                id: `t-${index}`,
-                title,
-                'artist-credit': [],
-                length: null,
-            })),
+    it('keeps every release in a release group without track-title deduplication', () => {
+        const first = release({ id: 'first', title: 'Album' });
+        const second = release({ id: 'second', title: 'album' });
+        const withoutGroup = release({
+            id: 'no-group',
+            releaseGroupId: null,
+            'release-group': null,
         });
 
-        const original = release({
-            id: 'original',
-            title: 'Album',
-            media: [tracks(['Intro', 'Encore'])],
-        });
-        // Same two tracks, reversed and cased/padded differently.
-        const reordered = release({
-            id: 'reordered',
-            title: 'Album',
-            media: [tracks([' encore ', 'INTRO'])],
-        });
-        // Different track count: not a duplicate.
-        const differentCount = release({
-            id: 'different-count',
-            title: 'Album',
-            media: [tracks(['Intro'])],
-        });
-
-        const grouped = groupByReleaseGroup([original, reordered, differentCount]);
+        const grouped = groupByReleaseGroup([first, second, withoutGroup]);
 
         assert.deepEqual(
             grouped.get('group-1')?.map((item) => item.id),
-            ['original', 'different-count'],
+            ['first', 'second'],
         );
-    });
-
-    it('dedupes equivalent releases by normalized title and track list', () => {
-        const original = release({ id: 'original', title: ' Album ' });
-        const duplicate = release({ id: 'duplicate', title: 'album' });
-        const alternate = release({
-            id: 'alternate',
-            title: 'Album',
-            media: [
-                {
-                    'track-count': 2,
-                    tracks: [
-                        {
-                            id: 'alternate-track-1',
-                            title: 'Intro',
-                            'artist-credit': [],
-                            length: null,
-                        },
-                        {
-                            id: 'alternate-track-2',
-                            title: 'Encore',
-                            'artist-credit': [],
-                            length: null,
-                        },
-                    ],
-                },
-            ],
-        });
-
-        const grouped = groupByReleaseGroup([original, duplicate, alternate]);
-
-        assert.deepEqual(
-            grouped.get('group-1')?.map((item) => item.id),
-            ['original', 'alternate'],
-        );
-    });
-
-    it('reports pruned release IDs when deduping one release group from a mixed list', () => {
-        const result = dedupeReleaseGroupReleases('group-1', [
-            release({ id: 'target-1', releaseGroupId: 'group-1' }),
-            release({ id: 'target-duplicate', releaseGroupId: 'group-1' }),
-            release({ id: 'other-group', releaseGroupId: 'group-2' }),
-        ]);
-
-        assert.deepEqual(
-            result.releases.map((item) => item.id),
-            ['target-1'],
-        );
-        assert.deepEqual(result.prunedReleaseIds.sort(), ['other-group', 'target-duplicate']);
+        assert.equal(grouped.size, 1);
     });
 
     it('normalizes missing group dates and maps groups in newest-first order', () => {

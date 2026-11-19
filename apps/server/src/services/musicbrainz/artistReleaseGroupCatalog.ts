@@ -1,15 +1,30 @@
 import type { ArtistCredit, Release } from '@pawify/shared';
+import { deriveReleaseGroupReleaseListMetadata } from '@pawify/shared';
 
 import { getArtistReleaseGroupCandidatesFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import { isMusicDbEnabled } from '../../infrastructure/musicDb/musicDbClient.js';
-import type { ReleaseGroupCandidate } from '../../features/releases/domain/releaseGroupProcessing.js';
-import { fetchAllReleasesForArtist } from './releaseQueries.js';
+import type {
+    ReleaseEditionCandidate,
+    ReleaseGroupCandidate,
+} from '../../features/releases/domain/releaseGroupProcessing.js';
+import {
+    extractEditionKeywords,
+    isOfficialReleaseStatus,
+} from '../../features/releases/domain/releaseEditionKeywords.js';
+import {
+    fetchAllReleasesForArtistWithCompleteness,
+} from './releaseQueries.js';
 import { dateToTimestamp } from '../../utils/dateUtil.js';
 
 export type ArtistReleaseGroupCatalog = {
     groups: ReleaseGroupCandidate[];
     /** Artist credits per group, for building the feed entry without another lookup. */
     creditsByGroupId: Map<string, ArtistCredit[]>;
+    /**
+     * False when the catalogue is capped, failed mid-pagination, or the mirror is
+     * not ready. Incomplete catalogues must not prune, baseline or notify.
+     */
+    complete: boolean;
 };
 
 /**
@@ -19,7 +34,31 @@ export type ArtistReleaseGroupCatalog = {
  * release of each group as the representative, and keep every release id because a
  * user can open any pressing from the group screen.
  */
-const groupReleases = (releases: Release[]): ArtistReleaseGroupCatalog => {
+const editionCandidateFromRelease = (release: Release): ReleaseEditionCandidate => {
+    const { trackCount, formats } = deriveReleaseGroupReleaseListMetadata(release);
+    return {
+        releaseId: release.id,
+        date: release.date,
+        status: release.status ?? null,
+        trackCount,
+        formats,
+        title: release.title,
+        disambiguation: release.disambiguation,
+        editionKeywords: extractEditionKeywords(release.title, release.disambiguation),
+    };
+};
+
+/**
+ * Collapses an artist's releases into release groups.
+ *
+ * This is the API-mode equivalent of the mirror's grouping query: pick the newest
+ * release of each group as the representative, keep every release id because a user
+ * can open any pressing from the group screen, and snapshot the Official editions
+ * so content-based detection works without the mirror.
+ */
+const groupReleases = (
+    releases: Release[],
+): Omit<ArtistReleaseGroupCatalog, 'complete'> => {
     const groups = new Map<string, ReleaseGroupCandidate>();
     const newestDateByGroup = new Map<string, string | null>();
     const creditsByGroupId = new Map<string, ArtistCredit[]>();
@@ -30,9 +69,12 @@ const groupReleases = (releases: Release[]): ArtistReleaseGroupCatalog => {
             continue;
         }
 
+        const edition = editionCandidateFromRelease(release);
+        const officialEdition = isOfficialReleaseStatus(edition.status) ? [edition] : [];
         const existing = groups.get(groupId);
         if (existing) {
             existing.releaseIds.push(release.id);
+            existing.officialEditions.push(...officialEdition);
             if (
                 dateToTimestamp(release.date) >
                 dateToTimestamp(newestDateByGroup.get(groupId) ?? null)
@@ -53,6 +95,7 @@ const groupReleases = (releases: Release[]): ArtistReleaseGroupCatalog => {
             releaseIds: [release.id],
             newestReleaseId: release.id,
             newestReleaseDate: release.date,
+            officialEditions: officialEdition,
         });
         newestDateByGroup.set(groupId, release.date);
         creditsByGroupId.set(groupId, release['artist-credit'] ?? []);
@@ -62,25 +105,32 @@ const groupReleases = (releases: Release[]): ArtistReleaseGroupCatalog => {
 };
 
 const buildFromMirror = (artistId: string): ArtistReleaseGroupCatalog | null => {
-    const groups = getArtistReleaseGroupCandidatesFromMirror(artistId);
-    if (groups === null) {
+    const catalog = getArtistReleaseGroupCandidatesFromMirror(artistId);
+    if (catalog === null) {
         return null;
     }
 
     return {
-        groups,
+        groups: catalog.groups,
         // The mirror stores group credits; the caller only needs them for groups
         // that turn out to be new, so this stays empty and is filled on demand.
         creditsByGroupId: new Map(),
+        complete: catalog.complete,
     };
 };
 
 const fetchFromApi = async (artistId: string): Promise<ArtistReleaseGroupCatalog> => {
-    // No `inc=recordings` any more: the diff compares release groups, so tracklists
-    // were only ever fetched to detect duplicate releases within a group, which the
-    // grouping now does for free.
-    const releases = await fetchAllReleasesForArtist(artistId, false);
-    return groupReleases(releases);
+    // No `inc=recordings` any more: the diff compares release groups. Media
+    // metadata (`inc=media`) is still requested because Official track counts and
+    // formats are content signals; the tracklist itself is never loaded here.
+    const result = await fetchAllReleasesForArtistWithCompleteness(artistId, false);
+    const hasMissingGroupIdentity = result.releases.some(
+        (release) => !release.releaseGroupId,
+    );
+    return {
+        ...groupReleases(result.releases),
+        complete: result.complete && !hasMissingGroupIdentity,
+    };
 };
 
 /**

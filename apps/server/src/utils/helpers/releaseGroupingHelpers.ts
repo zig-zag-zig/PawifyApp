@@ -1,11 +1,6 @@
 import { ArtistReleaseGroup, Release } from '@pawify/shared';
 import { dateToTimestamp, sortReleasesByDate } from '../dateUtil.js';
 
-export type DedupeReleaseGroupReleasesResult = {
-    releases: Release[];
-    prunedReleaseIds: string[];
-};
-
 export const groupByReleaseGroup = (releases: Release[]): Map<string, Release[]> => {
     const releaseGroups = new Map<string, Release[]>();
 
@@ -19,39 +14,10 @@ export const groupByReleaseGroup = (releases: Release[]): Map<string, Release[]>
             releaseGroups.set(id, []);
         }
 
-        const existingReleasesForGroup = releaseGroups.get(id)!;
-        const isDuplicate = existingReleasesForGroup.some((existingRelease) =>
-            isDuplicateRelease(existingRelease, release),
-        );
-
-        if (!isDuplicate) {
-            existingReleasesForGroup.push(release);
-        }
+        releaseGroups.get(id)!.push(release);
     }
 
     return releaseGroups;
-};
-
-export const dedupeReleaseGroupReleases = (
-    releaseGroupId: string,
-    releases: Release[],
-): DedupeReleaseGroupReleasesResult => {
-    const releaseGroupsMap = groupByReleaseGroup(releases);
-    const dedupedReleases =
-        releaseGroupsMap.get(releaseGroupId) ?? Array.from(releaseGroupsMap.values())[0] ?? [];
-    const dedupedReleaseIds = new Set(dedupedReleases.map((release) => release.id));
-    const prunedReleaseIds = Array.from(
-        new Set(
-            releases
-                .filter((release) => !dedupedReleaseIds.has(release.id))
-                .map((release) => release.id),
-        ),
-    );
-
-    return {
-        releases: dedupedReleases,
-        prunedReleaseIds,
-    };
 };
 
 export const normalizeReleaseGroups = (releaseGroupsMap: Map<string, Release[]>): void => {
@@ -102,46 +68,3 @@ export const mapReleaseGroupsToArtistReleases = (
         }))
         .sort((left, right) => dateToTimestamp(right.date) - dateToTimestamp(left.date));
 };
-
-const isDuplicateRelease = (release1: Release, release2: Release): boolean => {
-    const name1 = normalizeReleaseComparableText(release1.title);
-    const name2 = normalizeReleaseComparableText(release2.title);
-
-    if (name1 !== name2) {
-        return false;
-    }
-
-    const tracks1 = getAllTrackTitlesOfRelease(release1);
-    const tracks2 = getAllTrackTitlesOfRelease(release2);
-
-    if (tracks1.length === 0 || tracks2.length === 0) {
-        return false;
-    }
-
-    return areSameTracklists(tracks1, tracks2);
-};
-
-/**
- * Two releases have the same tracklist when they have the same number of
- * tracks and the same track names. Names are compared trimmed and
- * case-insensitively (see getAllTrackTitlesOfRelease) and ordering is ignored,
- * so a reordered or differently-cased pressing still counts as a duplicate.
- */
-const areSameTracklists = (tracks1: string[], tracks2: string[]): boolean => {
-    if (tracks1.length !== tracks2.length) {
-        return false;
-    }
-
-    const sorted1 = [...tracks1].sort();
-    const sorted2 = [...tracks2].sort();
-
-    return sorted1.every((track, index) => track === sorted2[index]);
-};
-
-const getAllTrackTitlesOfRelease = (release: Release): string[] => {
-    return release.media.flatMap(
-        (media) => media.tracks?.map((track) => normalizeReleaseComparableText(track.title)) ?? [],
-    );
-};
-
-const normalizeReleaseComparableText = (value: string): string => value.trim().toLowerCase();

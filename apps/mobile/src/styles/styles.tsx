@@ -62,6 +62,11 @@ const styles = StyleSheet.create({
       color: theme.colors.textMuted,
       marginBottom: 4,
     },
+    releaseEventMetadata: {
+      fontSize: 13,
+      color: theme.colors.textSoft,
+      marginBottom: 4,
+    },
     artists: {
       fontSize: 14,
       color: theme.colors.textSoft,

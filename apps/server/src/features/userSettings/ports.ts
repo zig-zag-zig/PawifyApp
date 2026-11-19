@@ -1,4 +1,6 @@
 import type { ReleaseNotificationSettings } from '@pawify/shared';
+import type { KnownReleaseGroupStateValue } from '../releases/domain/releaseGroupProcessing.js';
+import type { ArtistReleaseGroupCatalog } from '../../services/musicbrainz/artistReleaseGroupCatalog.js';
 
 export type ReleaseNotificationSettingsRepository = {
     getSettings(userId: string): Promise<ReleaseNotificationSettings>;
@@ -13,10 +15,14 @@ export type UserFollowedArtistsRepository = {
 };
 
 export type KnownReleaseRepository = {
+    getArtistReleaseGroupState(
+        userId: string,
+        artistId: string,
+    ): Promise<{ [groupId: string]: KnownReleaseGroupStateValue }>;
     replaceArtistReleaseGroupState(
         userId: string,
         artistId: string,
-        groupState: ReadonlyMap<string, string>,
+        groupState: ReadonlyMap<string, KnownReleaseGroupStateValue>,
     ): Promise<void>;
 };
 
@@ -27,10 +33,8 @@ export type NewReleaseRepository = {
     ): Promise<void>;
 };
 
-export type ReleaseGroupForSettings = { id: string; date: string | null };
-
 export type ReleaseCatalogGateway = {
-    getArtistReleases(artistId: string): Promise<ReleaseGroupForSettings[]>;
+    getArtistReleaseCatalog(artistId: string): Promise<ArtistReleaseGroupCatalog>;
 };
 
 export type UserSettingsNotifier = {

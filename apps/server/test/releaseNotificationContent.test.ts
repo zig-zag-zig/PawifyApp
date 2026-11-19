@@ -113,6 +113,67 @@ describe('buildReleaseNotifications', () => {
         assert.equal(notifications[0].body, 'By Unknown Artist\nReleased 18 April 2025');
     });
 
+    it('explains a more-tracks content event in the body and payload', () => {
+        const notifications = buildReleaseNotifications([
+            newRelease('release-1', 'Midnight Signals', undefined, {
+                releaseGroupId: 'group-1',
+                releaseCount: 1,
+                trackCount: 18,
+                notificationReason: 'more-tracks',
+            }),
+        ]);
+
+        assert.equal(
+            notifications[0]?.body,
+            'By Aurora Test Ensemble\nReleased 18 April 2025\n18 tracks',
+        );
+        assert.deepEqual(notifications[0]?.data.payload, {
+            releaseId: 'release-1',
+            releaseGroupId: 'group-1',
+            releaseCount: 1,
+            trackCount: 18,
+            notificationReason: 'more-tracks',
+        });
+    });
+
+    it('explains a deluxe content event in the body and payload', () => {
+        const notifications = buildReleaseNotifications([
+            newRelease('release-1', 'Midnight Signals', undefined, {
+                releaseGroupId: 'group-1',
+                releaseCount: 1,
+                trackCount: 18,
+                editionKeywords: ['deluxe'],
+                notificationReason: 'new-edition',
+            }),
+        ]);
+
+        assert.equal(
+            notifications[0]?.body,
+            'By Aurora Test Ensemble\nReleased 18 April 2025\nDeluxe edition · 18 tracks',
+        );
+        assert.deepEqual(notifications[0]?.data.payload, {
+            releaseId: 'release-1',
+            releaseGroupId: 'group-1',
+            releaseCount: 1,
+            trackCount: 18,
+            editionKeywords: ['deluxe'],
+            notificationReason: 'new-edition',
+        });
+    });
+
+    it('does not add an edition line for a plain new group', () => {
+        const notifications = buildReleaseNotifications([
+            newRelease('release-1', 'Midnight Signals', undefined, {
+                notificationReason: 'new-group',
+            }),
+        ]);
+
+        assert.equal(
+            notifications[0]?.body,
+            'By Aurora Test Ensemble\nReleased 18 April 2025',
+        );
+    });
+
     it('includes the disambiguation in the title when present', () => {
         const notifications = buildReleaseNotifications([
             newRelease('release-1', 'Midnight Signals', undefined, {

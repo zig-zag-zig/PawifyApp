@@ -10,6 +10,7 @@ import {
     paginateReleases,
     RELEASES_PAGE_SIZE
 } from '../domain/paginateReleases';
+import { resolveReleaseFeedNavigation } from '../domain/releaseFeedNavigation';
 import type { ReleasesPageController, ReleasesPageUiState } from '../model/types';
 import { createInitialReleasesState, releasesReducer } from '../state/releasesReducer';
 
@@ -88,13 +89,13 @@ export function useReleasesPage(): ReleasesPageController {
             // A feed entry is a release *group*: one pressing opens straight to the
             // release, several open the group screen (which lists them). This is the
             // same rule the artist and search screens follow.
-            const releaseGroupId = release.releaseGroupId ?? null;
-            if (releaseGroupId && (release.releaseCount ?? 1) > 1) {
-                navigation.navigate('ReleaseGroup', { releaseGroupId });
+            const target = resolveReleaseFeedNavigation(release);
+            if (target.screen === 'ReleaseGroup') {
+                navigation.navigate('ReleaseGroup', { releaseGroupId: target.releaseGroupId });
                 return;
             }
 
-            navigation.navigate('Release', { releaseId: release.id });
+            navigation.navigate('Release', { releaseId: target.releaseId });
         },
         onBannerVisibilityChanged: setShowBanner,
     };

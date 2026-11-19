@@ -1,16 +1,31 @@
 import type { UserSettingsUseCaseDependencies } from '../../src/features/userSettings/ports.js';
+import type {
+    KnownReleaseGroupStateValue,
+    ReleaseGroupCandidate,
+} from '../../src/features/releases/domain/releaseGroupProcessing.js';
 import type { ReleaseNotificationSettings } from '@pawify/shared';
 import { createReleaseNotificationSettings } from './releaseFixtures.js';
 
 type UserSettingsFakeOptions = {
-    catalog?: Record<string, { id: string; date: string | null }[]>;
+    catalog?: Record<
+        string,
+        { complete?: boolean; groups: ReleaseGroupCandidate[] }
+    >;
+    currentState?: Record<
+        string,
+        { [groupId: string]: KnownReleaseGroupStateValue }
+    >;
     previousSettings?: ReleaseNotificationSettings;
     failArtistId?: string;
 };
 
 export const createUserSettingsDependencies = (options: UserSettingsFakeOptions = {}) => {
     const saveCalls: ReleaseNotificationSettings[] = [];
-    const replaceCalls: Array<{ userId: string; artistId: string; groupState: ReadonlyMap<string, string> }> = [];
+    const replaceCalls: Array<{
+        userId: string;
+        artistId: string;
+        groupState: ReadonlyMap<string, KnownReleaseGroupStateValue>;
+    }> = [];
     const removeCalls: Array<{ userId: string; settings: ReleaseNotificationSettings }> = [];
     const notificationCalls: string[] = [];
     const previousSettings =
@@ -27,6 +42,9 @@ export const createUserSettingsDependencies = (options: UserSettingsFakeOptions 
             },
         },
         knownReleaseRepository: {
+            async getArtistReleaseGroupState(_userId, artistId) {
+                return options.currentState?.[artistId] ?? {};
+            },
             async replaceArtistReleaseGroupState(userId, artistId, groupState) {
                 replaceCalls.push({ userId, artistId, groupState });
             },
@@ -37,12 +55,17 @@ export const createUserSettingsDependencies = (options: UserSettingsFakeOptions 
             },
         },
         releaseCatalogGateway: {
-            async getArtistReleases(artistId) {
+            async getArtistReleaseCatalog(artistId) {
                 if (artistId === options.failArtistId) {
                     throw new Error('catalog failed');
                 }
 
-                return options.catalog?.[artistId] ?? [];
+                const entry = options.catalog?.[artistId];
+                return {
+                    groups: entry?.groups ?? [],
+                    creditsByGroupId: new Map(),
+                    complete: entry?.complete ?? true,
+                };
             },
         },
         releaseNotificationSettingsRepository: {

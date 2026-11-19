@@ -1,6 +1,5 @@
 import type { NewRelease } from '@pawify/shared';
 import {
-    NewReleasesMap,
     NewReleasesSnapshot,
     StoredNewRelease,
     StoredNewReleasesMap,
@@ -9,6 +8,8 @@ import { buildNewReleasesCollectionPayload, getNewReleasesMapDocRef } from './re
 import { db } from '../../infrastructure/firebase/firebaseInit.js';
 import { isPlainObject } from '../../common/utils/objectGuards.js';
 import { monitorUserMapsDocSizes } from '../monitoring/mapsDocSizeMonitor.js';
+import { toPublicNewReleasesMap } from './newReleaseSerialization.js';
+import { normalizeEditionKeywords } from '../../features/releases/domain/releaseEditionKeywords.js';
 
 const normalizePrimaryType = (value: unknown): string | null =>
     typeof value === 'string' ? value : null;
@@ -106,6 +107,13 @@ const normalizeNewRelease = (value: unknown): NewRelease | null => {
         return null;
     }
 
+    const releaseCount =
+        typeof value.releaseCount === 'number' &&
+        Number.isFinite(value.releaseCount) &&
+        value.releaseCount > 0
+            ? Math.floor(value.releaseCount)
+            : undefined;
+
     return {
         id: value.id,
         title: value.title,
@@ -114,6 +122,7 @@ const normalizeNewRelease = (value: unknown): NewRelease | null => {
         artists,
         date_for_display: value.date_for_display,
         'primary-type': normalizePrimaryType(value['primary-type']),
+        ...(releaseCount !== undefined ? { releaseCount } : {}),
     };
 };
 
@@ -135,7 +144,51 @@ const normalizeStoredNewRelease = (value: unknown): StoredNewRelease | null => {
     return {
         ...release,
         releaseGroupId,
+        ...normalizeEventMetadata(value),
     };
+};
+
+const NOTIFICATION_REASONS = new Set(['new-group', 'more-tracks', 'new-edition']);
+
+/**
+ * Content-event metadata, carried only where it says something.
+ *
+ * Entries written before content-based dedupe existed have none of these fields, so
+ * they stay undefined instead of turning into `null`/`[]` noise.
+ */
+const normalizeEventMetadata = (
+    value: Record<string, unknown>,
+): Pick<StoredNewRelease, 'trackCount' | 'editionKeywords' | 'notificationReason'> => {
+    const metadata: Pick<
+        StoredNewRelease,
+        'trackCount' | 'editionKeywords' | 'notificationReason'
+    > = {};
+
+    if (typeof value.trackCount === 'number' && Number.isFinite(value.trackCount)) {
+        metadata.trackCount = Math.max(0, Math.floor(value.trackCount));
+    } else if (value.trackCount === null) {
+        metadata.trackCount = null;
+    }
+
+    if (Array.isArray(value.editionKeywords)) {
+        metadata.editionKeywords = normalizeEditionKeywords(
+            value.editionKeywords.filter(
+                (keyword): keyword is string =>
+                    typeof keyword === 'string' && keyword.length > 0,
+            ),
+        );
+    }
+
+    if (
+        typeof value.notificationReason === 'string' &&
+        NOTIFICATION_REASONS.has(value.notificationReason)
+    ) {
+        metadata.notificationReason = value.notificationReason as NonNullable<
+            StoredNewRelease['notificationReason']
+        >;
+    }
+
+    return metadata;
 };
 
 const normalizeStoredNewReleasesMap = (value: unknown): StoredNewReleasesMap => {
@@ -166,17 +219,6 @@ export const normalizeNewReleasesCollectionDocument = (
 
     return normalizeStoredNewReleasesMap(value);
 };
-
-const stripStoredNewRelease = (release: StoredNewRelease): NewRelease => {
-    const { releaseGroupId: _releaseGroupId, ...publicRelease } = release;
-    return publicRelease;
-};
-
-const stripStoredNewReleasesMap = (storedMap: StoredNewReleasesMap): NewReleasesMap =>
-    Object.entries(storedMap).reduce<NewReleasesMap>((acc, [releaseId, release]) => {
-        acc[releaseId] = stripStoredNewRelease(release);
-        return acc;
-    }, {});
 
 export const writeNewReleasesState = async (
     userId: string,
@@ -274,7 +316,7 @@ export const getNewReleasesSnapshotFromDb = async (
     const storedNewReleasesMap = await readNewReleasesState(userId);
 
     return {
-        newReleasesMap: stripStoredNewReleasesMap(storedNewReleasesMap),
+        newReleasesMap: toPublicNewReleasesMap(storedNewReleasesMap),
         coverPageEntries: buildNewReleaseCoverPageEntries(storedNewReleasesMap),
     };
 };

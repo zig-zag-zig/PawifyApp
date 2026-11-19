@@ -621,6 +621,10 @@ describe('release use cases', () => {
                                 releaseGroupId: 'rg-1',
                                 cover_url: null,
                                 externalLinks: [],
+                                trackCount: null,
+                                formats: [],
+                                country: null,
+                                status: null,
                             },
                         ];
                     },
@@ -725,6 +729,10 @@ describe('release use cases', () => {
                                 releaseGroupId: 'rg-1',
                                 cover_url: null,
                                 externalLinks: [],
+                                trackCount: null,
+                                formats: [],
+                                country: null,
+                                status: null,
                             },
                         ];
                     },

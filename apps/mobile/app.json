@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pawify",
     "slug": "pawify",
-    "version": "2.4.15",
+    "version": "2.4.16",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

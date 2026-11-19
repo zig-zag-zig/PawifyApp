@@ -7,6 +7,10 @@ import { ReleaseNavigationProp, RootStackParamList } from '../../../types/naviga
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { extractReleaseGroupReleaseCovers } from '../../../utils/taskResultMaps';
 import { useReleaseApi } from '../api/releaseApi';
+import {
+    normalizeReleaseGroupReleaseListItems,
+    normalizeReleaseGroupReleasesResponse,
+} from '../domain/releaseGroupReleases';
 import type { ReleaseGroupPageController, ReleaseGroupPageUiState } from '../model/types';
 
 type ReleaseGroupRouteProp = RouteProp<RootStackParamList, 'ReleaseGroup'>;
@@ -20,6 +24,10 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
     const immediateRouteCovers = useMemo(
         () => normalizeNullableStringMap(initialReleaseCovers),
         [initialReleaseCovers],
+    );
+    const normalizedRouteReleases = useMemo(
+        () => (routeReleases ? normalizeReleaseGroupReleaseListItems(routeReleases) : null),
+        [routeReleases],
     );
     const effectiveReleaseCovers = useMemo(
         () => mergeNullableStringMaps(releaseGroupReleaseCovers, immediateRouteCovers),
@@ -50,9 +58,14 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         setReleaseLoadFailed(false);
 
         getReleaseGroupReleases(releaseGroupId)
-            .then(result => {
+            .then(response => {
                 if (isCancelled) {
                     return;
+                }
+
+                const result = normalizeReleaseGroupReleasesResponse(response);
+                if (!result) {
+                    throw new Error('Invalid release-group releases response');
                 }
 
                 setFetchedReleases(result.releases);
@@ -80,7 +93,7 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         };
     }, [routeReleases, releaseGroupId, getReleaseGroupReleases, setReleaseGroupReleaseCovers]);
 
-    const releases = routeReleases ?? fetchedReleases;
+    const releases = normalizedRouteReleases ?? fetchedReleases;
 
     useEffect(() => {
         const releaseCoverTaskId = initialReleaseCoverTaskId ?? lazyReleaseCoverTaskId;
@@ -187,7 +200,12 @@ export function useReleaseGroupPage(): ReleaseGroupPageController {
         setIsLoadingReleases(true);
 
         getReleaseGroupReleases(releaseGroupId)
-            .then(result => {
+            .then(response => {
+                const result = normalizeReleaseGroupReleasesResponse(response);
+                if (!result) {
+                    throw new Error('Invalid release-group releases response');
+                }
+
                 setFetchedReleases(result.releases);
                 setLazyReleaseCoverTaskId(result.releaseCoverTaskId);
                 const immediateCovers = normalizeNullableStringMap(result.releaseCovers);

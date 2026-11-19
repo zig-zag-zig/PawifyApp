@@ -122,6 +122,8 @@ const seed = {
             date: '2003-04-29',
             disambiguation: null,
             release_group_mbid: GROUP_ID,
+            country: 'US',
+            status: 'Official',
         },
         {
             mbid: RELEASE_NEWER,
@@ -129,6 +131,8 @@ const seed = {
             date: '2003-06-17',
             disambiguation: 'digital',
             release_group_mbid: GROUP_ID,
+            country: 'GB',
+            status: 'Official',
         },
         {
             mbid: RELEASE_OTHER,
@@ -136,6 +140,31 @@ const seed = {
             date: '2021-06-04',
             disambiguation: null,
             release_group_mbid: GROUP_TWO_ID,
+            country: 'US',
+            status: 'Bootleg',
+        },
+    ],
+    media: [
+        {
+            release_mbid: RELEASE_OLDER,
+            position: 1,
+            format: 'CD',
+            track_count: 12,
+            title: '',
+        },
+        {
+            release_mbid: RELEASE_OLDER,
+            position: 2,
+            format: 'DVD',
+            track_count: 2,
+            title: '',
+        },
+        {
+            release_mbid: RELEASE_NEWER,
+            position: 1,
+            format: 'Digital Media',
+            track_count: 14,
+            title: '',
         },
     ],
     releaseArtists: [
@@ -519,8 +548,40 @@ describe('musicDb repositories', () => {
 
             assert.ok(releases);
             assert.deepEqual(releases, [
-                { id: RELEASE_OLDER, title: 'Hunger for More', date: '2003-04-29' },
-                { id: RELEASE_NEWER, title: 'Hunger for More (digital)', date: '2003-06-17' },
+                {
+                    id: RELEASE_OLDER,
+                    title: 'Hunger for More',
+                    date: '2003-04-29',
+                    trackCount: 14,
+                    formats: ['CD', 'DVD'],
+                    country: 'US',
+                    status: 'Official',
+                },
+                {
+                    id: RELEASE_NEWER,
+                    title: 'Hunger for More (digital)',
+                    date: '2003-06-17',
+                    trackCount: 14,
+                    formats: ['Digital Media'],
+                    country: 'GB',
+                    status: 'Official',
+                },
+            ]);
+        });
+
+        it('keeps releases without media with a null track count', () => {
+            const releases = getReleaseGroupReleasesFromMirror(GROUP_TWO_ID);
+
+            assert.deepEqual(releases, [
+                {
+                    id: RELEASE_OTHER,
+                    title: 'The Course of the Inevitable',
+                    date: '2021-06-04',
+                    trackCount: null,
+                    formats: [],
+                    country: 'US',
+                    status: 'Bootleg',
+                },
             ]);
         });
 

@@ -116,6 +116,32 @@ describe('mergeReleaseMetadata', () => {
         );
     });
 
+    it('fills missing barcode, status and country from the mirror', () => {
+        const merged = mergeReleaseMetadata(
+            apiRelease({ barcode: null, status: null, country: null }),
+            mirrorMetadata({ barcode: '0123456789012', status: 'Official', country: 'US' }),
+        );
+
+        assert.equal(merged.barcode, '0123456789012');
+        assert.equal(merged.status, 'Official');
+        assert.equal(merged.country, 'US');
+    });
+
+    it('keeps API edition values when the mirror has none', () => {
+        const merged = mergeReleaseMetadata(
+            apiRelease({
+                barcode: 'api-barcode',
+                status: 'Bootleg',
+                country: 'GB',
+            }),
+            mirrorMetadata({ barcode: null, status: null, country: null }),
+        );
+
+        assert.equal(merged.barcode, 'api-barcode');
+        assert.equal(merged.status, 'Bootleg');
+        assert.equal(merged.country, 'GB');
+    });
+
     it('does not blank the title or date with an empty mirror value', () => {
         const merged = mergeReleaseMetadata(
             apiRelease({ date: '2003-04-29' }),

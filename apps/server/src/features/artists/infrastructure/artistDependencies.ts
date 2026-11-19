@@ -16,13 +16,16 @@ import {
 } from '../../../services/artistDetailsService.js';
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
+import { emptyKnownReleaseGroupState } from '../../releases/domain/releaseGroupProcessing.js';
 import { searchRecordings as searchRecordingsFromApi } from '../../../services/musicbrainz/recordingSearch.js';
 import { searchWithZeroResultFallback } from '../../../services/search/zeroResultApiFallback.js';
 import {
     getArtistDetailsFromMirror,
     getArtistReleaseGroupIdsFromMirror,
     getFollowedArtistSummaryFromMirror,
+    searchRecordingsFromMirror,
 } from '../../../infrastructure/musicDb/musicDbRepositories.js';
+import { isMusicDbEnabled } from '../../../infrastructure/musicDb/musicDbClient.js';
 import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
 import { getArtistReleaseGroupCatalog } from '../../../services/musicbrainz/artistReleaseGroupCatalog.js';
 import type { ArtistUseCaseDependencies } from '../ports.js';
@@ -68,13 +71,18 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
             return await getFollowingStateFromDb(userId);
         },
         saveFollowedArtist: async (userId, artistId, groupIds, artistSummary) => {
-            // Seeded with an empty event date: the artist's existing catalogue is
-            // known and must not notify. The first scan records the real dates
-            // without notifying (the baseline path).
+            // Seeded with an unbaselined state: the artist's existing catalogue is
+            // known and must not notify. The first scan records the content baseline
+            // (max Official track count and keywords) without notifying.
             await saveArtistAndKnownReleasesToDb(
                 userId,
                 artistId,
-                new Map(groupIds.map((groupId) => [groupId, ''])),
+                new Map(
+                    groupIds.map((groupId) => [
+                        groupId,
+                        emptyKnownReleaseGroupState('', false),
+                    ]),
+                ),
                 [],
                 artistSummary,
             );
@@ -91,8 +99,13 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
             (await withMusicDb(
                 'getArtistReleaseGroupIds',
                 () => getArtistReleaseGroupIdsFromMirror(artistId),
-                async () =>
-                    (await getArtistReleaseGroupCatalog(artistId)).groups.map((group) => group.id),
+                async () => {
+                    const catalog = await getArtistReleaseGroupCatalog(artistId);
+                    if (!catalog.complete) {
+                        throw new Error('Incomplete release catalogue');
+                    }
+                    return catalog.groups.map((group) => group.id);
+                },
             )) ?? [],
     },
     artistProfileImageQueue: artistProfileImageTaskQueue,
@@ -102,8 +115,13 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
         // 1h in Redis).
         searchArtists: async (userId, query, offset, limit) =>
             await searchWithZeroResultFallback.searchArtists(userId, query, offset, limit),
-        searchRecordings: async (query, offset, limit) =>
-            await searchRecordingsFromApi(query, offset, limit),
+        searchRecordings: async (query, offset, limit) => {
+            if (isMusicDbEnabled()) {
+                const local = searchRecordingsFromMirror(query, offset, limit);
+                if (local !== null && local.recordings.length > 0) return local;
+            }
+            return await searchRecordingsFromApi(query, offset, limit);
+        },
         searchReleaseGroups: async (userId, query, offset, limit) =>
             await searchWithZeroResultFallback.searchReleaseGroups(userId, query, offset, limit),
     },

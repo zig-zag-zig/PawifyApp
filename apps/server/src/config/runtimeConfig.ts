@@ -75,10 +75,12 @@ export const cacheConfig = {
     // lookups and the API-fallback path.
     assetSuccessTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_SUCCESS_TTL_HOURS, 24 * 90),
     assetMissTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_MISS_TTL_HOURS, 24 * 7),
-    // Tracklists are not in the mirror, so they cost one 1 req/s MusicBrainz request
-    // per release view unless cached. A tracklist effectively never changes.
+    // Tracklists are mirror-first when the mirror's track data is ready and fall
+    // back to one 1 req/s MusicBrainz request per release view. A tracklist
+    // effectively never changes.
     releaseTracksTtlHours: parsePositiveIntEnv(process.env.RELEASE_TRACKS_CACHE_TTL_HOURS, 24 * 30),
-    // Track search is the only search category that still hits MusicBrainz.
+    // Recording search uses the local mirror FTS index first and the API as
+    // fallback, so this TTL only governs fallback pages.
     trackSearchTtlHours: parsePositiveIntEnv(process.env.TRACK_SEARCH_CACHE_TTL_HOURS, 24),
     transientRemoteValueRetryWindowMs: parsePositiveIntEnv(
         process.env.TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS,
@@ -259,8 +261,8 @@ export const firebaseAdminConfig = {
  * "use the API instead" switch, because running both paths is a cost with no user
  * benefit. The API stays as a *failure* path only: if the file is missing or cannot
  * be opened, requests are served from the API and an error is logged, so a broken
- * sync job degrades the app instead of taking it down. Tracklists always come from
- * the API because the mirror stores none.
+ * sync job degrades the app instead of taking it down. Tracklists are served from
+ * the mirror when its track data is ready, with the API as fallback.
  */
 export const musicDbConfig = {
     // Resolved on access: the mirror client is a lazily opened singleton and tests
@@ -278,5 +280,19 @@ export const musicDbConfig = {
      */
     get maxArtistReleaseGroups(): number {
         return parseNonNegativeIntEnv(process.env.MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS, 1000);
+    },
+    /**
+     * Safety bound for the notification/settings catalogue.
+     *
+     * This is deliberately separate from the browse cap: browse pagination must
+     * never silently truncate notification detection. Hitting this bound marks the
+     * catalogue incomplete, and incomplete catalogues cannot notify or prune. 0
+     * disables the bound.
+     */
+    get maxArtistNotificationReleases(): number {
+        return parseNonNegativeIntEnv(
+            process.env.MUSIC_DB_MAX_ARTIST_NOTIFICATION_RELEASES,
+            100000,
+        );
     },
 };

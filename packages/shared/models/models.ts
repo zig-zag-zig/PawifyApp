@@ -83,6 +83,15 @@ export interface NewRelease {
   releaseGroupId?: string | null;
   /** How many releases the group holds; 1 means the tap goes straight to `id`. */
   releaseCount?: number;
+  /**
+   * Official edition that produced this event, when the event came from edition
+   * content rather than from the group's first appearance.
+   */
+  trackCount?: number | null;
+  /** Edition keywords (`deluxe`, `remaster`, ...) carried by the event edition. */
+  editionKeywords?: string[];
+  /** Why detection emitted this entry; used by clients to explain the event. */
+  notificationReason?: 'new-group' | 'more-tracks' | 'new-edition';
 }
 
 export interface ArtistReleaseGroup extends ReleaseGroup {
@@ -95,6 +104,9 @@ export interface Release extends ReleaseBase {
   "release-group": ReleaseGroup | null;
   "artist-credit": ArtistCredit[];
   media: Media[];
+  barcode?: string | null;
+  status?: string | null;
+  country?: string | null;
   releaseGroupId: string | null;
   cover_url: RemoteValueState;
   externalLinks: ExternalLink[];
@@ -102,11 +114,14 @@ export interface Release extends ReleaseBase {
 
 export interface Media {
   "track-count": number;
+  format?: string | null;
+  position?: number;
   tracks: Track[] | null;
 }
 
 export interface Track {
   id: string;
+  number?: string | null;
   title: string;
   "artist-credit": ArtistCredit[];
   length: number | null;
@@ -189,4 +204,12 @@ export type ReleaseGroupReleaseListItem = {
   title: string;
   /** Release date as MusicBrainz returns it (e.g. `2025-03-14` or `2025-03`), null when unknown. */
   date: string | null;
+  /** Total media track count; null when the release has no media metadata. */
+  trackCount: number | null;
+  /** Distinct non-empty media formats (e.g. `['CD', 'DVD']`). */
+  formats: string[];
+  /** Release country, shown on the individual release screen. */
+  country: string | null;
+  /** MusicBrainz release status; Official is intentionally never displayed as a chip. */
+  status: string | null;
 };

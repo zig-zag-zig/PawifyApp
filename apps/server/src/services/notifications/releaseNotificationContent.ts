@@ -1,4 +1,4 @@
-import { nameWithDisambiguation } from '@pawify/shared';
+import { formatReleaseEventMetadata, nameWithDisambiguation } from '@pawify/shared';
 import type { NewRelease } from '@pawify/shared';
 import { notificationEvents } from './notificationEvents.js';
 
@@ -24,6 +24,9 @@ export type BuiltReleaseNotification = {
             releaseGroupId?: string | null;
             /** 1 means `releaseId` is the only release, so a group screen would be empty. */
             releaseCount?: number;
+            trackCount?: number | null;
+            editionKeywords?: string[];
+            notificationReason?: 'new-group' | 'more-tracks' | 'new-edition';
         };
     };
 };
@@ -52,6 +55,9 @@ export const buildReleaseNotifications = (
             artistNames: Set<string>;
             disambiguation: string | null;
             date_for_display: string;
+            trackCount: number | null;
+            editionKeywords: string[];
+            notificationReason?: 'new-group' | 'more-tracks' | 'new-edition';
         }
     >();
 
@@ -72,6 +78,11 @@ export const buildReleaseNotifications = (
                 existingEntry.releaseCount,
                 release.releaseCount ?? 1,
             );
+            existingEntry.trackCount ??= release.trackCount ?? null;
+            if (existingEntry.editionKeywords.length === 0) {
+                existingEntry.editionKeywords = release.editionKeywords ?? [];
+            }
+            existingEntry.notificationReason ??= release.notificationReason;
         } else {
             releaseMap.set(key, {
                 releaseId: release.id,
@@ -81,6 +92,9 @@ export const buildReleaseNotifications = (
                 artistNames: new Set(artistNames),
                 disambiguation: release.disambiguation,
                 date_for_display: release.date_for_display,
+                trackCount: release.trackCount ?? null,
+                editionKeywords: release.editionKeywords ?? [],
+                notificationReason: release.notificationReason,
             });
         }
     }
@@ -94,18 +108,36 @@ export const buildReleaseNotifications = (
             disambiguation,
             artistNames,
             date_for_display,
-        }) => ({
-            body: `By ${Array.from(artistNames).join(', ')}\nReleased ${date_for_display}`,
-            title: nameWithDisambiguation(disambiguation, title),
-            data: {
-                eventName: notificationEvents.releases,
-                payload: {
-                    releaseId,
-                    releaseGroupId,
-                    releaseCount,
+            trackCount,
+            editionKeywords,
+            notificationReason,
+        }) => {
+            const eventMetadata = formatReleaseEventMetadata({
+                notificationReason,
+                trackCount,
+                editionKeywords,
+            });
+
+            return {
+                body: `By ${Array.from(artistNames).join(', ')}\nReleased ${date_for_display}${
+                    eventMetadata ? `\n${eventMetadata}` : ''
+                }`,
+                title: nameWithDisambiguation(disambiguation, title),
+                data: {
+                    eventName: notificationEvents.releases,
+                    payload: {
+                        releaseId,
+                        releaseGroupId,
+                        releaseCount,
+                        ...(trackCount !== null && trackCount !== undefined
+                            ? { trackCount }
+                            : {}),
+                        ...(editionKeywords.length > 0 ? { editionKeywords } : {}),
+                        ...(notificationReason ? { notificationReason } : {}),
+                    },
                 },
-            },
-        }),
+            };
+        },
     );
 };
 

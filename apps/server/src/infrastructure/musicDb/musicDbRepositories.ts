@@ -7,7 +7,12 @@ import type {
 } from '@pawify/shared';
 
 import type { CachedArtistReleases } from '../../utils/types/cacheTypes.js';
-import type { ReleaseGroupCandidate } from '../../features/releases/domain/releaseGroupProcessing.js';
+import type { ReleaseGroupCandidate, ReleaseEditionCandidate } from '../../features/releases/domain/releaseGroupProcessing.js';
+import {
+    extractEditionKeywords,
+    isOfficialReleaseStatus,
+} from '../../features/releases/domain/releaseEditionKeywords.js';
+import type { RecordingSearchResult } from '../../services/musicbrainz/recordingSearch.js';
 import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
 import type { ReleaseGroupSearchResult } from '../../services/musicbrainz/releaseGroupSearch.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
@@ -17,9 +22,17 @@ import {
     mapUrlsToExternalLinks,
 } from '../../utils/helpers/externalLinks.js';
 import { formatDate, nameWithDisambiguation } from '@pawify/shared';
-import { getMusicDb, isMusicDbEnabled, musicDbHasSearchIndex } from './musicDbClient.js';
+import {
+    getMusicDb,
+    isMusicDbEnabled,
+    musicDbHasSearchIndex,
+    musicDbHasRecordingIndex,
+} from './musicDbClient.js';
+import { canServeEditionMetadata, mirrorHasTrackData } from './tracksReadiness.js';
+import { readRecordingSearch } from './recordingQueries.js';
 import { musicDbConfig } from '../../config/runtimeConfig.js';
 import { createLogger } from '../../common/logging/logger.js';
+import { dateToTimestamp } from '../../utils/dateUtil.js';
 
 const logger = createLogger('infrastructure.musicDb.repositories');
 import {
@@ -31,11 +44,19 @@ import {
     readArtistAliases,
     readArtistRelationships,
     readArtistReleaseGroups,
+    readArtistNotificationCatalogRows,
+    countArtistNotificationReleasesUpTo,
+    type ArtistNotificationCatalogRow,
     readArtistReleaseGroupIds,
     readArtistReleaseIds,
     readArtistRow,
     readExternalLinks,
     readReleaseArtists,
+    readReleaseMedia,
+    readReleaseTracks,
+    readTrackArtists,
+    readRecordingLyrics,
+    readRecordingArtists,
     readProviderUrlsForReleases,
     readReleaseExists,
     readReleaseGroupArtists,
@@ -45,6 +66,8 @@ import {
     readReleaseIdsForGroup,
     readReleaseToGroupIds,
     readReleaseRow,
+    RELEASE_GROUP_FORMAT_SEPARATOR,
+    type ReleaseGroupReleaseRow,
     searchEntitiesWithBudget,
     toFtsHeadingPhrase,
     toFtsQuery,
@@ -61,6 +84,139 @@ import {
  */
 const linksFromRows = (rows: ExternalLinkRow[]) =>
     dedupeExternalLinks(rows.flatMap((row) => mapUrlsToExternalLinks([row.url], row.rel_type)));
+
+/**
+ * Turns the release-group list query rows into the shared list shape.
+ *
+ * The query aggregates media per release, so no tracklist is loaded. A missing
+ * track count stays null and empty formats are dropped, which keeps the client from
+ * showing "0 tracks" for a release the mirror knows nothing about yet.
+ */
+export const buildReleaseGroupReleaseListItems = (
+    rows: readonly ReleaseGroupReleaseRow[],
+): ReleaseGroupReleaseListItem[] =>
+    rows.map((row) => ({
+        id: row.mbid,
+        title: nameWithDisambiguation(row.disambiguation, row.title),
+        date: row.date,
+        trackCount: row.track_count,
+        formats: (row.formats ?? '')
+            .split(RELEASE_GROUP_FORMAT_SEPARATOR)
+            .map((format) => format.trim())
+            .filter((format, index, all) => format.length > 0 && all.indexOf(format) === index),
+        country: nullIfEmpty(row.country),
+        status: nullIfEmpty(row.status),
+    }));
+
+/**
+ * Folds one row-per-release-medium result into notification candidates.
+ *
+ * Release IDs, newest pressing, Official edition snapshots and their media
+ * aggregates all come from the same scan, so detection does not repeat the
+ * release query or materialize a second full result.
+ */
+export const buildArtistReleaseGroupCandidates = (
+    rows: readonly ArtistNotificationCatalogRow[],
+): ReleaseGroupCandidate[] => {
+    type GroupAccumulator = {
+        group: ReleaseGroupCandidate;
+        editions: Map<string, ReleaseEditionCandidate>;
+        releaseDates: Map<string, string | null>;
+    };
+
+    const byGroup = new Map<string, GroupAccumulator>();
+
+    for (const row of rows) {
+        if (row.group_mbid === null || row.group_title === null) {
+            continue;
+        }
+
+        let accumulator = byGroup.get(row.group_mbid);
+        if (!accumulator) {
+            accumulator = {
+                group: {
+                    id: row.group_mbid,
+                    title: row.group_title,
+                    date: nullIfEmpty(row.group_first_release_date),
+                    disambiguation: disambiguationValue(row.group_disambiguation),
+                    primaryType: row.group_primary_type,
+                    releaseIds: [],
+                    newestReleaseId: row.release_mbid,
+                    newestReleaseDate: nullIfEmpty(row.release_date),
+                    officialEditions: [],
+                },
+                editions: new Map(),
+                releaseDates: new Map(),
+            };
+            byGroup.set(row.group_mbid, accumulator);
+        }
+
+        const group = accumulator.group;
+        if (!accumulator.releaseDates.has(row.release_mbid)) {
+            accumulator.releaseDates.set(row.release_mbid, nullIfEmpty(row.release_date));
+        }
+
+        const releaseTime = dateToTimestamp(nullIfEmpty(row.release_date));
+        const newestTime = dateToTimestamp(group.newestReleaseDate);
+        if (
+            releaseTime > newestTime ||
+            (releaseTime === newestTime && row.release_mbid < group.newestReleaseId)
+        ) {
+            group.newestReleaseId = row.release_mbid;
+            group.newestReleaseDate = nullIfEmpty(row.release_date);
+        }
+
+        let edition = accumulator.editions.get(row.release_mbid);
+        if (!edition) {
+            edition = {
+                releaseId: row.release_mbid,
+                date: nullIfEmpty(row.release_date),
+                status: nullIfEmpty(row.release_status),
+                trackCount: null,
+                formats: [],
+                title: row.release_title,
+                disambiguation: nullIfEmpty(row.release_disambiguation),
+                editionKeywords: extractEditionKeywords(
+                    row.release_title,
+                    row.release_disambiguation,
+                ),
+            };
+            accumulator.editions.set(row.release_mbid, edition);
+        }
+
+        if (typeof row.media_track_count === 'number') {
+            edition.trackCount = (edition.trackCount ?? 0) + row.media_track_count;
+        }
+
+        const format = row.media_format?.trim();
+        if (format && !edition.formats.includes(format)) {
+            edition.formats.push(format);
+        }
+    }
+
+    return Array.from(byGroup.values())
+        .map(({ group, editions, releaseDates }) => {
+            const orderedReleaseIds = Array.from(releaseDates.keys()).sort((left, right) => {
+                const dateOrder =
+                    dateToTimestamp(releaseDates.get(right) ?? null) -
+                    dateToTimestamp(releaseDates.get(left) ?? null);
+                return dateOrder !== 0 ? dateOrder : left.localeCompare(right);
+            });
+
+            return {
+                ...group,
+                releaseIds: orderedReleaseIds,
+                officialEditions: Array.from(editions.values()).filter((edition) =>
+                    isOfficialReleaseStatus(edition.status),
+                ),
+            };
+        })
+        .sort((left, right) => {
+            const dateOrder =
+                dateToTimestamp(right.date) - dateToTimestamp(left.date);
+            return dateOrder !== 0 ? dateOrder : left.id.localeCompare(right.id);
+        });
+};
 
 /**
  * Release groups for an artist.
@@ -115,34 +271,76 @@ export const getArtistReleasesFromMirror = (
 };
 
 /**
- * Artist release groups with their newest pressing date, for new-release detection.
+ * Artist release groups with content metadata, for new-release detection.
  *
- * Separate from `getArtistReleasesFromMirror` because the browse payload has no
- * place for that date, and the notification event window needs it: a group that
- * gains a pressing years later is a new event, a pressing from the same window is
- * not. Both come from the same grouping query, so this is one aggregate more.
+ * Reads the single notification catalogue scan, never the browse query or its
+ * pagination cap. `complete: false` means the caller must preserve state and emit
+ * nothing: the result is capped, the mirror is not ready, or the artist is unknown
+ * to an enabled mirror (in which case null asks the caller to use the API).
  */
+export type ArtistNotificationCatalog = {
+    groups: ReleaseGroupCandidate[];
+    complete: boolean;
+};
+
 export const getArtistReleaseGroupCandidatesFromMirror = (
     artistId: string,
-): ReleaseGroupCandidate[] | null => {
+): ArtistNotificationCatalog | null => {
     const db = getMusicDb();
     if (!db) return null;
 
-    const rows = readArtistReleaseGroups(db, artistId, null, 0);
-    if (rows.length === 0) {
-        return readArtistRow(db, artistId) ? [] : null;
+    if (!canServeEditionMetadata()) {
+        return { groups: [], complete: false };
     }
 
-    return rows.map((row) => ({
-        id: row.mbid,
-        title: row.title,
-        date: nullIfEmpty(row.first_release_date),
-        disambiguation: disambiguationValue(row.disambiguation),
-        primaryType: row.primary_type ?? null,
-        releaseIds: row.release_ids.split(' ').filter(Boolean),
-        newestReleaseId: row.release_ids.split(' ').filter(Boolean)[0] ?? row.mbid,
-        newestReleaseDate: nullIfEmpty(row.newest_release_date),
-    }));
+    const limit = musicDbConfig.maxArtistNotificationReleases;
+    const releaseCount = countArtistNotificationReleasesUpTo(db, artistId, limit);
+    if (releaseCount === null) {
+        return null;
+    }
+    if (limit > 0 && releaseCount > limit) {
+        logger.warn('artist notification catalogue exceeds safety bound', {
+            artistId,
+            releaseCount: limit + 1,
+            limit,
+        });
+        return { groups: [], complete: false };
+    }
+
+    const rows = readArtistNotificationCatalogRows(db, artistId, limit);
+    return buildArtistNotificationCatalogFromRows(rows, limit);
+};
+
+/**
+ * Turns loaded notification rows into the authoritative catalogue result.
+ *
+ * Kept pure so the loader's independent overflow signal can be tested after a
+ * writer commits past the bound but before the load runs.
+ */
+export const buildArtistNotificationCatalogFromRows = (
+    rows: readonly ArtistNotificationCatalogRow[],
+    limit: number,
+): ArtistNotificationCatalog => {
+    if (rows.length === 0) {
+        return { groups: [], complete: true };
+    }
+
+    // The loader selects limit + 1 distinct releases. If a concurrent sync added
+    // releases after the probe passed, this catches the overflow independently
+    // instead of mistaking a capped newer snapshot for a complete one.
+    const loadedReleaseCount = rows[0]?.artist_release_count ?? 0;
+    if (limit > 0 && loadedReleaseCount > limit) {
+        return { groups: [], complete: false };
+    }
+
+    // A release whose parent group row is missing is not safe to treat as a
+    // complete catalogue: detection would prune that group from known state.
+    const hasUnresolvedGroup = rows.some((row) => row.group_mbid === null);
+
+    return {
+        groups: buildArtistReleaseGroupCandidates(rows),
+        complete: !hasUnresolvedGroup,
+    };
 };
 
 export const countArtistReleasesFromMirror = (artistId: string): number | null => {
@@ -288,11 +486,7 @@ export const getReleaseGroupReleasesFromMirror = (
         return readReleaseGroupExists(db, releaseGroupId) ? [] : null;
     }
 
-    return rows.map((row) => ({
-        id: row.mbid,
-        title: nameWithDisambiguation(row.disambiguation, row.title),
-        date: row.date,
-    }));
+    return buildReleaseGroupReleaseListItems(rows);
 };
 
 /**
@@ -306,7 +500,7 @@ export const getReleaseGroupReleaseIdsFromMirror = (releaseGroupId: string): str
     if (!db) return null;
     const rows = readReleaseGroupReleases(db, releaseGroupId);
     if (rows.length === 0 && !readReleaseGroupExists(db, releaseGroupId)) return null;
-    return rows.map((row) => row.mbid);
+    return Array.from(new Set(rows.map((row) => row.mbid)));
 };
 
 /**
@@ -464,5 +658,52 @@ export const getReleaseMetadataFromMirror = (
         'release-group': releaseGroup,
         'artist-credit': credits,
         externalLinks: linksFromRows(links),
+        barcode: row.barcode,
+        status: row.status,
+        country: nullIfEmpty(row.country),
     };
+};
+
+export const searchRecordingsFromMirror = (
+    query: string,
+    offset: number,
+    limit: number,
+): RecordingSearchResult | null => {
+    const db = getMusicDb();
+    if (!db || !musicDbHasRecordingIndex()) return null;
+    return readRecordingSearch(db, query, offset, limit);
+};
+
+export const getReleaseTracksFromMirror = (releaseId: string): Release['media'] | null => {
+    const db = getMusicDb();
+    if (!db) return null;
+    if (!mirrorHasTrackData(releaseId)) return null;
+    const media = readReleaseMedia(db, releaseId);
+    const tracks = readReleaseTracks(db, releaseId);
+    return media.map((medium) => ({
+        'track-count': medium.track_count,
+        format: medium.format,
+        position: medium.position,
+        tracks: tracks
+            .filter((track) => track.medium_position === medium.position)
+            .map((track) => ({
+                id: track.mbid,
+                title: track.title,
+                // Compacted mirrors omit track credits identical to the
+                // recording credit; fall back so the payload is unchanged.
+                'artist-credit': (() => {
+                    const trackCredits = readTrackArtists(db, track.track_id);
+                    return trackCredits.length > 0
+                        ? trackCredits
+                        : track.recording_mbid
+                          ? readRecordingArtists(db, track.recording_mbid)
+                          : trackCredits;
+                })(),
+                length: track.length,
+                lyricsUrl: track.recording_mbid
+                    ? readRecordingLyrics(db, track.recording_mbid)
+                    : null,
+                number: track.number,
+            })),
+    }));
 };
