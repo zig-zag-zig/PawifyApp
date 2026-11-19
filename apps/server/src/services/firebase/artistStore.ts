@@ -1,10 +1,11 @@
+import { createLogger } from '../../common/logging/logger.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { StoredNewRelease } from './types.js';
 import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { readFollowingArtistsMap, writeFollowingArtistsMap } from './followingStore.js';
 import {
     deleteKnownArtistReleaseGroupStateFromDb,
-    getKnownReleaseGroupStateFromDb,
+    getKnownReleaseGroupStateWithStatusFromDb,
     replaceKnownArtistReleaseGroupStateInDb,
 } from './knownReleasesStore.js';
 import {
@@ -14,13 +15,28 @@ import {
 } from './newReleasesStore.js';
 import { getDocumentRefAndSnapshot } from './userStore.js';
 
+const logger = createLogger('services.firebase.artistStore');
+
 const removeUnfollowedArtistNewReleases = async (
     userId: string,
     artistId: string,
     remainingArtistIds: string[],
 ): Promise<void> => {
     const newReleasesMap = await readNewReleasesState(userId);
-    const knownStatesByArtist = await getKnownReleaseGroupStateFromDb(userId);
+    const { state: knownStatesByArtist, hasUnmigratedValues } =
+        await getKnownReleaseGroupStateWithStatusFromDb(userId);
+
+    if (hasUnmigratedValues) {
+        // Scalar state hides groups until the canonical migration runs. Deleting
+        // feed entries now could remove a release another followed artist still
+        // knows about, so leave cleanup to a post-migration unfollow.
+        logger.warn(
+            'skipping unfollow feed cleanup because known-release state is not migrated. Run `npm run state:migrate:canonical -- --apply`.',
+            { userId, artistId },
+        );
+        return;
+    }
+
     const unfollowedGroups = new Set(Object.keys(knownStatesByArtist[artistId] ?? {}));
 
     if (unfollowedGroups.size === 0) {

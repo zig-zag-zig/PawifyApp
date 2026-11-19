@@ -1,8 +1,10 @@
 import { ReleaseNotificationSettings } from '@pawify/shared';
+import { createLogger } from '../../../common/logging/logger.js';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
 import { emptyKnownReleaseGroupState } from '../../releases/domain/releaseGroupProcessing.js';
 import type { UserSettingsUseCaseDependencies } from '../ports.js';
 
+const logger = createLogger('features.userSettings.rebuildKnownReleases');
 const KNOWN_RELEASE_REBUILD_CONCURRENCY = 3;
 
 const rebuildKnownReleasesForSettings = async (
@@ -34,6 +36,10 @@ const rebuildKnownReleasesForSettings = async (
         // Pre-migration scalar state must be migrated before a rebuild can safely
         // rewrite it; otherwise known groups outside the catalogue would be lost.
         if (await knownReleaseRepository.hasUnmigratedArtistReleaseGroupState(userId, artistId)) {
+            logger.warn(
+                'skipping known-release rebuild for an unmigrated artist. Run `npm run state:migrate:canonical -- --apply`.',
+                { userId, artistId },
+            );
             return;
         }
 

@@ -19,13 +19,18 @@ import {
 const QUERIES = ['a', 'the', 'lloyd banks', 'porcupine tree', 'zzzzzzzz not a band'];
 
 const time = <T>(label: string, worker: () => T): void => {
+    const lag = monitorEventLoopDelay({ resolution: 1 });
+    lag.enable();
     const startedAt = process.hrtime.bigint();
     const result = worker();
     const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    lag.disable();
     console.log(
         JSON.stringify({
             label,
             elapsedMs: Math.round(elapsedMs * 100) / 100,
+            eventLoopP99Ms: Math.round((lag.percentile(99) / 1e6) * 100) / 100,
+            eventLoopMaxMs: Math.round((lag.max / 1e6) * 100) / 100,
             result: result as unknown,
         }),
     );
@@ -33,22 +38,11 @@ const time = <T>(label: string, worker: () => T): void => {
 
 const main = (): void => {
     getMusicDb();
-    const lag = monitorEventLoopDelay({ resolution: 10 });
-    lag.enable();
     for (const query of QUERIES) {
         time(`artists:${query}`, () => searchArtistsFromMirror(query, 0, 25).count);
         time(`groups:${query}`, () => searchReleaseGroupsFromMirror(query, 0, 25).count);
         time(`recordings:${query}`, () => readRecordingSearch(getMusicDb(), query, 0, 25).count);
     }
-    lag.disable();
-    console.log(
-        JSON.stringify({
-            label: 'event-loop-delay-ms',
-            p99: Math.round((lag.percentile(99) / 1e6) * 100) / 100,
-            max: Math.round((lag.max / 1e6) * 100) / 100,
-            note: 'Synchronous better-sqlite3 queries block the loop; compare p99/max across queries before considering worker threads.',
-        }),
-    );
 };
 
 main();

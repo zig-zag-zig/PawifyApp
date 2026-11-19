@@ -40,12 +40,13 @@ export const parseLegacyKnownValue = (value: unknown): ParsedKnownValue | null =
     if (!isObject(value)) return null;
 
     const date = typeof value.lastNotifiedDate === 'string' ? value.lastNotifiedDate.trim() : null;
-    const hasCount = typeof value.maxOfficialTrackCount === 'number';
+    const hasCount =
+        value.maxOfficialTrackCount === null || typeof value.maxOfficialTrackCount === 'number';
     const max =
-        hasCount &&
+        typeof value.maxOfficialTrackCount === 'number' &&
         Number.isFinite(value.maxOfficialTrackCount) &&
-        (value.maxOfficialTrackCount as number) >= 0
-            ? Math.floor(value.maxOfficialTrackCount as number)
+        value.maxOfficialTrackCount >= 0
+            ? Math.floor(value.maxOfficialTrackCount)
             : null;
     const keywords = Array.isArray(value.editionKeywords)
         ? value.editionKeywords.filter(

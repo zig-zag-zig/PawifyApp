@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import {
     closeMusicDb,
     getMusicDb,
+    getMusicDbWriter,
     initializeMusicDb,
     MusicDbUnavailableError,
     resetMusicDbHandleIdentityCheckForTests,
@@ -26,6 +27,7 @@ import {
     searchReleaseGroupsFromMirror,
 } from '../../../src/infrastructure/musicDb/musicDbRepositories.js';
 import { toFtsQuery } from '../../../src/infrastructure/musicDb/musicDbQueries.js';
+import { writeEntityImages } from '../../../src/infrastructure/musicDb/entityImageRepository.js';
 import { cleanupMusicDbFixtures, createMusicDbFixture } from '../../helpers/musicDbFixture.js';
 
 const ARTIST_ID = 'b3ae82c2-3f9e-4d3d-9f0f-0e4b2a3e0a01';
@@ -275,6 +277,76 @@ describe('musicDb repositories', () => {
             assert.notEqual(fs.statSync(target).ino, firstIno);
             assert.notEqual(second, first);
             assert.equal(second.name, target);
+        });
+
+        it('retries readiness without a restart once the same mirror becomes ready', () => {
+            const building = createMusicDbFixture({
+                ...seed,
+                meta: { track_data_state: 'building' },
+            });
+            useMirror(building);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+
+            const db = new Database(building);
+            db.prepare(`UPDATE _meta SET value = 'ready' WHERE key = 'track_data_state'`).run();
+            db.close();
+
+            assert.equal(getMusicDb().name, building);
+        });
+
+        it('clears a permanent schema latch when the file is replaced', () => {
+            const target = fixturePath;
+            useMirror(target);
+            getMusicDb();
+
+            const badDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-bad-swap-'));
+            const badPath = path.join(badDirectory, 'mb.db');
+            const bad = new Database(badPath);
+            bad.exec('CREATE TABLE artists (mbid TEXT PRIMARY KEY)');
+            bad.close();
+
+            fs.renameSync(target, `${target}.bad`);
+            fs.renameSync(badPath, target);
+            resetMusicDbHandleIdentityCheckForTests();
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+
+            const good = createMusicDbFixture(seed);
+            fs.renameSync(target, `${target}.bad2`);
+            fs.renameSync(good, target);
+            resetMusicDbHandleIdentityCheckForTests();
+
+            assert.equal(getMusicDb().name, target);
+            fs.rmSync(badDirectory, { recursive: true, force: true });
+        });
+
+        it('reopens the artwork writer when the mirror file is replaced', () => {
+            const target = fixturePath;
+            useMirror(target);
+            const writerBefore = getMusicDbWriter();
+            assert.ok(writerBefore);
+
+            const replacement = createMusicDbFixture(seed);
+            fs.renameSync(target, `${target}.old`);
+            fs.renameSync(replacement, target);
+
+            const writerAfter = getMusicDbWriter();
+            assert.notEqual(writerAfter, writerBefore);
+
+            writeEntityImages([
+                {
+                    entityType: 'release',
+                    entityId: 'release-writer-swap',
+                    service: 'caa_rel',
+                    token: 'release-writer-swap',
+                },
+            ]);
+
+            const fresh = new Database(target, { readonly: true });
+            const row = fresh
+                .prepare(`SELECT count(*) AS n FROM entity_images WHERE entity_mbid = ?`)
+                .get('release-writer-swap') as { n: number };
+            fresh.close();
+            assert.equal(row.n, 1);
         });
 
         it('fails boot when the mirror is not configured', () => {

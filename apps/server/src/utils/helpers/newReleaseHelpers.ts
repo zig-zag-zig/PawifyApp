@@ -1,3 +1,4 @@
+import { createLogger } from '../../common/logging/logger.js';
 import type { ArtistCredit, ReleaseNotificationSettings, NewRelease } from '@pawify/shared';
 import { DEFAULT_RELEASE_NOTIFICATION_SETTINGS } from '@pawify/shared';
 
@@ -23,6 +24,7 @@ type ProcessArtistResult = {
     newReleases: NewRelease[];
 };
 
+const logger = createLogger('utils.newReleaseHelpers');
 const NEW_RELEASE_COVER_CACHE_CONCURRENCY = 10;
 
 /**
@@ -130,11 +132,21 @@ const handleGroupChanges = async ({
 
 const cacheNewReleaseCovers = async (events: ReleaseGroupEvent[]): Promise<void> => {
     await mapWithConcurrency(events, NEW_RELEASE_COVER_CACHE_CONCURRENCY, async (event) => {
-        // Cover the release the event is about, not an unrelated newest pressing.
-        await getReleaseCover(
-            event.edition?.releaseId ?? event.group.newestReleaseId,
-            event.group.id,
-            undefined,
-        );
+        // Artwork is enrichment: a mirror/provider failure must not abort detection
+        // persistence or fail the notification run.
+        try {
+            // Cover the release the event is about, not an unrelated newest pressing.
+            await getReleaseCover(
+                event.edition?.releaseId ?? event.group.newestReleaseId,
+                event.group.id,
+                undefined,
+            );
+        } catch (error) {
+            logger.warn('new-release cover cache failed; continuing detection', {
+                releaseGroupId: event.group.id,
+                releaseId: event.edition?.releaseId ?? event.group.newestReleaseId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
     });
 };

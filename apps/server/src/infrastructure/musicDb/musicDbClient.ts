@@ -211,11 +211,22 @@ const openReadonly = (): MusicDb => {
     try {
         assertTableContract(db, READER_CONTRACT, 'table');
         assertTableContract(db, SEARCH_TABLE_CONTRACT, 'search table');
-        assertMirrorReady(db);
     } catch (error) {
         db.close();
         throw new MusicDbOpenError(
             'permanent',
+            error instanceof Error ? error.message : String(error),
+        );
+    }
+
+    try {
+        assertMirrorReady(db);
+    } catch (error) {
+        db.close();
+        // A sync in progress can move the same file to `ready` without replacing
+        // it; do not latch the process on a readiness marker.
+        throw new MusicDbOpenError(
+            'transient',
             error instanceof Error ? error.message : String(error),
         );
     }
@@ -234,6 +245,7 @@ let handle: MusicDb | null = null;
 let handleIdentity: { dev: number; ino: number } | null = null;
 let lastHandleIdentityCheckAt = 0;
 let permanentFailureReason: string | null = null;
+let permanentFailureIdentity: { dev: number; ino: number } | null = null;
 let lastFailureLogAt = 0;
 
 const OPEN_FAILURE_LOG_INTERVAL_MS = 60_000;
@@ -242,6 +254,7 @@ const recordOpenFailure = (error: unknown): MusicDbUnavailableError => {
     const reason = error instanceof Error ? error.message : String(error);
     if (error instanceof MusicDbOpenError && error.kind === 'permanent') {
         permanentFailureReason = reason;
+        permanentFailureIdentity = musicDbConfig.path ? fileIdentity(musicDbConfig.path) : null;
     }
 
     const now = Date.now();
@@ -266,11 +279,30 @@ const recordOpenFailure = (error: unknown): MusicDbUnavailableError => {
  * lets it coexist with the hourly `mbforge sync` writer.
  */
 let writerHandle: MusicDb | null = null;
+let writerIdentity: { dev: number; ino: number } | null = null;
 let writerLoggedFailure = false;
+
+const sameFileAsWriter = (): boolean => {
+    if (!musicDbConfig.path) return false;
+    const current = fileIdentity(musicDbConfig.path);
+    return (
+        current !== null &&
+        writerIdentity !== null &&
+        current.dev === writerIdentity.dev &&
+        current.ino === writerIdentity.ino
+    );
+};
 
 export const getMusicDbWriter = (): MusicDb | null => {
     if (writerHandle) {
-        return writerHandle;
+        if (sameFileAsWriter()) {
+            return writerHandle;
+        }
+        // The mirror file was replaced. The old handle must not keep writing into
+        // the new path's WAL; close it and open the current file.
+        writerHandle.close();
+        writerHandle = null;
+        writerIdentity = null;
     }
     if (!musicDbConfig.path || !fs.existsSync(musicDbConfig.path)) {
         return null;
@@ -288,6 +320,7 @@ export const getMusicDbWriter = (): MusicDb | null => {
         }
 
         writerHandle = db;
+        writerIdentity = musicDbConfig.path ? fileIdentity(musicDbConfig.path) : null;
         return db;
     } catch (error) {
         if (!writerLoggedFailure) {
@@ -306,6 +339,7 @@ export const closeMusicDbWriter = (): void => {
         writerHandle.close();
         writerHandle = null;
     }
+    writerIdentity = null;
     writerLoggedFailure = false;
 };
 
@@ -359,6 +393,7 @@ export const initializeMusicDb = (): MusicDb => {
         handleIdentity = musicDbConfig.path ? fileIdentity(musicDbConfig.path) : null;
         lastHandleIdentityCheckAt = Date.now();
         permanentFailureReason = null;
+        permanentFailureIdentity = null;
         lastFailureLogAt = 0;
         return handle;
     } catch (error) {
@@ -381,11 +416,24 @@ export const getMusicDb = (): MusicDb => {
         }
     }
 
-    // Permanent schema/readiness failures are not retried. Missing files, busy
-    // locks and permission errors are retried on the next call: mirror replacement
-    // is routine and must not latch the process into a broken state.
+    // Permanent schema/readiness failures are latched only for the exact file that
+    // failed. Mirror replacement is routine: if the file identity changed (or the
+    // file is now missing), retry instead of serving 503 until restart.
     if (permanentFailureReason !== null) {
-        throw new MusicDbUnavailableError(permanentFailureReason);
+        if (permanentFailureReason === 'MUSIC_DB_PATH is not set') {
+            throw new MusicDbUnavailableError(permanentFailureReason);
+        }
+        const currentIdentity = musicDbConfig.path ? fileIdentity(musicDbConfig.path) : null;
+        const sameFile =
+            currentIdentity !== null &&
+            permanentFailureIdentity !== null &&
+            currentIdentity.dev === permanentFailureIdentity.dev &&
+            currentIdentity.ino === permanentFailureIdentity.ino;
+        if (sameFile) {
+            throw new MusicDbUnavailableError(permanentFailureReason);
+        }
+        permanentFailureReason = null;
+        permanentFailureIdentity = null;
     }
 
     try {
@@ -435,5 +483,6 @@ export const closeMusicDb = (): void => {
     lastHandleIdentityCheckAt = 0;
     closeMusicDbWriter();
     permanentFailureReason = null;
+    permanentFailureIdentity = null;
     lastFailureLogAt = 0;
 };

@@ -49,6 +49,14 @@ describe('canonical state migration helpers', () => {
             })?.needsBaseline,
             false,
         );
+        assert.equal(
+            parseLegacyKnownValue({
+                lastNotifiedDate: '2024-01-01',
+                maxOfficialTrackCount: null,
+                editionKeywords: [],
+            })?.needsBaseline,
+            false,
+        );
         assert.equal(parseLegacyKnownValue(5), null);
         assert.equal(
             parseLegacyKnownValue({

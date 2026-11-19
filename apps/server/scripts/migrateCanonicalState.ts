@@ -203,7 +203,12 @@ const main = async (): Promise<void> => {
 
     for (const [userId, artists] of Object.entries(knownCanonical)) {
         for (const [artistId, payload] of Object.entries(artists)) {
-            await rtdb.ref(`knownReleases/${userId}/${artistId}`).set(payload);
+            const ref = rtdb.ref(`knownReleases/${userId}/${artistId}`);
+            if (Object.keys(payload).length === 0) {
+                await ref.remove();
+            } else {
+                await ref.set(payload);
+            }
         }
     }
 

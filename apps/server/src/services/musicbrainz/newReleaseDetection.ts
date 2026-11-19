@@ -4,11 +4,14 @@ import { getKnownReleaseGroupStateWithStatusFromDb } from '../firebase/knownRele
 import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
+import { createLogger } from '../../common/logging/logger.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
 import {
     getArtistReleaseGroupCatalog,
     type ArtistReleaseGroupCatalog,
 } from './artistReleaseGroupCatalog.js';
+
+const logger = createLogger('services.musicbrainz.newReleaseDetection');
 
 type ArtistProcessResult = {
     newReleases: NewRelease[];
@@ -48,6 +51,16 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
             currentReleaseGroupStateByArtist[artistId] ??= {};
         }
         const unmigratedArtistIds = new Set(unmigratedArtistIdsArray);
+        if (unmigratedArtistIds.size > 0) {
+            logger.warn(
+                'known-release state is not migrated; skipping notification detection for affected artists. Run `npm run state:migrate:canonical -- --apply`.',
+                {
+                    userId,
+                    artistCount: unmigratedArtistIds.size,
+                    artistIds: unmigratedArtistIdsArray.slice(0, 10),
+                },
+            );
+        }
         const result: NewRelease[] = [];
 
         const artistResults = await mapWithConcurrency(
