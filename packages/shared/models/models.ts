@@ -221,6 +221,8 @@ export type GetReleaseResponse = {
   profileImages: Record<string, string | null>;
   lyricsTaskId: string | null;
   profileImageTaskId: string | null;
+  /** Pending header-cover enrichment; null when persisted mirror state is enough. */
+  releaseCoverTaskId: string | null;
 };
 
 /** v3 release-group payload, answered entirely from the local mirror. */

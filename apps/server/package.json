@@ -63,6 +63,9 @@
         "docker:up": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait",
         "docker:down": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down",
         "lyrics:db:migrate": "tsx scripts/lyricsDbAdmin.ts",
-        "lyrics:db:housekeeping": "tsx scripts/lyricsDbAdmin.ts --housekeeping-preview"
+        "lyrics:db:housekeeping": "tsx scripts/lyricsDbAdmin.ts --housekeeping-preview",
+        "state:migrate:canonical": "tsx scripts/migrateCanonicalState.ts",
+        "lyrics:db:estimate": "tsx scripts/lyricsStorageEstimate.ts",
+        "benchmark:search": "tsx scripts/benchmarkSearch.ts"
     }
 }

@@ -41,6 +41,33 @@ const assertSchema = (db: LyricsDb): void => {
     }
 };
 
+const REQUIRED_COLUMNS = [
+    'lookup_key',
+    'recording_mbid',
+    'query_fingerprint',
+    'resolved_url',
+    'provider',
+    'outcome',
+    'checked_at',
+    'next_attempt_at',
+    'genius_attempted_at',
+    'musicbrainz_attempted_at',
+] as const;
+
+const assertColumns = (db: LyricsDb): void => {
+    const columns = new Set(
+        (db.prepare('PRAGMA table_info(lyrics_lookup_state)').all() as { name: string }[]).map(
+            (row) => row.name,
+        ),
+    );
+    const missing = REQUIRED_COLUMNS.filter((column) => !columns.has(column));
+    if (missing.length > 0) {
+        throw new Error(
+            `Lyrics database schema is incompatible; missing columns: ${missing.join(', ')}`,
+        );
+    }
+};
+
 /**
  * Creates or upgrades the application-owned lyrics database.
  *
@@ -56,9 +83,30 @@ export const createLyricsDatabase = (databasePath: string): void => {
 
     const db = new Database(databasePath);
     try {
+        const existingVersion = db.pragma('user_version', { simple: true }) as number;
+        if (existingVersion > LYRICS_DB_SCHEMA_VERSION) {
+            throw new Error(
+                `Lyrics database schema ${existingVersion} is newer than this server (${LYRICS_DB_SCHEMA_VERSION}); refusing to downgrade`,
+            );
+        }
+
         db.pragma('journal_mode = WAL');
         db.pragma('synchronous = NORMAL');
+
+        const existingTable = db
+            .prepare(`SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?`)
+            .get('lyrics_lookup_state');
+        if (existingTable) {
+            // Check before running the schema: CREATE TABLE IF NOT EXISTS would be a
+            // no-op and the index statements would fail with a raw SQLite error.
+            assertColumns(db);
+        }
+
         db.exec(SCHEMA);
+        // A pre-existing table makes CREATE TABLE IF NOT EXISTS a no-op, so the
+        // column contract is checked before stamping the version. Never relabel an
+        // incompatible (or newer) database as current.
+        assertColumns(db);
         db.pragma(`user_version = ${LYRICS_DB_SCHEMA_VERSION}`);
     } finally {
         db.close();
@@ -84,7 +132,9 @@ export const openLyricsDb = (databasePath: string): LyricsDb => {
 };
 
 let handle: LyricsDb | null = null;
-let openFailure: string | null = null;
+let lastFailureLogAt = 0;
+
+const OPEN_FAILURE_LOG_INTERVAL_MS = 60_000;
 
 export const initializeLyricsDb = (): LyricsDb | null => {
     if (!lyricsDbConfig.path) {
@@ -96,15 +146,15 @@ export const initializeLyricsDb = (): LyricsDb | null => {
 
     try {
         handle = openLyricsDb(lyricsDbConfig.path);
-        openFailure = null;
+        lastFailureLogAt = 0;
         logger.info('lyrics database opened', { path: lyricsDbConfig.path });
         return handle;
     } catch (error) {
-        openFailure = error instanceof Error ? error.message : String(error);
         logger.error('lyrics database failed to open', {
             path: lyricsDbConfig.path,
-            error: openFailure,
+            error: error instanceof Error ? error.message : String(error),
         });
+        lastFailureLogAt = Date.now();
         return null;
     }
 };
@@ -117,17 +167,23 @@ export const initializeLyricsDb = (): LyricsDb | null => {
  */
 export const getLyricsDb = (): LyricsDb | null => {
     if (handle) return handle;
-    if (openFailure !== null || !lyricsDbConfig.path) return null;
+    if (!lyricsDbConfig.path) return null;
 
+    // Retry on the next call: a missing/replaced file or a transient busy lock must
+    // recover without a process restart. Log noise is throttled.
     try {
         handle = openLyricsDb(lyricsDbConfig.path);
+        lastFailureLogAt = 0;
         return handle;
     } catch (error) {
-        openFailure = error instanceof Error ? error.message : String(error);
-        logger.error('lyrics database failed to open', {
-            path: lyricsDbConfig.path,
-            error: openFailure,
-        });
+        const now = Date.now();
+        if (now - lastFailureLogAt >= OPEN_FAILURE_LOG_INTERVAL_MS) {
+            lastFailureLogAt = now;
+            logger.error('lyrics database failed to open', {
+                path: lyricsDbConfig.path,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
         return null;
     }
 };
@@ -137,5 +193,5 @@ export const closeLyricsDb = (): void => {
         handle.close();
         handle = null;
     }
-    openFailure = null;
+    lastFailureLogAt = 0;
 };

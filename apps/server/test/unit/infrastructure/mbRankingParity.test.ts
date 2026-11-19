@@ -173,12 +173,12 @@ describe('MusicBrainz-equivalent ranking', () => {
         );
         writable.close();
 
-        const { closeMusicDb, musicDbHasSearchIndex } =
+        const { closeMusicDb, getMusicDb, MusicDbUnavailableError } =
             await import('../../../src/infrastructure/musicDb/musicDbClient.js');
         closeMusicDb();
         process.env.MUSIC_DB_PATH = path;
         try {
-            assert.equal(musicDbHasSearchIndex(), false);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
         } finally {
             closeMusicDb();
             delete process.env.MUSIC_DB_PATH;

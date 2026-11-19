@@ -20,6 +20,7 @@ import { fetchReleaseCover, fetchReleaseGroupCover } from '../coverArt/coverArtL
 import { getArtistImageProviderLinksFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import {
     buildDurableLyricsLookupIdentity,
+    isLyricsRefreshDue,
     isUsableLyricsState,
     readLyricsStates,
 } from '../../infrastructure/lyricsDb/lyricsStateRepository.js';
@@ -159,6 +160,10 @@ export const partitionTrackLyrics = async (
         if (isUsableLyricsState(state, now)) {
             if (state.outcome === 'found' && state.resolvedUrl) {
                 resolved[track.trackId] = state.resolvedUrl;
+                // Serve the known URL now, but queue a bounded refresh once due.
+                if (isLyricsRefreshDue(state, now)) {
+                    pending.push(track);
+                }
                 continue;
             }
             if (state.outcome === 'confirmed-miss') {

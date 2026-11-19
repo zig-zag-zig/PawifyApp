@@ -93,6 +93,21 @@ describe('releaseReducer', () => {
     expect(resolved.pendingArtistImageIds).toEqual([]);
   });
 
+  it('updates only the release cover without clearing selection', () => {
+    const selected = releaseReducer(loaded(), {
+      type: 'songToggled',
+      track: release().media[0].tracks![0],
+    });
+    const withCover = releaseReducer(selected, {
+      type: 'releaseCoverResolved',
+      coverUrl: 'https://cover.example/release.jpg',
+    });
+
+    expect(withCover.release?.cover_url).toBe('https://cover.example/release.jpg');
+    expect(withCover.selectedSong?.id).toBe('track-1');
+    expect(withCover.release?.media).toBe(selected.release?.media);
+  });
+
   it('toggles the selected track from the visible release', () => {
     const start = loaded();
     const selected = releaseReducer(start, {

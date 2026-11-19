@@ -166,7 +166,7 @@ describe('background asset planners', () => {
             );
             assert.equal(
                 withTaskKeyNamespace(undefined, 'artist_profile_images:following:a,b'),
-                'artist_profile_images:following:a,b',
+                'v3:artist_profile_images:following:a,b',
             );
         });
     });

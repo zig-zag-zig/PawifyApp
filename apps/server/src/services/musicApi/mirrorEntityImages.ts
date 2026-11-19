@@ -34,7 +34,7 @@ export type MirrorImage =
  * row is due for a re-check: re-checks are background work (see
  * `entityImageFreshness`), never something a request waits on.
  *
- * Never throws: `readEntityImage` swallows mirror failures and returns null.
+ * Database unavailability propagates; a malformed row is treated as no row.
  */
 export const lookupMirrorImage = (
     entityType: EntityImageEntityType,

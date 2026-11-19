@@ -202,6 +202,10 @@ describe('release use cases', () => {
                         taskId: null,
                         resolved: { 'release-1:1:1': 'https://lyrics.example/song' },
                     }),
+                    planReleaseCover: async () => ({
+                        taskId: 'cover-task',
+                        resolved: { 'release-1': 'https://cover.example/release.jpg' },
+                    }),
                 }),
                 releaseCatalogGateway: createGateway({
                     getRelease: async () => release,
@@ -221,8 +225,10 @@ describe('release use cases', () => {
             assert.deepEqual(result.profileImages, {
                 'artist-1': 'https://img.example/a.jpg',
             });
+            assert.equal(result.release.cover_url, 'https://cover.example/release.jpg');
             assert.equal(result.lyricsTaskId, null);
             assert.equal(result.profileImageTaskId, null);
+            assert.equal(result.releaseCoverTaskId, 'cover-task');
         });
 
         it('returns null on a local miss without remote fallback', async () => {

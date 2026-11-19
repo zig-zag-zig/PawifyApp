@@ -398,8 +398,6 @@ prepare_runtime_files() {
   replace_or_append_env "$env_path" "PAWIFY_LYRICS_DB_DIR" "/home/deploy/pawify-lyrics"
   replace_or_append_env "$env_path" "PAWIFY_APP_UID" "1000"
   replace_or_append_env "$env_path" "PAWIFY_APP_GID" "1000"
-  replace_or_append_env "$env_path" "ASSET_CACHE_SUCCESS_TTL_HOURS" "720"
-  replace_or_append_env "$env_path" "ASSET_CACHE_MISS_TTL_HOURS" "168"
   replace_or_append_env "$env_path" "PAWIFY_HOST_BIND_ADDRESS" "127.0.0.1"
   replace_or_append_env "$env_path" "PAWIFY_HOST_PORT" "$HOST_PORT"
   replace_or_append_env "$env_path" "APP_ENV" "$APP_ENV_VALUE"

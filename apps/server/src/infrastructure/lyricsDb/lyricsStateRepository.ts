@@ -119,13 +119,31 @@ const rowToState = (row: {
     musicbrainzAttemptedAt: row.musicbrainz_attempted_at,
 });
 
+/**
+ * Whether a stored state can satisfy a request without a provider call.
+ *
+ * A found URL is always usable; `next_attempt_at` only says when a background
+ * refresh is due. A confirmed miss is usable until its negative TTL expires.
+ * Transient failures never mask the absence of a value.
+ */
 export const isUsableLyricsState = (
     state: LyricsLookupState | null | undefined,
     now = Date.now(),
 ): state is LyricsLookupState => {
     if (!state) return false;
-    if (state.outcome === 'transient-failure') return false;
-    return state.nextAttemptAt > now;
+    if (state.outcome === 'found') return Boolean(state.resolvedUrl);
+    if (state.outcome === 'confirmed-miss') return state.nextAttemptAt > now;
+    return false;
+};
+
+/** Whether a stored value is old enough that a refresh should be attempted. */
+export const isLyricsRefreshDue = (
+    state: LyricsLookupState | null | undefined,
+    now = Date.now(),
+): boolean => {
+    if (!state) return true;
+    if (state.outcome === 'transient-failure') return true;
+    return state.nextAttemptAt <= now;
 };
 
 const withDb = <T>(operation: string, worker: (db: LyricsDb) => T, fallback: T): T => {
@@ -159,8 +177,7 @@ export const readLyricsStates = (
 
                 for (const identity of lookupIdentities(request)) {
                     const row = statement.get(identity.lookupKey) as
-                        | Parameters<typeof rowToState>[0]
-                        | undefined;
+                        Parameters<typeof rowToState>[0] | undefined;
                     if (row) {
                         const state = rowToState(row);
                         result.set(identity.lookupKey, state);
@@ -268,14 +285,31 @@ export const recordLyricsConfirmedMiss = (
 
 export const recordLyricsTransientFailure = (
     request: LyricsLookupRequest,
-    options: { geniusAttempted: boolean; musicbrainzAttempted: boolean },
+    options: {
+        geniusAttempted: boolean;
+        musicbrainzAttempted: boolean;
+        /** Longer retry window when a previously found URL is preserved. */
+        retryAfterMs?: number;
+    },
 ): void => {
-    // A failed provider is not a confirmed absence: retry soon and keep any
-    // previously found URL untouched by reading before replacing it.
+    // A failed refresh must never destroy a previously found URL. Keep the row in
+    // `found` state with a short retry window; the stored URL stays usable in the
+    // meantime. Only a lookup with no usable result becomes transient.
     const existing = readLyricsStates([request]).get(buildLyricsLookupIdentity(request).lookupKey);
+    if (existing?.outcome === 'found' && existing.resolvedUrl) {
+        upsertState(request, {
+            resolvedUrl: existing.resolvedUrl,
+            provider: existing.provider,
+            outcome: 'found',
+            nextAttemptAt: Date.now() + (options.retryAfterMs ?? lyricsDbConfig.transientRetryMs),
+            ...options,
+        });
+        return;
+    }
+
     upsertState(request, {
-        resolvedUrl: existing?.resolvedUrl ?? null,
-        provider: existing?.provider ?? null,
+        resolvedUrl: null,
+        provider: null,
         outcome: 'transient-failure',
         nextAttemptAt: Date.now() + lyricsDbConfig.transientRetryMs,
         ...options,
@@ -289,7 +323,8 @@ export type LyricsStoreStats = {
     transientFailureCount: number;
     geniusFoundCount: number;
     musicbrainzFoundCount: number;
-    retryScheduledCount: number;
+    /** Rows that would be attempted again on the next request. */
+    dueRetryCount: number;
     dbBytes: number;
     walBytes: number;
 };
@@ -307,17 +342,17 @@ export const getLyricsStoreStats = (): LyricsStoreStats => {
                          SUM(outcome = 'transient-failure') AS transientFailureCount,
                          SUM(provider = 'genius') AS geniusFoundCount,
                          SUM(provider = 'musicbrainz') AS musicbrainzFoundCount,
-                         SUM(next_attempt_at > checked_at) AS retryScheduledCount
+                         SUM(outcome = 'transient-failure' OR next_attempt_at <= ?) AS dueRetryCount
                      FROM lyrics_lookup_state`,
                 )
-                .get() as {
+                .get(Date.now()) as {
                 rows: number;
                 foundCount: number;
                 confirmedMissCount: number;
                 transientFailureCount: number;
                 geniusFoundCount: number;
                 musicbrainzFoundCount: number;
-                retryScheduledCount: number;
+                dueRetryCount: number;
             };
             const pageCount = db.pragma('page_count', { simple: true }) as number;
             const pageSize = db.pragma('page_size', { simple: true }) as number;
@@ -335,7 +370,7 @@ export const getLyricsStoreStats = (): LyricsStoreStats => {
                 transientFailureCount: rows.transientFailureCount ?? 0,
                 geniusFoundCount: rows.geniusFoundCount ?? 0,
                 musicbrainzFoundCount: rows.musicbrainzFoundCount ?? 0,
-                retryScheduledCount: rows.retryScheduledCount ?? 0,
+                dueRetryCount: rows.dueRetryCount ?? 0,
                 dbBytes: pageCount * pageSize,
                 walBytes,
             };
@@ -347,7 +382,7 @@ export const getLyricsStoreStats = (): LyricsStoreStats => {
             transientFailureCount: 0,
             geniusFoundCount: 0,
             musicbrainzFoundCount: 0,
-            retryScheduledCount: 0,
+            dueRetryCount: 0,
             dbBytes: 0,
             walBytes: 0,
         },
@@ -404,23 +439,46 @@ export const previewLyricsHousekeeping = (): LyricsHousekeepingPlan => {
 
 export const applyLyricsHousekeeping = (): LyricsHousekeepingPlan => {
     const { successCutoff, missCutoff } = housekeepingCutoffs();
-    const plan = previewLyricsHousekeeping();
-    withDb(
+    return withDb(
         'applyLyricsHousekeeping',
         (db) => {
+            let removedFound = 0;
+            let removedMisses = 0;
+            let removedFailures = 0;
+
             db.transaction(() => {
-                db.prepare(
+                const remove = db.prepare(
                     `DELETE FROM lyrics_lookup_state
                      WHERE lookup_key IN (
                          SELECT lookup_key FROM lyrics_lookup_state
-                         WHERE (outcome = 'found' AND checked_at < ?)
-                            OR (outcome != 'found' AND checked_at < ?)
+                         WHERE outcome = ? AND checked_at < ?
                          LIMIT ?
                      )`,
-                ).run(successCutoff, missCutoff, lyricsDbConfig.housekeepingBatchSize);
+                );
+                removedFound = remove.run(
+                    'found',
+                    successCutoff,
+                    lyricsDbConfig.housekeepingBatchSize,
+                ).changes;
+                removedMisses = remove.run(
+                    'confirmed-miss',
+                    missCutoff,
+                    lyricsDbConfig.housekeepingBatchSize,
+                ).changes;
+                removedFailures = remove.run(
+                    'transient-failure',
+                    missCutoff,
+                    lyricsDbConfig.housekeepingBatchSize,
+                ).changes;
             })();
+
+            return {
+                removableRows: removedFound + removedMisses + removedFailures,
+                removableFound: removedFound,
+                removableMisses: removedMisses,
+                removableFailures: removedFailures,
+            };
         },
-        undefined,
+        { removableRows: 0, removableFound: 0, removableMisses: 0, removableFailures: 0 },
     );
-    return plan;
 };

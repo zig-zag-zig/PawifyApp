@@ -57,6 +57,22 @@ export const createCacheFirstAssetPlanner = (deps: {
                 : null;
         return { taskId, resolved };
     },
+    planReleaseCover: async ({ userId, releaseId, releaseGroupId, ttl }) => {
+        const pageEntries = [{ releaseGroupId, releaseIds: [releaseId] }];
+        const { resolved, pending } =
+            await deps.cacheAssetPartitioner.partitionReleaseGroupReleaseCovers(pageEntries);
+        const taskId =
+            pending.length > 0
+                ? deps.releaseTaskQueue.queueReleaseGroupReleaseCovers(
+                      userId,
+                      `release:${releaseId}`,
+                      pending,
+                      ttl,
+                      { contractNamespace: 'v3' },
+                  )
+                : null;
+        return { taskId, resolved };
+    },
     planReleaseGroupReleaseCovers: async ({ userId, releaseGroupId, pageEntries, ttl }) => {
         const { resolved, pending } =
             await deps.cacheAssetPartitioner.partitionReleaseGroupReleaseCovers(pageEntries);

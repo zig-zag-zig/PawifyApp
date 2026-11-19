@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 
 import {
     closeMusicDb,
-    musicDbHasEntityImages,
+    MusicDbUnavailableError,
 } from '../../../src/infrastructure/musicDb/musicDbClient.js';
 import {
     readEntityImage,
@@ -79,13 +79,6 @@ const useMirror = (seed: MusicDbSeed = {}): string => {
     closeMusicDb();
     resetEntityImageRepositoryForTests();
     return path;
-};
-
-/** Drops the image tables, which is what an older mirror looks like. */
-const dropImageTables = (path: string): void => {
-    const db = new Database(path);
-    db.exec('DROP TABLE entity_images; DROP TABLE image_services;');
-    db.close();
 };
 
 const imageRow = (
@@ -378,33 +371,28 @@ describe('mirrored artist artwork', () => {
 });
 
 describe('mirrors without the image-state tables', () => {
-    it('behaves exactly like before the tables existed', async () => {
+    it('fails readiness instead of treating the database as artworkless', async () => {
         const path = createMusicDbFixture({});
-        dropImageTables(path);
+        const db = new Database(path);
+        db.exec('DROP TABLE entity_images; DROP TABLE image_services;');
+        db.close();
         process.env.MUSIC_DB_PATH = path;
         closeMusicDb();
         resetEntityImageRepositoryForTests();
+        const calls = forbidProviderCalls();
 
-        assert.equal(musicDbHasEntityImages(), false);
-        assert.equal(readEntityImage('artist', ARTIST_ID), null);
-
-        const calls = stubFetch((call) => {
-            if (call.url.includes('/invoke/deezer/')) {
-                return jsonResponse({ id: 1110718732, cover_xl: DEEZER_IMAGE });
-            }
-            throw new Error(`unexpected call ${call.url}`);
-        });
-
-        const { resolveReleaseImage } =
-            await import('../../../src/services/musicApi/releaseImageSources.js');
-        const result = await resolveReleaseImage({
-            releaseId: RELEASE_ID,
-            deezerUrls: [DEEZER_ALBUM],
-        });
-
-        assert.equal(result.image, DEEZER_IMAGE);
-        assert.equal(result.source, 'deezer');
-        assert.equal(calls.length > 0, true);
+        assert.throws(() => readEntityImage('artist', ARTIST_ID), MusicDbUnavailableError);
+        await assert.rejects(
+            async () =>
+                await (
+                    await import('../../../src/services/musicApi/releaseImageSources.js')
+                ).resolveReleaseImage({
+                    releaseId: RELEASE_ID,
+                    deezerUrls: [DEEZER_ALBUM],
+                }),
+            MusicDbUnavailableError,
+        );
+        assert.deepEqual(calls, []);
     });
 });
 

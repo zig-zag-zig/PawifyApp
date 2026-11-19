@@ -74,15 +74,17 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
     useEffect(() => abortAll, [abortAll]);
 
     const resolveTasks = useCallback(
-        async (result: UnifiedSearchResponse, kind: SearchCategoryKind) => {
+        async (result: UnifiedSearchResponse, kind: SearchCategoryKind, expectedSeq: number) => {
             if (kind === 'artists' && result.artistProfileImageTaskId) {
                 void resolveNullableTaskMap({
                     taskId: result.artistProfileImageTaskId,
                     expectedIds: result.artists.map((artist) => artist.id),
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractArtistProfileImages,
-                    onResolvedValues: (values) =>
-                        setArtistProfileImages((previous) => ({ ...previous, ...values })),
+                    onResolvedValues: (values) => {
+                        if (searchSeqRef.current !== expectedSeq) return;
+                        setArtistProfileImages((previous) => ({ ...previous, ...values }));
+                    },
                     onError: (error) =>
                         console.warn('unified-search: artist images failed', error),
                 });
@@ -94,8 +96,10 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                     expectedIds: result.releaseGroups.map((group) => group.id),
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractReleaseGroupCovers,
-                    onResolvedValues: (values) =>
-                        setReleaseGroupCovers((previous) => ({ ...previous, ...values })),
+                    onResolvedValues: (values) => {
+                        if (searchSeqRef.current !== expectedSeq) return;
+                        setReleaseGroupCovers((previous) => ({ ...previous, ...values }));
+                    },
                     onError: (error) =>
                         console.warn('unified-search: release covers failed', error),
                 });
@@ -109,8 +113,10 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                     ),
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractReleaseGroupReleaseCovers,
-                    onResolvedValues: (values) =>
-                        dispatch({ type: 'trackCoversResolved', covers: values }),
+                    onResolvedValues: (values) => {
+                        if (searchSeqRef.current !== expectedSeq) return;
+                        dispatch({ type: 'trackCoversResolved', covers: values });
+                    },
                     onError: (error) =>
                         console.warn('unified-search: track covers failed', error),
                 });
@@ -146,7 +152,7 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                     return;
                 }
                 dispatch({ type: 'succeeded', result, kind, offset });
-                void resolveTasks(result, kind);
+                void resolveTasks(result, kind, expectedSeq);
             } catch (error) {
                 if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
                     return;

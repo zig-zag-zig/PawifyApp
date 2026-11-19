@@ -71,6 +71,7 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
                     mediaCount: result?.release.media.length ?? 0,
                     lyricsTaskId: result?.lyricsTaskId,
                     profileImageTaskId: result?.profileImageTaskId,
+                    releaseCoverTaskId: result?.releaseCoverTaskId,
                 }),
             },
         ),

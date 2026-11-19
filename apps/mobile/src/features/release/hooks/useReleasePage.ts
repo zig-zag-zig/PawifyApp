@@ -4,7 +4,11 @@ import { useCache } from '../../../contexts/CacheContext';
 import type { Release } from '@pawify/shared';
 import { openExternalUrl } from '../../../services/externalNavigation';
 import { isApiCallError } from '../../../services/apiErrors';
-import { extractArtistProfileImages, extractReleaseTrackLyrics } from '../../../utils/taskResultMaps';
+import {
+    extractArtistProfileImages,
+    extractReleaseGroupReleaseCovers,
+    extractReleaseTrackLyrics,
+} from '../../../utils/taskResultMaps';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import type { ReleaseResponse } from '../../../types/apiTypes';
@@ -151,6 +155,32 @@ export function useReleasePage(): ReleasePageController {
                 });
             };
 
+            const resolveReleaseCoverTask = async () => {
+                await resolveNullableTaskMap({
+                    taskId: response.releaseCoverTaskId,
+                    expectedIds: [release.id],
+                    waitForTaskResult: waitForTaskResultById,
+                    extractMap: extractReleaseGroupReleaseCovers,
+                    onResolvedValues: covers => {
+                        if (!isCurrent()) {
+                            return;
+                        }
+                        const coverUrl = covers[release.id];
+                        if (coverUrl !== undefined) {
+                            dispatch({ type: 'releaseCoverResolved', coverUrl });
+                        }
+                    },
+                    onError: error => {
+                        console.error('release-page: resolve release cover task failed', error);
+                    },
+                    shouldFillMissingOnCompleted: () => false,
+                    shouldFillMissingOnError: false,
+                    shouldFillMissingOnNonCompleted: false,
+                    recreateTask: async () => (await recreateEnrichment()).releaseCoverTaskId,
+                    recreateTaskDescription: 'getRelease.releaseCoverTaskId',
+                });
+            };
+
             const resolveArtistImageTask = async () => {
                 let nextArtistImages = mergedArtistImages;
                 await resolveNullableTaskMap({
@@ -182,6 +212,7 @@ export function useReleasePage(): ReleasePageController {
 
             void resolveLyricsTask();
             void resolveArtistImageTask();
+            void resolveReleaseCoverTask();
         },
         [
             getRelease,

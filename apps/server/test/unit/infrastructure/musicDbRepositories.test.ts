@@ -11,6 +11,7 @@ import {
     getMusicDb,
     initializeMusicDb,
     MusicDbUnavailableError,
+    resetMusicDbHandleIdentityCheckForTests,
 } from '../../../src/infrastructure/musicDb/musicDbClient.js';
 import {
     countArtistReleasesFromMirror,
@@ -246,6 +247,34 @@ describe('musicDb repositories', () => {
             const missing = path.join(os.tmpdir(), `pawify-missing-${Date.now()}.db`);
             useMirror(missing);
             assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+        });
+
+        it('recovers when a transiently missing mirror appears later', () => {
+            const missing = path.join(os.tmpdir(), `pawify-late-${Date.now()}.db`);
+            useMirror(missing);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+
+            const late = createMusicDbFixture(seed);
+            process.env.MUSIC_DB_PATH = late;
+            assert.equal(getMusicDb().name, late);
+        });
+
+        it('reopens when the mirror file is replaced', () => {
+            const replacement = createMusicDbFixture(seed);
+            const target = fixturePath;
+            useMirror(target);
+            const first = getMusicDb();
+            const firstIno = fs.statSync(target).ino;
+
+            const backup = `${target}.old`;
+            fs.renameSync(target, backup);
+            fs.renameSync(replacement, target);
+            resetMusicDbHandleIdentityCheckForTests();
+            const second = getMusicDb();
+
+            assert.notEqual(fs.statSync(target).ino, firstIno);
+            assert.notEqual(second, first);
+            assert.equal(second.name, target);
         });
 
         it('fails boot when the mirror is not configured', () => {

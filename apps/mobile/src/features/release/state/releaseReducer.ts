@@ -14,6 +14,10 @@ type ReleaseAction =
         pendingArtistImageIds: string[];
     }
     | {
+        type: 'releaseCoverResolved';
+        coverUrl: string | null;
+    }
+    | {
         type: 'lyricsLoadingFinished';
         trackLyrics: Record<string, string | null | undefined>;
         resolvedLyricTrackIds: string[];
@@ -74,6 +78,14 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 pendingArtistImageIds: action.pendingArtistImageIds,
                 loadingLyrics: action.pendingLyricTrackIds.length > 0,
             };
+
+        case 'releaseCoverResolved':
+            return state.release
+                ? {
+                      ...state,
+                      release: { ...state.release, cover_url: action.coverUrl },
+                  }
+                : state;
 
         case 'lyricsLoadingFinished': {
             const pendingLyricTrackIds = removeIds(

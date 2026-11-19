@@ -37,9 +37,9 @@ const logger = createLogger('services.backgroundTasks');
  * old payloads into the unified release/enrichment contract.
  */
 export const withTaskKeyNamespace = (
-    contractNamespace: ContractNamespace | undefined,
+    _contractNamespace: ContractNamespace | undefined,
     key: string,
-): string => (contractNamespace === 'v3' ? `v3:${key}` : key);
+): string => `v3:${key}`;
 
 type QueueChunkedTaskOptions<T extends BackgroundTaskResultPayload, TChunk> = {
     userId: string;

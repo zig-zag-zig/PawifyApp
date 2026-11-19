@@ -31,8 +31,16 @@ const rebuildKnownReleasesForSettings = async (
             return;
         }
 
-        const currentState =
-            await knownReleaseRepository.getArtistReleaseGroupState(userId, artistId);
+        // Pre-migration scalar state must be migrated before a rebuild can safely
+        // rewrite it; otherwise known groups outside the catalogue would be lost.
+        if (await knownReleaseRepository.hasUnmigratedArtistReleaseGroupState(userId, artistId)) {
+            return;
+        }
+
+        const currentState = await knownReleaseRepository.getArtistReleaseGroupState(
+            userId,
+            artistId,
+        );
         // Feed eligibility and remembered content are separate concerns: keep the
         // complete history, including groups currently outside the date window.
         // Deleting history here makes a later unchanged pressing look like a new

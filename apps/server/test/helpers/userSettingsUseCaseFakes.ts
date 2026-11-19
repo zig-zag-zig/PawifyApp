@@ -17,6 +17,7 @@ type UserSettingsFakeOptions = {
     >;
     previousSettings?: ReleaseNotificationSettings;
     failArtistId?: string;
+    unmigratedArtistIds?: string[];
 };
 
 export const createUserSettingsDependencies = (options: UserSettingsFakeOptions = {}) => {
@@ -44,6 +45,9 @@ export const createUserSettingsDependencies = (options: UserSettingsFakeOptions 
         knownReleaseRepository: {
             async getArtistReleaseGroupState(_userId, artistId) {
                 return options.currentState?.[artistId] ?? {};
+            },
+            async hasUnmigratedArtistReleaseGroupState(_userId, artistId) {
+                return options.unmigratedArtistIds?.includes(artistId) ?? false;
             },
             async replaceArtistReleaseGroupState(userId, artistId, groupState) {
                 replaceCalls.push({ userId, artistId, groupState });

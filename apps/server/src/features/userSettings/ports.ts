@@ -19,6 +19,8 @@ export type KnownReleaseRepository = {
         userId: string,
         artistId: string,
     ): Promise<{ [groupId: string]: KnownReleaseGroupStateValue }>;
+    /** True when the artist still carries pre-migration scalar state. */
+    hasUnmigratedArtistReleaseGroupState(userId: string, artistId: string): Promise<boolean>;
     replaceArtistReleaseGroupState(
         userId: string,
         artistId: string,

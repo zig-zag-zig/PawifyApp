@@ -1,5 +1,10 @@
 import { createLogger } from '../../common/logging/logger.js';
-import { getMusicDb, getMusicDbWriter, type MusicDb } from './musicDbClient.js';
+import {
+    getMusicDb,
+    getMusicDbWriter,
+    MusicDbUnavailableError,
+    type MusicDb,
+} from './musicDbClient.js';
 
 const logger = createLogger('infrastructure.musicDb.entityImages');
 
@@ -41,16 +46,12 @@ type EntityImageRow = {
 };
 
 /**
- * `image_services`/`entity_images` are part of the required mirror contract, so
- * there is no optional-table probe and no live-provider fallback selection here.
+ * `image_services`/`entity_images` are part of the required mirror contract. A
+ * missing/unready mirror is an explicit service error, not "no artwork": silently
+ * returning null here made every image look unresolved during an outage and queued
+ * provider work against a database the server could not read.
  */
-const readerFor = (): MusicDb | null => {
-    try {
-        return getMusicDb();
-    } catch {
-        return null;
-    }
-};
+const readerFor = (): MusicDb => getMusicDb();
 
 /**
  * Builds the public URL from the service template.
@@ -162,8 +163,8 @@ const readRows = (
 /**
  * Artwork the mirror already knows for one entity, or null when it knows nothing.
  *
- * Never throws: a mirror without the image tables, a locked file, or a malformed
- * row all degrade to null so the caller runs its normal provider chain.
+ * A malformed row degrades to null so the provider chain can run. Database
+ * unavailability propagates as a retriable service error.
  */
 export const readEntityImage = (
     entityType: EntityImageEntityType,
@@ -181,9 +182,6 @@ export const readEntityImages = (
 ): Map<string, EntityImageRecord> => {
     const result = new Map<string, EntityImageRecord>();
     const db = readerFor();
-    if (!db) {
-        return result;
-    }
 
     const unique = Array.from(new Set(mbids.filter((mbid) => mbid.length > 0)));
     if (unique.length === 0) {
@@ -201,6 +199,9 @@ export const readEntityImages = (
             }
         }
     } catch (error) {
+        if (error instanceof MusicDbUnavailableError) {
+            throw error;
+        }
         logger.debug('entity image lookup failed; falling back to providers', {
             entityType,
             count: unique.length,

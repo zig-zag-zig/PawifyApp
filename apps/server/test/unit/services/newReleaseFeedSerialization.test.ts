@@ -74,6 +74,17 @@ describe('stored feed normalization', () => {
         assert.equal(toPublicNewRelease(entry!).releaseCount, 3);
     });
 
+    it('derives an ISO date from the stored display value when date is absent', async () => {
+        const { normalizeNewReleasesCollectionDocument } = await import(
+            '../../../src/services/firebase/newReleasesStore.js'
+        );
+        const legacy = storedEntry({ date: null, date_for_display: '10.02.2026' });
+
+        const normalized = normalizeNewReleasesCollectionDocument({ 'release-1': legacy });
+
+        assert.equal(normalized?.['release-1']?.date, '2026-02-10');
+    });
+
     it('leaves a historical entry without a count absent', async () => {
         const { normalizeNewReleasesCollectionDocument } = await import(
             '../../../src/services/firebase/newReleasesStore.js'
@@ -125,32 +136,9 @@ describe('collectPrunedNewReleaseIds', () => {
             newReleasesMap: { 'release-1': { id: 'release-1', releaseGroupId: 'group-gone' } },
             knownStatesByArtist,
             prunedGroupIds: ['group-gone'],
-            releaseToGroupId: new Map(),
         });
 
         assert.deepEqual(ids, ['release-1']);
-    });
-
-    it('removes a legacy entry that has no group id once the mirror resolves it', () => {
-        const ids = collectPrunedNewReleaseIds({
-            newReleasesMap: { 'release-1': { id: 'release-1', releaseGroupId: null } },
-            knownStatesByArtist,
-            prunedGroupIds: ['group-gone'],
-            releaseToGroupId: new Map([['release-1', 'group-gone']]),
-        });
-
-        assert.deepEqual(ids, ['release-1']);
-    });
-
-    it('keeps a legacy entry the mirror cannot resolve', () => {
-        const ids = collectPrunedNewReleaseIds({
-            newReleasesMap: { 'release-1': { id: 'release-1', releaseGroupId: null } },
-            knownStatesByArtist,
-            prunedGroupIds: ['group-gone'],
-            releaseToGroupId: new Map(),
-        });
-
-        assert.deepEqual(ids, []);
     });
 
     it('keeps an entry whose group is still known under another artist', () => {
@@ -158,7 +146,6 @@ describe('collectPrunedNewReleaseIds', () => {
             newReleasesMap: { 'release-1': { id: 'release-1', releaseGroupId: 'group-a' } },
             knownStatesByArtist,
             prunedGroupIds: ['group-a'],
-            releaseToGroupId: new Map(),
         });
 
         assert.deepEqual(ids, []);

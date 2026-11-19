@@ -7,6 +7,7 @@ export type GetReleaseResult = {
     profileImages: Record<string, string | null>;
     lyricsTaskId: string | null;
     profileImageTaskId: string | null;
+    releaseCoverTaskId: string | null;
 } | null;
 
 /**
@@ -38,11 +39,21 @@ export const createGetReleaseUseCase =
 
         // One profile-image plan for the header and every track artist. The old
         // split endpoint planned the header and the tracklist separately.
-        const [lyricsPlan, profileImagesPlan] = await Promise.all([
+        const [lyricsPlan, profileImagesPlan, coverPlan] = await Promise.all([
             assetPlanner.planReleaseTrackLyrics({ userId, release, ttl: undefined }),
             assetPlanner.planReleaseArtistProfileImages({ userId, release, ttl: undefined }),
+            assetPlanner.planReleaseCover({
+                userId,
+                releaseId: release.id,
+                releaseGroupId: release.releaseGroupId,
+                ttl: undefined,
+            }),
         ]);
 
+        const releaseWithCover = {
+            ...release,
+            cover_url: coverPlan.resolved[release.id] ?? null,
+        };
         const trackLyrics: Record<string, string | null> = { ...lyricsPlan.resolved };
         for (const media of release.media) {
             for (const track of media.tracks ?? []) {
@@ -59,10 +70,11 @@ export const createGetReleaseUseCase =
         }
 
         return {
-            release,
+            release: releaseWithCover,
             trackLyrics,
             profileImages: profileImagesPlan.resolved,
             lyricsTaskId: lyricsPlan.taskId,
             profileImageTaskId: profileImagesPlan.taskId,
+            releaseCoverTaskId: coverPlan.taskId,
         };
     };

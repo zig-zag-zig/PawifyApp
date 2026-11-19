@@ -10,6 +10,16 @@ const logger = createLogger('infrastructure.musicDb');
 
 export type MusicDb = Database.Database;
 
+class MusicDbOpenError extends Error {
+    constructor(
+        readonly kind: 'transient' | 'permanent',
+        message: string,
+    ) {
+        super(message);
+        this.name = 'MusicDbOpenError';
+    }
+}
+
 /**
  * Explicit operational failure for the required catalogue database.
  *
@@ -184,10 +194,13 @@ const assertMirrorReady = (db: MusicDb): void => {
 
 const openReadonly = (): MusicDb => {
     if (!musicDbConfig.path) {
-        throw new Error('MUSIC_DB_PATH is not set');
+        throw new MusicDbOpenError('permanent', 'MUSIC_DB_PATH is not set');
     }
     if (!fs.existsSync(musicDbConfig.path)) {
-        throw new Error(`MusicBrainz mirror not found at ${musicDbConfig.path}`);
+        throw new MusicDbOpenError(
+            'transient',
+            `MusicBrainz mirror not found at ${musicDbConfig.path}`,
+        );
     }
 
     const db = new Database(musicDbConfig.path, { readonly: true, fileMustExist: true });
@@ -201,7 +214,10 @@ const openReadonly = (): MusicDb => {
         assertMirrorReady(db);
     } catch (error) {
         db.close();
-        throw error;
+        throw new MusicDbOpenError(
+            'permanent',
+            error instanceof Error ? error.message : String(error),
+        );
     }
 
     const meta = readMeta(db);
@@ -215,7 +231,30 @@ const openReadonly = (): MusicDb => {
 };
 
 let handle: MusicDb | null = null;
-let unavailableReason: string | null = null;
+let handleIdentity: { dev: number; ino: number } | null = null;
+let lastHandleIdentityCheckAt = 0;
+let permanentFailureReason: string | null = null;
+let lastFailureLogAt = 0;
+
+const OPEN_FAILURE_LOG_INTERVAL_MS = 60_000;
+
+const recordOpenFailure = (error: unknown): MusicDbUnavailableError => {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (error instanceof MusicDbOpenError && error.kind === 'permanent') {
+        permanentFailureReason = reason;
+    }
+
+    const now = Date.now();
+    if (now - lastFailureLogAt >= OPEN_FAILURE_LOG_INTERVAL_MS) {
+        lastFailureLogAt = now;
+        logger.error('MusicBrainz mirror failed to open', {
+            path: musicDbConfig.path,
+            error: reason,
+        });
+    }
+
+    return new MusicDbUnavailableError(reason);
+};
 
 /**
  * Write handle for `entity_images` only.
@@ -275,18 +314,55 @@ export const closeMusicDbWriter = (): void => {
  * unready mirror is an operational failure, not a reason to serve from the
  * MusicBrainz Web Service or to return empty catalogue data.
  */
+const fileIdentity = (databasePath: string): { dev: number; ino: number } | null => {
+    try {
+        const stats = fs.statSync(databasePath);
+        return { dev: stats.dev, ino: stats.ino };
+    } catch {
+        return null;
+    }
+};
+
+const sameFileAsHandle = (): boolean => {
+    if (!musicDbConfig.path) return false;
+    const current = fileIdentity(musicDbConfig.path);
+    return (
+        current !== null &&
+        handleIdentity !== null &&
+        current.dev === handleIdentity.dev &&
+        current.ino === handleIdentity.ino
+    );
+};
+
+const HANDLE_IDENTITY_CHECK_INTERVAL_MS = 5_000;
+
+const closeStaleHandle = (): void => {
+    const now = Date.now();
+    if (now - lastHandleIdentityCheckAt < HANDLE_IDENTITY_CHECK_INTERVAL_MS) {
+        return;
+    }
+    lastHandleIdentityCheckAt = now;
+
+    if (handle && !sameFileAsHandle()) {
+        logger.info('MusicBrainz mirror file was replaced; reopening', {
+            path: musicDbConfig.path,
+        });
+        handle.close();
+        handle = null;
+        handleIdentity = null;
+    }
+};
+
 export const initializeMusicDb = (): MusicDb => {
     try {
         handle = openReadonly();
-        unavailableReason = null;
+        handleIdentity = musicDbConfig.path ? fileIdentity(musicDbConfig.path) : null;
+        lastHandleIdentityCheckAt = Date.now();
+        permanentFailureReason = null;
+        lastFailureLogAt = 0;
         return handle;
     } catch (error) {
-        unavailableReason = error instanceof Error ? error.message : String(error);
-        logger.error('MusicBrainz mirror failed to open', {
-            path: musicDbConfig.path,
-            error: unavailableReason,
-        });
-        throw new MusicDbUnavailableError(unavailableReason);
+        throw recordOpenFailure(error);
     }
 };
 
@@ -299,23 +375,27 @@ export const initializeMusicDb = (): MusicDb => {
  */
 export const getMusicDb = (): MusicDb => {
     if (handle) {
-        return handle;
+        closeStaleHandle();
+        if (handle) {
+            return handle;
+        }
     }
 
-    if (unavailableReason !== null) {
-        throw new MusicDbUnavailableError(unavailableReason);
+    // Permanent schema/readiness failures are not retried. Missing files, busy
+    // locks and permission errors are retried on the next call: mirror replacement
+    // is routine and must not latch the process into a broken state.
+    if (permanentFailureReason !== null) {
+        throw new MusicDbUnavailableError(permanentFailureReason);
     }
 
     try {
         handle = openReadonly();
+        handleIdentity = musicDbConfig.path ? fileIdentity(musicDbConfig.path) : null;
+        lastHandleIdentityCheckAt = Date.now();
+        lastFailureLogAt = 0;
         return handle;
     } catch (error) {
-        unavailableReason = error instanceof Error ? error.message : String(error);
-        logger.error('MusicBrainz mirror failed to open', {
-            path: musicDbConfig.path,
-            error: unavailableReason,
-        });
-        throw new MusicDbUnavailableError(unavailableReason);
+        throw recordOpenFailure(error);
     }
 };
 
@@ -330,35 +410,6 @@ const hasEntityImages = (db: MusicDb): boolean => {
     );
 };
 
-/** Kept for call sites that used the old optional-table probe. */
-export const musicDbHasEntityImages = (): boolean => {
-    try {
-        return hasEntityImages(getMusicDb());
-    } catch {
-        return false;
-    }
-};
-
-/** Kept for call sites that used the old optional-index probe. */
-export const musicDbHasSearchIndex = (): boolean => {
-    try {
-        getMusicDb();
-        return true;
-    } catch {
-        return false;
-    }
-};
-
-/** Kept for call sites that used the old optional-index probe. */
-export const musicDbHasRecordingIndex = (): boolean => {
-    try {
-        getMusicDb();
-        return true;
-    } catch {
-        return false;
-    }
-};
-
 /** True once the mirror has been opened and validated by this process. */
 export const isMusicDbReady = (): boolean => {
     try {
@@ -369,12 +420,20 @@ export const isMusicDbReady = (): boolean => {
     }
 };
 
+/** Test-only: force the next getMusicDb() to re-check the file identity. */
+export const resetMusicDbHandleIdentityCheckForTests = (): void => {
+    lastHandleIdentityCheckAt = 0;
+};
+
 /** Test-only: drop the cached handle so a different file can be opened. */
 export const closeMusicDb = (): void => {
     if (handle) {
         handle.close();
         handle = null;
     }
+    handleIdentity = null;
+    lastHandleIdentityCheckAt = 0;
     closeMusicDbWriter();
-    unavailableReason = null;
+    permanentFailureReason = null;
+    lastFailureLogAt = 0;
 };

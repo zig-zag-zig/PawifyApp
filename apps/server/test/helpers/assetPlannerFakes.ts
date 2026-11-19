@@ -15,6 +15,10 @@ export const createDefaultAssetPlanner = (
         taskId: `task:rg:${scope}`,
         resolved: {},
     }),
+    planReleaseCover: async ({ releaseId }) => ({
+        taskId: `task:release-cover:${releaseId}`,
+        resolved: {},
+    }),
     planReleaseGroupReleaseCovers: async ({ releaseGroupId }) => ({
         taskId: `task:rg-releases:${releaseGroupId}`,
         resolved: {},

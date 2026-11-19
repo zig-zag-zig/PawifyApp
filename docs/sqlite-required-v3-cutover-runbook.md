@@ -45,13 +45,28 @@ jobs from this document without explicit operator authorization.
    Ensure `PAWIFY_LYRICS_DB_DIR` is a durable host directory writable by the
    container app uid and **not** inside the mirror replacement path.
 
-4. Back up, as operational safety:
+4. Run the one-time canonical-state migration (preview first):
+
+   ```bash
+   cd /srv/pawify-prod/apps/server
+   npm run state:migrate:canonical -- --preview
+   npm run state:migrate:canonical -- --apply
+   ```
+
+   It rewrites legacy known-release scalar values to the canonical object
+   baseline, resolves release-id keys through the mirror, and normalizes feed
+   dates/group ids. A JSON backup is written before any write. Resolve reported
+   unresolved/invalid records rather than passing `--force`, which must remain an
+   explicit operator decision. After this migration the runtime no longer parses
+   legacy scalar/date shapes.
+
+5. Back up, as operational safety:
    - Firebase/RTDB state (following, known releases, feed, settings, tokens);
    - Redis (task state/backoff/locks);
    - the current backend image/config and mobile build artifact.
    Do **not** delete artwork exports, image backfill, signing data or secrets.
 
-5. Decide the legacy lyric-cache outcome. This implementation does not migrate
+6. Decide the legacy lyric-cache outcome. This implementation does not migrate
    `asset:lyrics:*` Redis values: they are cache-only and are refetched on demand.
    Do not flush Redis; task/backoff state still lives there.
 
@@ -61,7 +76,10 @@ jobs from this document without explicit operator authorization.
    - `MUSIC_DB_PATH` and `LYRICS_DB_PATH` configured;
    - `PAWIFY_MUSIC_DB_DIR` and `PAWIFY_LYRICS_DB_DIR` mounted;
    - the existing secret/notification configuration.
-2. Watch startup for the mirror and lyrics DB open lines.
+2. Watch startup for the mirror and lyrics DB open lines. The background-task
+   registry is process-local, so the deployment restart expires pre-cutover
+   in-flight tasks; all new dedupe keys are `v3:`-prefixed so old keys cannot be
+   reused.
 3. Build/install the mobile release configured for `EXPO_PUBLIC_API_VERSION=v3`
    (the client now refuses non-v3 values).
 4. Coordinate the mobile install with the backend switch. Downtime is acceptable;
@@ -88,6 +106,17 @@ In the installed app verify:
 - notification navigation and task-result polling/completion;
 - old app builds receive the upgrade rejection rather than a broken half-contract.
 
+Measurement commands (run on the serving host; they do not mutate production):
+
+```bash
+npm run lyrics:db:estimate -- --rows 10000
+npm run benchmark:search
+```
+
+Recorded estimate on the implementation host: **545.18 bytes/row**, ~54.5 MB at
+100k requested lookups, ~545 MB at 1M (URL/key/state only; add WAL headroom).
+`benchmark:search` prints per-query latency/count plus event-loop p99/max delay.
+
 Operational checks:
 
 ```bash
@@ -107,10 +136,12 @@ additive and does not modify the mirror.
 
 ## Remaining limits in this implementation
 
-- No production throughput/event-loop measurement was available while
-  implementing. Recording search was batched (credits for the ranked window,
+- `npm run benchmark:search` and `npm run lyrics:db:estimate` provide the
+  measurement path. Recording search was batched (credits for the ranked window,
   releases for the page), but worker-thread SQL parallelism is intentionally not
-  enabled before measurement.
+  enabled before a real host measurement.
+- Production mobile builds must supply `.env.production`; a tracked example is at
+  `apps/mobile/.env.production.example`. The client rejects any value except `v3`.
 - Legacy `asset:lyrics:*` cache entries are not migrated; they expire naturally
   and are refetched on demand.
 - The required mirror currently ships no redirect table. Durable lyric state is

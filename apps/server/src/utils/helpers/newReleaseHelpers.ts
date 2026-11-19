@@ -26,14 +26,10 @@ type ProcessArtistResult = {
 const NEW_RELEASE_COVER_CACHE_CONCURRENCY = 10;
 
 /**
- * Inverts the catalog's group -> releases mapping.
+ * Resolves artist credits only for groups that turned out to be new.
  *
- * This is what makes the release-id to release-group-id state migration work
- * without the mirror: the catalog for the artist already says which group each
- * release belongs to. Ids the catalog does not know fall through to the mirror
- * lookup in `getReleaseToGroupIdMapFromMirror` (deleted releases, or releases the
- * artist listing no longer returns), and ids neither knows stay untouched so the
- * diff prunes them.
+ * The catalog already carries the group identity; credits are the one lookup the
+ * diff needs before it can build a feed entry.
  */
 const resolveCredits = (
     catalog: ArtistReleaseGroupCatalog,
@@ -64,6 +60,7 @@ export const processArtistReleases = async (
         [artistId: string]: { [groupId: string]: KnownReleaseGroupStateValue };
     },
     releaseNotificationSettings: ReleaseNotificationSettings = DEFAULT_RELEASE_NOTIFICATION_SETTINGS,
+    knownStateUnmigrated = false,
 ): Promise<ProcessArtistResult> => {
     const catalog = await getCatalog(artistId);
 
@@ -80,13 +77,11 @@ export const processArtistReleases = async (
         catalog.groups,
         releaseNotificationSettings,
         new Date(),
-        catalog.complete,
+        catalog.complete && !knownStateUnmigrated,
     );
     const eventGroups = plan.newEvents.map((event) => event.group);
     const creditsByGroupId =
-        eventGroups.length === 0
-            ? catalog.creditsByGroupId
-            : resolveCredits(catalog, eventGroups);
+        eventGroups.length === 0 ? catalog.creditsByGroupId : resolveCredits(catalog, eventGroups);
 
     const mappedNewReleases: StoredNewRelease[] = plan.newEvents.map((event) =>
         toStoredNewRelease(event, creditsByGroupId.get(event.group.id) ?? []),

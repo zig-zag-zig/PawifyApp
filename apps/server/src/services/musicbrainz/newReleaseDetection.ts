@@ -1,6 +1,6 @@
 import type { NewRelease, ReleaseNotificationSettings } from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
-import { getKnownReleaseGroupStateFromDb } from '../firebase/knownReleasesStore.js';
+import { getKnownReleaseGroupStateWithStatusFromDb } from '../firebase/knownReleasesStore.js';
 import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
@@ -24,6 +24,7 @@ const processSingleArtist = async (
         [artistId: string]: { [groupId: string]: KnownReleaseGroupStateValue };
     },
     releaseNotificationSettings: ReleaseNotificationSettings,
+    knownStateUnmigratedArtistIds: ReadonlySet<string>,
 ): Promise<ArtistProcessResult> => {
     return await processArtistReleases(
         userId,
@@ -31,6 +32,7 @@ const processSingleArtist = async (
         getCatalogForProcessing,
         currentReleaseGroupStateByArtist,
         releaseNotificationSettings,
+        knownStateUnmigratedArtistIds.has(artistId),
     );
 };
 
@@ -38,10 +40,14 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
     try {
         const followingArtists = await getFollowingFromDb(userId);
         const releaseNotificationSettings = await getReleaseNotificationSettingsFromDb(userId);
-        const currentReleaseGroupStateByArtist = await getKnownReleaseGroupStateFromDb(userId);
+        const {
+            state: currentReleaseGroupStateByArtist,
+            unmigratedArtistIds: unmigratedArtistIdsArray,
+        } = await getKnownReleaseGroupStateWithStatusFromDb(userId);
         for (const artistId of followingArtists) {
             currentReleaseGroupStateByArtist[artistId] ??= {};
         }
+        const unmigratedArtistIds = new Set(unmigratedArtistIdsArray);
         const result: NewRelease[] = [];
 
         const artistResults = await mapWithConcurrency(
@@ -53,6 +59,7 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
                     artistId,
                     currentReleaseGroupStateByArtist,
                     releaseNotificationSettings,
+                    unmigratedArtistIds,
                 ),
         );
 

@@ -1,6 +1,8 @@
 import { createLogger } from '../../common/logging/logger.js';
+import { lyricsDbConfig } from '../../config/runtimeConfig.js';
 import {
     buildDurableLyricsLookupIdentity,
+    isLyricsRefreshDue,
     isUsableLyricsState,
     readLyricsStates,
     recordLyricsConfirmedMiss,
@@ -64,10 +66,28 @@ const attachWaiter = (signal: AbortSignal | undefined, entry: InFlight): void =>
     void entry.promise.finally(() => release(false));
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const preservedFound = (
+    request: LyricsLookupRequest,
+    url: string,
+    attempts: { geniusAttempted: boolean; musicbrainzAttempted: boolean },
+): LyricsResolution => {
+    // Keep serving the known URL, but do not re-spend both providers on every
+    // screen open while upstream is stable. A miss TTL is the bounded refresh
+    // policy for a preserved success.
+    recordLyricsTransientFailure(request, {
+        ...attempts,
+        retryAfterMs: lyricsDbConfig.missTtlDays * DAY_MS,
+    });
+    return { url, outcome: 'found', provider: 'stored' };
+};
+
 const resolveFresh = async (
     request: LyricsLookupRequest,
     signal: AbortSignal,
     canUseMusicBrainzFallback?: () => boolean,
+    existingFoundUrl?: string | null,
 ): Promise<LyricsResolution> => {
     let geniusAttempted = false;
     let musicbrainzAttempted = false;
@@ -96,17 +116,27 @@ const resolveFresh = async (
     if (!recordingId) {
         // No trustworthy recording identity: the MusicBrainz fallback would have
         // to search the catalogue, which is explicitly not allowed.
-        if (sawTransientFailure) {
-            recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
-            return { url: undefined, outcome: 'failure', provider: null };
+        if (existingFoundUrl) {
+            return preservedFound(request, existingFoundUrl, {
+                geniusAttempted,
+                musicbrainzAttempted,
+            });
         }
-        recordLyricsConfirmedMiss(request, { geniusAttempted, musicbrainzAttempted });
-        return { url: null, outcome: 'confirmed-miss', provider: null };
+        // MusicBrainz was never consulted, so a Genius miss is not a confirmed
+        // dual-provider absence. Keep it retryable.
+        recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
+        return { url: undefined, outcome: 'failure', provider: null };
     }
 
     if (!(canUseMusicBrainzFallback?.() ?? true)) {
         // Per-job budget exhausted: this is not a confirmed absence from a
-        // successful provider, so keep retryable state.
+        // successful provider, so keep retryable state (and any prior found URL).
+        if (existingFoundUrl) {
+            return preservedFound(request, existingFoundUrl, {
+                geniusAttempted,
+                musicbrainzAttempted,
+            });
+        }
         recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
         return { url: undefined, outcome: 'failure', provider: null };
     }
@@ -126,11 +156,25 @@ const resolveFresh = async (
     }
 
     if (fallback.status === 'failure' || sawTransientFailure) {
+        if (existingFoundUrl) {
+            return preservedFound(request, existingFoundUrl, {
+                geniusAttempted,
+                musicbrainzAttempted,
+            });
+        }
         recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
         return { url: undefined, outcome: 'failure', provider: null };
     }
 
-    // Both successful providers reported absence.
+    // Both successful providers reported absence. If this was a refresh of an
+    // already-found URL, keep serving it rather than treating an upstream miss as
+    // deletion of known-good state.
+    if (existingFoundUrl) {
+        return preservedFound(request, existingFoundUrl, {
+            geniusAttempted,
+            musicbrainzAttempted,
+        });
+    }
     recordLyricsConfirmedMiss(request, { geniusAttempted, musicbrainzAttempted });
     return { url: null, outcome: 'confirmed-miss', provider: null };
 };
@@ -149,12 +193,14 @@ export const resolveLyrics = async (
 ): Promise<LyricsResolution> => {
     const identity = buildDurableLyricsLookupIdentity(request);
     const stored = readLyricsStates([request]).get(identity.lookupKey);
-    if (isUsableLyricsState(stored)) {
+    if (isUsableLyricsState(stored) && !isLyricsRefreshDue(stored)) {
         if (stored.outcome === 'found') {
             return { url: stored.resolvedUrl, outcome: 'found', provider: 'stored' };
         }
         return { url: null, outcome: 'confirmed-miss', provider: 'stored' };
     }
+    const existingFoundUrl =
+        stored?.outcome === 'found' && stored.resolvedUrl ? stored.resolvedUrl : null;
 
     if (isAborted(signal)) {
         return { url: undefined, outcome: 'failure', provider: null };
@@ -176,7 +222,12 @@ export const resolveLyrics = async (
             provider: null,
         }),
     };
-    entry.promise = resolveFresh(request, controller.signal, options?.canUseMusicBrainzFallback)
+    entry.promise = resolveFresh(
+        request,
+        controller.signal,
+        options?.canUseMusicBrainzFallback,
+        existingFoundUrl,
+    )
         .catch((error) => {
             if (isAbortError(error)) {
                 return { url: undefined, outcome: 'failure', provider: null } as const;

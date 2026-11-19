@@ -37,6 +37,13 @@ export type ArtistReleaseGroupCoversPlanInput = {
     ttl: number | undefined;
 };
 
+export type ReleaseCoverPlanInput = {
+    userId: string;
+    releaseId: string;
+    releaseGroupId: string | null;
+    ttl: number | undefined;
+};
+
 export type ReleaseGroupReleaseCoversPlanInput = {
     userId: string;
     releaseGroupId: string;
@@ -80,6 +87,10 @@ export interface ArtistReleaseGroupCoversPlanner {
     ): Promise<AssetPlanResult>;
 }
 
+export interface ReleaseCoverPlanner {
+    planReleaseCover(input: ReleaseCoverPlanInput): Promise<AssetPlanResult>;
+}
+
 export interface ReleaseGroupReleaseCoversPlanner {
     planReleaseGroupReleaseCovers(
         input: ReleaseGroupReleaseCoversPlanInput,
@@ -112,6 +123,7 @@ export interface BackgroundAssetPlanner
     extends
         ArtistProfileImagesPlanner,
         ArtistReleaseGroupCoversPlanner,
+        ReleaseCoverPlanner,
         ReleaseGroupReleaseCoversPlanner,
         NewReleaseCoversPlanner,
         ReleaseTrackLyricsPlanner,

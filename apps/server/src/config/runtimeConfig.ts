@@ -68,11 +68,6 @@ export const cacheConfig = {
         process.env.ARTIST_METADATA_REFRESH_TTL_MS,
         1000 * 60 * 60 * 24 * 28,
     ),
-    // Provider artwork/lyrics: ninety days of success, a week of "definitely absent".
-    // Most artwork now lives in the SQLite mirror, so these TTLs only govern lyric
-    // lookups and the API-fallback path.
-    assetSuccessTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_SUCCESS_TTL_HOURS, 24 * 90),
-    assetMissTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_MISS_TTL_HOURS, 24 * 7),
     // Tracklists are mirror-first when the mirror's track data is ready and fall
     // back to one 1 req/s MusicBrainz request per release view. A tracklist
     // effectively never changes.
@@ -306,10 +301,6 @@ export const lyricsDbConfig = {
     transientRetryMs: parsePositiveIntEnv(
         process.env.LYRICS_TRANSIENT_RETRY_MS,
         5 * 60 * 1000,
-    ),
-    geniusRetryAfterFallbackMs: parsePositiveIntEnv(
-        process.env.LYRICS_GENIUS_RETRY_AFTER_FALLBACK_MS,
-        24 * 60 * 60 * 1000,
     ),
     /** Bounds one release's MusicBrainz fallback flood (giant releases exist). */
     maxFallbackRequestsPerJob: parsePositiveIntEnv(
