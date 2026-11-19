@@ -3,6 +3,8 @@ import type {
   ArtistCredit,
   ArtistMinimal,
   ArtistReleaseGroup,
+  GetReleaseGroupReleasesResponse,
+  GetReleaseResponse,
   NewRelease,
   Release,
   ReleaseGroupReleaseListItem,
@@ -58,27 +60,9 @@ export interface ArtistReleasesResponse {
   hasMore?: boolean;
 }
 
-export interface ReleaseGroupReleasesResponse {
-  releases: ReleaseGroupReleaseListItem[];
-  releaseCoverTaskId: string | null;
-  releaseCovers: Record<string, string | null>;
-}
-
-export interface ReleaseResponse {
-  release: Release;
-  lyricsTaskId?: string | null;
-  profileImageTaskId: string | null;
-  trackLyrics?: Record<string, string | null>;
-  profileImages: Record<string, string | null>;
-}
-
-export interface ReleaseTracksResponse {
-  media: Release['media'];
-  lyricsTaskId: string | null;
-  profileImageTaskId: string | null;
-  trackLyrics: Record<string, string | null>;
-  profileImages: Record<string, string | null>;
-}
+/** v3 wire contracts, shared with the server so the shapes cannot drift. */
+export type ReleaseGroupReleasesResponse = GetReleaseGroupReleasesResponse;
+export type ReleaseResponse = GetReleaseResponse;
 
 export interface ResolveNewReleaseCoversResponse {
   releaseCoverTaskId: string | null;

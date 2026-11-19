@@ -182,41 +182,27 @@ docker compose --env-file .env.prod logs -f --tail=100 pawify pawify-dapr redis
 ```bash
 cd /srv/pawify-prod/apps/server
 docker compose --env-file .env.prod ps
-curl http://127.0.0.1:3001/v1/health
+curl http://127.0.0.1:3001/health
 docker compose --env-file .env.prod exec redis redis-cli -a "$(grep '^REDIS_PASSWORD=' .env.prod | cut -d= -f2-)" ping
 docker compose --env-file .env.prod exec pawify-dapr wget -qO- http://localhost:3500/v1.0/metadata
 ```
 
-## Local MusicBrainz Mirror (optional)
+## Required SQLite stores
 
-Artist details, artist search, release-group search, artist release-group
-listings, release-group releases and release metadata are served from a local
-SQLite mirror. Tracklists still come from the API when a release screen is
-opened, because the mirror deliberately does not store tracks.
+### Catalogue mirror (required)
 
-There is no "use the API instead" switch: running both paths as a choice doubles
-the code and the tests for no user benefit. The API is the *failure* path only.
-
-The mirror itself is built off-box by
+Artist/search/release/release-group/track data is served only from the local
+SQLite mirror built off-box by
 [zig-zag-zig/pawify_mb_sqlite](https://github.com/zig-zag-zig/pawify_mb_sqlite)
-and synced hourly on the host; this repository only reads it.
-
-### Host layout
+and synced hourly on the host. This repository only reads it.
 
 ```bash
-/home/deploy/pawify-mb/mb.db          # ~13.7 GB, written hourly by sync.sh
+/home/deploy/pawify-mb/mb.db          # written hourly by sync.sh
 /home/deploy/pawify-mb/mb.db-wal      # WAL side files: must stay next to mb.db
 /home/deploy/pawify-mb/mb.db-shm
 ```
 
-The directory is mounted read-only at `/var/pawify/music`. The whole directory is
-mounted, not just `mb.db`: the mirror is in WAL mode and SQLite needs the side
-files present. Access was verified against the live mirror from inside the
-container user (`uid 999`), which can read it without write permission.
-
-### Enabling it
-
-In the secret env file (`PAWIFY_ENV_FILE_B64`):
+In the secret env file:
 
 ```dotenv
 MUSIC_DB_PATH=/var/pawify/music/mb.db
@@ -224,55 +210,44 @@ PAWIFY_MUSIC_DB_DIR=/home/deploy/pawify-mb
 MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS=1000
 ```
 
-`PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source. The production
- deploy wrapper forces it to `/home/<deploy-user>/pawify-mb` and forces
-`MUSIC_DB_PATH=/var/pawify/music/mb.db`, so an older secret env file cannot silently
-switch production back to the MusicBrainz API.
+`PAWIFY_MUSIC_DB_DIR` is the host path used as the volume source. The deploy
+wrapper forces it to `/home/<deploy-user>/pawify-mb` and forces
+`MUSIC_DB_PATH=/var/pawify/music/mb.db`.
 
-### Behaviour and failure modes
+Failure modes:
 
-- The mirror is opened lazily on first use, read-only, with the reader contract
-  (`tables`, `columns`) asserted. A mirror from a different schema fails at
-  startup with the exact missing column instead of a per-request error.
-- A mirror miss (unknown id, no search index, mode off) quietly uses the API.
-- A mirror *failure* (corrupt file, permission problem) is logged as a warning
-  and then falls back to the API. This is not configurable: it exists so a broken
-  sync job degrades the app instead of taking it down.
-- `releaseExists` only trusts a *positive* answer from the mirror. A negative
-  answer is re-checked against the API, because that endpoint deletes user state
-  and the mirror can be up to an hour behind.
-- Search needs the mirror's `search_fts` index (`mbforge search-index`). Without
-  it search falls back to the API; nothing else is affected. Terms are OR'ed and
-  prefix-matched, like the MusicBrainz search server: `q=lloyd banks` matches
-  either term and ranks rows containing both first. AND'ing the terms would return
-  4 artists where the API returns 1881.
-- A missing mirror file is not fatal: the server logs a warning and serves from the
-  API, and it re-checks on each request so a mirror created by the hourly sync is
-  picked up without a restart. A mirror that exists but cannot be opened, or that
-  does not match the reader contract, *does* fail the boot.
-- `MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS` (default 1000) bounds one artist's release
-  groups. The endpoint has no pagination contract yet, and unbounded is not
-  survivable: Various Artists has 297k groups and building that page killed the
-  process with a JavaScript heap OOM.
-- Queries run synchronously on the event loop (better-sqlite3). Normal requests
-  are 0.1-10 ms; a pathological artist page blocks the loop for ~2 s while its
-  groups are sorted. Bounded cost, but worth knowing before adding heavier SQL.
+- Missing file, failed permission, reader-schema mismatch, missing FTS tables,
+  missing image-state tables or `track_data_state != ready` fails boot/readiness
+  with the exact reason. Requests get `503`, never empty data and never a
+  MusicBrainz Web Service lookup.
+- A local entity miss is a local not-found. It is not proof of global deletion,
+  so it does not trigger destructive global Firebase cleanup.
+- The mirror can lag; cursor age is monitored separately rather than making a
+  one-hour lag stop an otherwise valid database.
+- `MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS` (default 1000) bounds one artist page, and
+  notification detection has its own separate completeness bound.
+- Queries run synchronously on the event loop (better-sqlite3); measure before
+  introducing worker-thread parallelism.
 
-### Verifying on a running host
+### Lyrics state (required, separate file)
+
+```dotenv
+LYRICS_DB_PATH=/var/pawify/lyrics/lyrics.db
+PAWIFY_LYRICS_DB_DIR=/home/deploy/pawify-lyrics
+```
+
+Create/migrate explicitly with preview first:
 
 ```bash
 cd /srv/pawify-prod/apps/server
-docker compose --env-file .env.prod exec pawify node -e "
-const D=require('better-sqlite3');
-const db=new D(process.env.MUSIC_DB_PATH,{readonly:true,fileMustExist:true});
-console.log(db.prepare('select count(*) c from artists').get());
-"
-docker compose --env-file .env.prod logs pawify | grep 'MusicBrainz mirror'
+npm run lyrics:db:migrate -- --preview
+npm run lyrics:db:migrate -- --apply
 ```
 
-The startup log line reports the path, whether the search index was found, and
-the mirror's `_meta` (`replication_sequence`, `entities`, ...), which is what the
-sync job advances.
+This file is application-owned: mirror sync/prune/replacement must not touch it.
+Legacy `asset:lyrics:*` Redis values are cache-only results; after the cutover
+they are refetched on demand rather than promised as migrated state. Do not flush
+Redis: task state, provider backoff and unrelated app data still live there.
 
 ## Redis Backup
 

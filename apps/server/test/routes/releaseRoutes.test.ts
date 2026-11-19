@@ -15,10 +15,10 @@ let baseUrl: string;
 
 beforeEach(async () => {
     const { createReleaseRoutes } = await import('../../src/features/releases/releaseRoutes.js');
-    const { releasePresentersV1, releaseUseCasesV1 } =
-        await import('../../src/api/useCaseVariants.js');
+    const { releasePresentersV3, releaseUseCasesV3 } =
+        await import('../../src/api/releaseUseCasesV3.js');
     baseUrl = await createIntegrationTestApp(
-        createReleaseRoutes(releaseUseCasesV1, releasePresentersV1),
+        createReleaseRoutes(releaseUseCasesV3, releasePresentersV3),
     );
 });
 
@@ -36,16 +36,16 @@ afterEach(async () => {
 describe('release route integration', () => {
     const authHeader = { Authorization: 'Bearer valid-token' };
 
-    describe('GET /v1/getNewReleases', () => {
+    describe('GET /v3/getNewReleases', () => {
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getNewReleases`);
+            const response = await fetch(`${baseUrl}/v3/getNewReleases`);
             assert.equal(response.status, 401);
         });
     });
 
-    describe('POST /v1/removeNewReleases', () => {
+    describe('POST /v3/removeNewReleases', () => {
         it('returns 400 when releaseIds is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/removeNewReleases`, {
+            const response = await fetch(`${baseUrl}/v3/removeNewReleases`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -54,7 +54,7 @@ describe('release route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/removeNewReleases`, {
+            const response = await fetch(`${baseUrl}/v3/removeNewReleases`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ releaseIds: ['r1'] }),
@@ -63,7 +63,7 @@ describe('release route integration', () => {
         });
 
         it('returns 400 when releaseIds exceeds the 500-item cap', async () => {
-            const response = await fetch(`${baseUrl}/v1/removeNewReleases`, {
+            const response = await fetch(`${baseUrl}/v3/removeNewReleases`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -74,7 +74,7 @@ describe('release route integration', () => {
         });
     });
 
-    describe('POST /v1/removeNewReleases (best-effort notifications)', () => {
+    describe('POST /v3/removeNewReleases (best-effort notifications)', () => {
         it('returns 200 even when the change notification fails', async () => {
             const publisherPath =
                 require.resolve('../../src/services/notifications/dataNotificationPublisher.js');
@@ -91,7 +91,7 @@ describe('release route integration', () => {
             for (const modulePath of [
                 '../../src/features/releases/infrastructure/releaseInfrastructureAdapters.js',
                 '../../src/features/releases/releaseUseCases.js',
-                '../../src/api/useCaseVariants.js',
+                '../../src/api/releaseUseCasesV3.js',
             ]) {
                 delete require.cache[require.resolve(modulePath)];
             }
@@ -99,13 +99,13 @@ describe('release route integration', () => {
             try {
                 const { createReleaseRoutes } =
                     require('../../src/features/releases/releaseRoutes.js') as typeof import('../../src/features/releases/releaseRoutes.js');
-                const { releasePresentersV1, releaseUseCasesV1 } =
-                    require('../../src/api/useCaseVariants.js') as typeof import('../../src/api/useCaseVariants.js');
+                const { releasePresentersV3, releaseUseCasesV3 } =
+                    require('../../src/api/releaseUseCasesV3.js') as typeof import('../../src/api/releaseUseCasesV3.js');
                 const testBaseUrl = await createIntegrationTestApp(
-                    createReleaseRoutes(releaseUseCasesV1, releasePresentersV1),
+                    createReleaseRoutes(releaseUseCasesV3, releasePresentersV3),
                 );
 
-                const response = await fetch(`${testBaseUrl}/v1/removeNewReleases`, {
+                const response = await fetch(`${testBaseUrl}/v3/removeNewReleases`, {
                     method: 'POST',
                     headers: { ...authHeader, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ releaseIds: ['release-1', 'release-2'] }),
@@ -121,9 +121,9 @@ describe('release route integration', () => {
         });
     });
 
-    describe('POST /v1/getArtistReleases', () => {
+    describe('POST /v3/getArtistReleases', () => {
         it('returns 400 when artistId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/getArtistReleases`, {
+            const response = await fetch(`${baseUrl}/v3/getArtistReleases`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -132,7 +132,7 @@ describe('release route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getArtistReleases`, {
+            const response = await fetch(`${baseUrl}/v3/getArtistReleases`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ artistId: 'artist-1' }),
@@ -141,9 +141,9 @@ describe('release route integration', () => {
         });
     });
 
-    describe('POST /v1/getReleaseGroupReleases', () => {
+    describe('POST /v3/getReleaseGroupReleases', () => {
         it('returns 400 when releaseGroupId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/getReleaseGroupReleases`, {
+            const response = await fetch(`${baseUrl}/v3/getReleaseGroupReleases`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -152,7 +152,7 @@ describe('release route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getReleaseGroupReleases`, {
+            const response = await fetch(`${baseUrl}/v3/getReleaseGroupReleases`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ releaseGroupId: 'rg-1' }),
@@ -161,9 +161,9 @@ describe('release route integration', () => {
         });
     });
 
-    describe('POST /v1/getRelease', () => {
+    describe('POST /v3/getRelease', () => {
         it('returns 400 when releaseId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/getRelease`, {
+            const response = await fetch(`${baseUrl}/v3/getRelease`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -172,7 +172,7 @@ describe('release route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getRelease`, {
+            const response = await fetch(`${baseUrl}/v3/getRelease`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ releaseId: 'test' }),
@@ -181,9 +181,9 @@ describe('release route integration', () => {
         });
     });
 
-    describe('POST /v1/verifyReleaseExistence', () => {
+    describe('POST /v3/verifyReleaseExistence', () => {
         it('returns 400 when releaseId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/verifyReleaseExistence`, {
+            const response = await fetch(`${baseUrl}/v3/verifyReleaseExistence`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -192,7 +192,7 @@ describe('release route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/verifyReleaseExistence`, {
+            const response = await fetch(`${baseUrl}/v3/verifyReleaseExistence`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ releaseId: 'test-release' }),

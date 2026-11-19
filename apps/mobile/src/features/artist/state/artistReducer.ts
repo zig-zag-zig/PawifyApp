@@ -26,8 +26,6 @@ export type ArtistPageAction =
     | { type: 'followToggleStarted' }
     | { type: 'followToggleFinished' }
     | { type: 'followToggleFailed'; message: string }
-    | { type: 'releaseGroupLoadStarted' }
-    | { type: 'releaseGroupLoadFinished' }
     | { type: 'pendingTaskUpdated'; key: PendingTaskKey; taskId: string | null }
     | { type: 'memberPictureQueued'; memberId: string }
     | { type: 'memberPictureResolved'; memberId: string }
@@ -52,7 +50,6 @@ export function createInitialArtistPageState(): ArtistPageState {
         loadedItemsByType: buildInitialLoadedItemsByType(),
         isLoadingArtist: true,
         isLoadingReleases: true,
-        isLoadingReleaseGroup: false,
         isFollowLoading: false,
         error: null,
         pendingTasks: {
@@ -156,18 +153,6 @@ export function artistReducer(state: ArtistPageState, action: ArtistPageAction):
                 ...state,
                 isFollowLoading: false,
                 error: action.message,
-            };
-
-        case 'releaseGroupLoadStarted':
-            return {
-                ...state,
-                isLoadingReleaseGroup: true,
-            };
-
-        case 'releaseGroupLoadFinished':
-            return {
-                ...state,
-                isLoadingReleaseGroup: false,
             };
 
         case 'pendingTaskUpdated':

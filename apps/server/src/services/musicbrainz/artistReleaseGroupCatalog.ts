@@ -1,155 +1,40 @@
-import type { ArtistCredit, Release } from '@pawify/shared';
-import { deriveReleaseGroupReleaseListMetadata } from '@pawify/shared';
+import type { ArtistCredit } from '@pawify/shared';
 
 import { getArtistReleaseGroupCandidatesFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
-import { isMusicDbEnabled } from '../../infrastructure/musicDb/musicDbClient.js';
-import type {
-    ReleaseEditionCandidate,
-    ReleaseGroupCandidate,
-} from '../../features/releases/domain/releaseGroupProcessing.js';
-import {
-    extractEditionKeywords,
-    isOfficialReleaseStatus,
-} from '../../features/releases/domain/releaseEditionKeywords.js';
-import {
-    fetchAllReleasesForArtistWithCompleteness,
-} from './releaseQueries.js';
-import { dateToTimestamp } from '../../utils/dateUtil.js';
+import type { ReleaseGroupCandidate } from '../../features/releases/domain/releaseGroupProcessing.js';
 
 export type ArtistReleaseGroupCatalog = {
     groups: ReleaseGroupCandidate[];
-    /** Artist credits per group, for building the feed entry without another lookup. */
+    /** Artist credits per group, for building a feed entry without another lookup. */
     creditsByGroupId: Map<string, ArtistCredit[]>;
     /**
-     * False when the catalogue is capped, failed mid-pagination, or the mirror is
-     * not ready. Incomplete catalogues must not prune, baseline or notify.
+     * False when the catalogue is capped or unresolved. Incomplete catalogues must
+     * not prune, baseline or notify.
      */
     complete: boolean;
 };
 
 /**
- * Collapses an artist's releases into release groups.
+ * Release-group catalog used by new-release detection and settings.
  *
- * This is the API-mode equivalent of the mirror's grouping query: pick the newest
- * release of each group as the representative, and keep every release id because a
- * user can open any pressing from the group screen.
- */
-const editionCandidateFromRelease = (release: Release): ReleaseEditionCandidate => {
-    const { trackCount, formats } = deriveReleaseGroupReleaseListMetadata(release);
-    return {
-        releaseId: release.id,
-        date: release.date,
-        status: release.status ?? null,
-        trackCount,
-        formats,
-        title: release.title,
-        disambiguation: release.disambiguation,
-        editionKeywords: extractEditionKeywords(release.title, release.disambiguation),
-    };
-};
-
-/**
- * Collapses an artist's releases into release groups.
- *
- * This is the API-mode equivalent of the mirror's grouping query: pick the newest
- * release of each group as the representative, keep every release id because a user
- * can open any pressing from the group screen, and snapshot the Official editions
- * so content-based detection works without the mirror.
- */
-const groupReleases = (
-    releases: Release[],
-): Omit<ArtistReleaseGroupCatalog, 'complete'> => {
-    const groups = new Map<string, ReleaseGroupCandidate>();
-    const newestDateByGroup = new Map<string, string | null>();
-    const creditsByGroupId = new Map<string, ArtistCredit[]>();
-
-    for (const release of releases) {
-        const groupId = release.releaseGroupId;
-        if (!groupId) {
-            continue;
-        }
-
-        const edition = editionCandidateFromRelease(release);
-        const officialEdition = isOfficialReleaseStatus(edition.status) ? [edition] : [];
-        const existing = groups.get(groupId);
-        if (existing) {
-            existing.releaseIds.push(release.id);
-            existing.officialEditions.push(...officialEdition);
-            if (
-                dateToTimestamp(release.date) >
-                dateToTimestamp(newestDateByGroup.get(groupId) ?? null)
-            ) {
-                existing.newestReleaseId = release.id;
-                existing.newestReleaseDate = release.date;
-                newestDateByGroup.set(groupId, release.date);
-            }
-            continue;
-        }
-
-        groups.set(groupId, {
-            id: groupId,
-            title: release['release-group']?.title ?? release.title,
-            date: release['release-group']?.date ?? release.date,
-            disambiguation: release['release-group']?.disambiguation ?? release.disambiguation,
-            primaryType: release['release-group']?.['primary-type'] ?? null,
-            releaseIds: [release.id],
-            newestReleaseId: release.id,
-            newestReleaseDate: release.date,
-            officialEditions: officialEdition,
-        });
-        newestDateByGroup.set(groupId, release.date);
-        creditsByGroupId.set(groupId, release['artist-credit'] ?? []);
-    }
-
-    return { groups: Array.from(groups.values()), creditsByGroupId };
-};
-
-const buildFromMirror = (artistId: string): ArtistReleaseGroupCatalog | null => {
-    const catalog = getArtistReleaseGroupCandidatesFromMirror(artistId);
-    if (catalog === null) {
-        return null;
-    }
-
-    return {
-        groups: catalog.groups,
-        // The mirror stores group credits; the caller only needs them for groups
-        // that turn out to be new, so this stays empty and is filled on demand.
-        creditsByGroupId: new Map(),
-        complete: catalog.complete,
-    };
-};
-
-const fetchFromApi = async (artistId: string): Promise<ArtistReleaseGroupCatalog> => {
-    // No `inc=recordings` any more: the diff compares release groups. Media
-    // metadata (`inc=media`) is still requested because Official track counts and
-    // formats are content signals; the tracklist itself is never loaded here.
-    const result = await fetchAllReleasesForArtistWithCompleteness(artistId, false);
-    const hasMissingGroupIdentity = result.releases.some(
-        (release) => !release.releaseGroupId,
-    );
-    return {
-        ...groupReleases(result.releases),
-        complete: result.complete && !hasMissingGroupIdentity,
-    };
-};
-
-/**
- * Release-group catalog used by the new-release scan.
- *
- * Read straight from the mirror: a full artist catalog is a handful of milliseconds,
- * so caching it in Redis only added serialization and staleness. The API fallback is
- * still cached by the API path itself when the mirror is unavailable.
- *
- * The notification runner scans every followed artist for every user, so the scan
- * passes one catalog per artist per run rather than re-reading it per user.
+ * Read straight from the required local mirror; there is no MusicBrainz Web
+ * Service catalogue path. A mirror failure throws, and the notification runner
+ * treats the artist scan as failed rather than as an empty/complete catalogue.
  */
 export const getArtistReleaseGroupCatalog = async (
     artistId: string,
 ): Promise<ArtistReleaseGroupCatalog> => {
-    const fromMirror = isMusicDbEnabled() ? buildFromMirror(artistId) : null;
-    if (fromMirror !== null) {
-        return fromMirror;
+    const catalog = getArtistReleaseGroupCandidatesFromMirror(artistId);
+
+    if (catalog === null) {
+        // Artist unknown to the local snapshot. It is not a complete empty
+        // catalogue: preserving state and emitting nothing is the safe answer.
+        return { groups: [], creditsByGroupId: new Map(), complete: false };
     }
 
-    return await fetchFromApi(artistId);
+    return {
+        groups: catalog.groups,
+        creditsByGroupId: new Map(),
+        complete: catalog.complete,
+    };
 };

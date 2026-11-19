@@ -2,13 +2,12 @@ import { createLogger } from '../../common/logging/logger.js';
 import { withOperationLogging } from '../../common/logging/operationLogger.js';
 import type { BackgroundAssetPlanner } from '../../services/backgroundAssets/plannerTypes.js';
 import { releaseDependencies } from './infrastructure/releaseDependencies.js';
-import { createGetArtistReleasesUseCase } from './usecases/getArtistReleases.js';
 import { createGetArtistReleasesPageUseCase } from './usecases/getArtistReleasesPage.js';
 import { createGetNewReleasesUseCase } from './usecases/getNewReleases.js';
 import { createResolveNewReleaseCoversUseCase } from './usecases/resolveNewReleaseCovers.js';
 import { createGetReleaseUseCase } from './usecases/getRelease.js';
-import { createGetReleaseTracksUseCase } from './usecases/getReleaseTracks.js';
 import { createGetReleaseGroupReleasesUseCase } from './usecases/getReleaseGroupReleases.js';
+import { createResolveReleaseGroupReleaseCoversUseCase } from './usecases/resolveReleaseGroupReleaseCovers.js';
 import { createRemoveNewReleasesUseCase } from './usecases/removeNewReleases.js';
 import { createVerifyReleaseExistenceUseCase } from './usecases/verifyReleaseExistence.js';
 import type { ReleaseUseCaseDependencies } from './ports.js';
@@ -22,18 +21,6 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
     };
 
     return {
-        getArtistReleases: withOperationLogging(
-            logger,
-            'getArtistReleases',
-            createGetArtistReleasesUseCase(dependencies),
-            {
-                getMetadata: (_userId, artistId) => ({ artistId }),
-                getResultMetadata: (result) => ({
-                    releaseGroupCount: result.releaseGroups.length,
-                    releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
-                }),
-            },
-        ),
         getArtistReleasesPage: withOperationLogging(
             logger,
             'getArtistReleasesPage',
@@ -81,19 +68,7 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
                 getMetadata: (_userId, releaseId) => ({ releaseId }),
                 getResultMetadata: (result) => ({
                     found: result !== null,
-                    profileImageTaskId: result?.profileImageTaskId,
-                }),
-            },
-        ),
-        getReleaseTracks: withOperationLogging(
-            logger,
-            'getReleaseTracks',
-            createGetReleaseTracksUseCase(dependencies),
-            {
-                getMetadata: (_userId, releaseId) => ({ releaseId }),
-                getResultMetadata: (result) => ({
-                    found: result !== null,
-                    mediaCount: result?.media.length ?? 0,
+                    mediaCount: result?.release.media.length ?? 0,
                     lyricsTaskId: result?.lyricsTaskId,
                     profileImageTaskId: result?.profileImageTaskId,
                 }),
@@ -106,7 +81,23 @@ export const createReleaseUseCases = (assetPlanner: BackgroundAssetPlanner) => {
             {
                 getMetadata: (_userId, releaseGroupId) => ({ releaseGroupId }),
                 getResultMetadata: (result) => ({
-                    releaseCount: result.releases.length,
+                    found: result !== null,
+                    releaseCount: result?.releaseCount ?? 0,
+                    releaseCoverTaskId: result?.releaseCoverTaskId,
+                }),
+            },
+        ),
+        resolveReleaseGroupReleaseCovers: withOperationLogging(
+            logger,
+            'resolveReleaseGroupReleaseCovers',
+            createResolveReleaseGroupReleaseCoversUseCase(dependencies),
+            {
+                getMetadata: (_userId, releaseGroupId, releaseIds) => ({
+                    releaseGroupId,
+                    releaseCount: releaseIds.length,
+                }),
+                getResultMetadata: (result) => ({
+                    resolvedCount: Object.keys(result.releaseCovers).length,
                     releaseCoverTaskId: result.releaseCoverTaskId,
                 }),
             },

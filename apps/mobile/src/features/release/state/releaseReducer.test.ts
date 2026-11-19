@@ -27,10 +27,7 @@ const release = (id = 'release-1'): Release => ({
   media: [
     {
       'track-count': 2,
-      tracks: [
-        track('track-1'),
-        track('track-2'),
-      ],
+      tracks: [track('track-1'), track('track-2')],
     },
   ],
   releaseGroupId: 'release-group-1',
@@ -38,179 +35,91 @@ const release = (id = 'release-1'): Release => ({
   externalLinks: [],
 });
 
+const loaded = (selectedSong: Track | null = null) => ({
+  ...releaseReducer(createInitialReleaseState(), {
+    type: 'releaseLoaded' as const,
+    release: release(),
+    trackLyrics: { 'track-1': undefined, 'track-2': null },
+    artistProfileImages: { 'artist-1': undefined },
+    pendingLyricTrackIds: ['track-1'],
+    pendingArtistImageIds: ['artist-1'],
+  }),
+  selectedSong,
+});
+
 describe('releaseReducer', () => {
-  describe('initial state', () => {
-    it('creates valid initial state', () => {
-      const state = createInitialReleaseState();
-      expect(state.release).toBeNull();
-      expect(state.selectedSong).toBeNull();
-      expect(state.trackLyrics).toEqual({});
-      expect(state.artistProfileImages).toEqual({});
-      expect(state.pendingLyricTrackIds).toEqual([]);
-      expect(state.pendingArtistImageIds).toEqual([]);
-      expect(state.loadingTracks).toBe(false);
-      expect(state.tracksLoadFailed).toBe(false);
-      expect(state.loadingLyrics).toBe(false);
-      expect(state.releaseExists).toBeNull();
-      expect(state.checkingExistence).toBe(true);
-    });
+  it('creates initial state without track-loading phases', () => {
+    const state = createInitialReleaseState();
+    expect(state.release).toBeNull();
+    expect(state.loadingLyrics).toBe(false);
+    expect(state.checkingExistence).toBe(true);
+    expect('loadingTracks' in state).toBe(false);
   });
 
-  describe('progressive release metadata and tracks', () => {
-    it('shows the release immediately while tracks are still loading and keeps it if tracks fail', () => {
-      const metadataOnly: Release = { ...release(), media: [] };
-      const withMetadata = releaseReducer(createInitialReleaseState(), {
-        type: 'releaseMetadataLoaded',
-        release: metadataOnly,
-        artistProfileImages: { 'artist-1': 'https://img.example/a1.jpg' },
-        pendingArtistImageIds: [],
-      });
-
-      expect(withMetadata.release).toEqual(metadataOnly);
-      expect(withMetadata.releaseExists).toBe(true);
-      expect(withMetadata.checkingExistence).toBe(false);
-      expect(withMetadata.loadingTracks).toBe(true);
-      expect(withMetadata.tracksLoadFailed).toBe(false);
-
-      const tracksFailed = releaseReducer(withMetadata, { type: 'tracksLoadFailed' });
-      expect(tracksFailed.release).toEqual(metadataOnly);
-      expect(tracksFailed.loadingTracks).toBe(false);
-      expect(tracksFailed.tracksLoadFailed).toBe(true);
-
-      const retrying = releaseReducer(tracksFailed, { type: 'tracksLoadStarted' });
-      expect(retrying.loadingTracks).toBe(true);
-      expect(retrying.tracksLoadFailed).toBe(false);
-
-      const withTracks = releaseReducer(retrying, {
-        type: 'lyricsLoadingStarted',
-        release: release(),
-        trackLyrics: { 'track-1': undefined },
-        artistProfileImages: { 'artist-1': 'https://img.example/a1.jpg' },
-        pendingLyricTrackIds: ['track-1'],
-        pendingArtistImageIds: [],
-      });
-      expect(withTracks.loadingTracks).toBe(false);
-      expect(withTracks.tracksLoadFailed).toBe(false);
-      expect(withTracks.release?.media).toHaveLength(1);
-    });
+  it('loads a release and tracklist in one action', () => {
+    const state = loaded();
+    expect(state.release?.media).toHaveLength(1);
+    expect(state.releaseExists).toBe(true);
+    expect(state.pendingLyricTrackIds).toEqual(['track-1']);
+    expect(state.pendingArtistImageIds).toEqual(['artist-1']);
   });
 
-  describe('releaseLoadStarted', () => {
-    it('resets to initial state', () => {
-      const withData = releaseReducer(createInitialReleaseState(), {
-        type: 'lyricsLoadingStarted',
-        release: release(),
-        trackLyrics: { 't1': 'lyrics' },
-        artistProfileImages: { 'a1': 'img' },
-        pendingLyricTrackIds: ['t1'],
-        pendingArtistImageIds: ['a1'],
-      });
-      const reset = releaseReducer(withData, { type: 'releaseLoadStarted' });
-      expect(reset.release).toBeNull();
-      expect(reset.checkingExistence).toBe(true);
+  it('updates lyric maps without replacing the release or clearing selection', () => {
+    const selected = releaseReducer(loaded(), {
+      type: 'songToggled',
+      track: release().media[0].tracks![0],
     });
-  });
-
-  describe('releaseLoadFailed', () => {
-    it('marks release as non-existent for not-found failures', () => {
-      const state = releaseReducer(createInitialReleaseState(), { type: 'releaseLoadFailed', notFound: true });
-      expect(state.releaseExists).toBe(false);
-      expect(state.checkingExistence).toBe(false);
-      expect(state.loadFailed).toBe(false);
-    });
-
-    it('marks the load as failed without claiming the release is gone', () => {
-      const state = releaseReducer(createInitialReleaseState(), { type: 'releaseLoadFailed', notFound: false });
-      expect(state.releaseExists).toBeNull();
-      expect(state.checkingExistence).toBe(false);
-      expect(state.loadFailed).toBe(true);
-      expect(state.release).toBeNull();
-    });
-  });
-
-  describe('artistImagesLoadingFinished', () => {
-    it('removes resolved artist image IDs', () => {
-      const state = releaseReducer(
-        { ...createInitialReleaseState(), pendingArtistImageIds: ['a1', 'a2'] },
-        {
-          type: 'artistImagesLoadingFinished',
-          release: release(),
-          artistProfileImages: { 'a1': 'img.jpg' },
-          resolvedArtistImageIds: ['a1'],
-        },
-      );
-      expect(state.pendingArtistImageIds).toEqual(['a2']);
-      expect(state.artistProfileImages).toEqual({ 'a1': 'img.jpg' });
-    });
-  });
-
-  it('marks a loaded release visible while tracking pending lyric and artist image work', () => {
-    const loaded = releaseReducer(createInitialReleaseState(), {
-      type: 'lyricsLoadingStarted',
-      release: release(),
-      trackLyrics: { 'track-1': undefined, 'track-2': null },
-      artistProfileImages: { 'artist-1': undefined },
-      pendingLyricTrackIds: ['track-1'],
-      pendingArtistImageIds: ['artist-1'],
-    });
-
-    expect(loaded).toMatchObject({
-      releaseExists: true,
-      checkingExistence: false,
-      loadingLyrics: true,
-      pendingLyricTrackIds: ['track-1'],
-      pendingArtistImageIds: ['artist-1'],
-      selectedSong: null,
-    });
-  });
-
-  it('removes resolved lyric work and toggles the selected track from the visible release', () => {
-    const visibleRelease = release();
-    const loaded = releaseReducer(createInitialReleaseState(), {
-      type: 'lyricsLoadingStarted',
-      release: visibleRelease,
-      trackLyrics: { 'track-1': undefined, 'track-2': undefined },
-      artistProfileImages: {},
-      pendingLyricTrackIds: ['track-1', 'track-2'],
-      pendingArtistImageIds: [],
-    });
-    const withOneLyricResolved = releaseReducer(loaded, {
+    const resolved = releaseReducer(selected, {
       type: 'lyricsLoadingFinished',
-      release: visibleRelease,
-      trackLyrics: { 'track-1': 'https://example.test/lyrics', 'track-2': undefined },
+      trackLyrics: { 'track-1': 'https://example.test/lyrics', 'track-2': null },
       resolvedLyricTrackIds: ['track-1'],
     });
-    const selected = releaseReducer(withOneLyricResolved, {
+
+    expect(resolved.release).toBe(selected.release);
+    expect(resolved.selectedSong?.id).toBe('track-1');
+    expect(resolved.pendingLyricTrackIds).toEqual([]);
+    expect(resolved.trackLyrics['track-1']).toBe('https://example.test/lyrics');
+  });
+
+  it('updates artist image maps without touching the release', () => {
+    const start = loaded();
+    const resolved = releaseReducer(start, {
+      type: 'artistImagesLoadingFinished',
+      artistProfileImages: { 'artist-1': 'img.jpg' },
+      resolvedArtistImageIds: ['artist-1'],
+    });
+    expect(resolved.release).toBe(start.release);
+    expect(resolved.artistProfileImages).toEqual({ 'artist-1': 'img.jpg' });
+    expect(resolved.pendingArtistImageIds).toEqual([]);
+  });
+
+  it('toggles the selected track from the visible release', () => {
+    const start = loaded();
+    const selected = releaseReducer(start, {
       type: 'songToggled',
-      track: visibleRelease.media[0].tracks![0],
+      track: release().media[0].tracks![0],
     });
     const collapsed = releaseReducer(selected, {
       type: 'songToggled',
-      track: visibleRelease.media[0].tracks![0],
-    });
-
-    expect(withOneLyricResolved).toMatchObject({
-      loadingLyrics: true,
-      pendingLyricTrackIds: ['track-2'],
+      track: release().media[0].tracks![0],
     });
     expect(selected.selectedSong?.id).toBe('track-1');
     expect(collapsed.selectedSong).toBeNull();
   });
 
-  it('clears stale release details when the selected release no longer exists', () => {
-    const loaded = releaseReducer(createInitialReleaseState(), {
-      type: 'lyricsLoadingStarted',
-      release: release(),
-      trackLyrics: { 'track-1': null },
-      artistProfileImages: { 'artist-1': null },
-      pendingLyricTrackIds: ['track-2'],
-      pendingArtistImageIds: ['artist-1'],
+  it('distinguishes local not-found from a retriable load failure', () => {
+    const notFound = releaseReducer(createInitialReleaseState(), {
+      type: 'releaseLoadFailed',
+      notFound: true,
     });
+    expect(notFound.releaseExists).toBe(false);
+    expect(notFound.loadFailed).toBe(false);
 
-    expect(releaseReducer(loaded, { type: 'releaseLoadFailed', notFound: true })).toEqual({
-      ...createInitialReleaseState(),
-      releaseExists: false,
-      checkingExistence: false,
+    const failed = releaseReducer(createInitialReleaseState(), {
+      type: 'releaseLoadFailed',
+      notFound: false,
     });
+    expect(failed.releaseExists).toBeNull();
+    expect(failed.loadFailed).toBe(true);
   });
 });

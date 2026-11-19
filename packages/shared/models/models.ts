@@ -120,7 +120,18 @@ export interface Media {
 }
 
 export interface Track {
+  /**
+   * Release-scoped row identity (`${releaseId}:${mediumPosition}:${position}`).
+   * It is stable for the same position on the same release, but it is not a
+   * MusicBrainz recording id: the same recording can appear on one release more
+   * than once and must keep distinct rows.
+   */
   id: string;
+  /**
+   * Real MusicBrainz recording id, when the mirror knows it. Used for durable
+   * lyric identity and release-group lookups; never for track UI keys.
+   */
+  recordingId?: string | null;
   number?: string | null;
   title: string;
   "artist-credit": ArtistCredit[];
@@ -198,6 +209,30 @@ export type NewReleaseCoverTaskResult = {
   covers: { [releaseId: string]: RemoteValueState };
 };
 
+
+/**
+ * v3 release payload: metadata, every medium/track and the persisted enrichment
+ * state arrive in one request. `lyricsTaskId`/`profileImageTaskId` are null when
+ * nothing is pending.
+ */
+export type GetReleaseResponse = {
+  release: Release;
+  trackLyrics: Record<string, string | null>;
+  profileImages: Record<string, string | null>;
+  lyricsTaskId: string | null;
+  profileImageTaskId: string | null;
+};
+
+/** v3 release-group payload, answered entirely from the local mirror. */
+export type GetReleaseGroupReleasesResponse = {
+  releaseGroup: ReleaseGroup;
+  releases: ReleaseGroupReleaseListItem[];
+  /** Total editions in the group, including any not present in the loaded page. */
+  releaseCount: number;
+  releaseCovers: Record<string, string | null>;
+  releaseCoverTaskId: string | null;
+  nextCursor?: string | null;
+};
 
 export type ReleaseGroupReleaseListItem = {
   id: string;

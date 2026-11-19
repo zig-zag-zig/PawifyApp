@@ -362,11 +362,11 @@ export const createMusicDbFixture = (seed: MusicDbSeed = {}): string => {
     insertRows(db, 'image_services', seed.imageServices);
     insertRows(db, 'entity_images', seed.entityImages);
 
-    if (seed.meta) {
-        const statement = db.prepare('INSERT INTO _meta (key, value) VALUES (?, ?)');
-        for (const [key, value] of Object.entries(seed.meta)) {
-            statement.run(key, value);
-        }
+    // The required mirror contract treats a missing ready marker as unready.
+    const meta = { track_data_state: 'ready', ...(seed.meta ?? {}) };
+    const statement = db.prepare('INSERT INTO _meta (key, value) VALUES (?, ?)');
+    for (const [key, value] of Object.entries(meta)) {
+        statement.run(key, value);
     }
 
     if (seed.search) {

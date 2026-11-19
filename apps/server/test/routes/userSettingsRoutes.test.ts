@@ -32,16 +32,16 @@ afterEach(async () => {
 describe('user settings route integration', () => {
     const authHeader = { Authorization: 'Bearer valid-token' };
 
-    describe('GET /v1/getReleaseNotificationSettings', () => {
+    describe('GET /v3/getReleaseNotificationSettings', () => {
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getReleaseNotificationSettings`);
+            const response = await fetch(`${baseUrl}/v3/getReleaseNotificationSettings`);
             assert.equal(response.status, 401);
         });
     });
 
-    describe('POST /v1/updateReleaseNotificationSettings', () => {
+    describe('POST /v3/updateReleaseNotificationSettings', () => {
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/updateReleaseNotificationSettings`, {
+            const response = await fetch(`${baseUrl}/v3/updateReleaseNotificationSettings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -53,7 +53,7 @@ describe('user settings route integration', () => {
         });
 
         it('returns 400 when body is missing required fields', async () => {
-            const response = await fetch(`${baseUrl}/v1/updateReleaseNotificationSettings`, {
+            const response = await fetch(`${baseUrl}/v3/updateReleaseNotificationSettings`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -62,7 +62,7 @@ describe('user settings route integration', () => {
         });
 
         it('returns 400 when includeReleasesWithoutDate is invalid', async () => {
-            const response = await fetch(`${baseUrl}/v1/updateReleaseNotificationSettings`, {
+            const response = await fetch(`${baseUrl}/v3/updateReleaseNotificationSettings`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({

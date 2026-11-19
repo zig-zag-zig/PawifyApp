@@ -46,7 +46,7 @@ export const installAllFakes = (): void => {
 export const createIntegrationTestApp = async (router: Router): Promise<string> => {
     const app = express();
     app.use(express.json());
-    app.use('/v1', router);
+    app.use('/v3', router);
     app.use(errorMiddleware);
 
     return startTestServer(app);

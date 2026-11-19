@@ -35,14 +35,23 @@ function resolveAppVersion(): string {
   return constants.nativeAppVersion || Constants.expoConfig?.version || '1.0.0';
 }
 
-function resolveApiVersionFallback(): string {
-  const appVersion = resolveAppVersion().trim();
-  const major = appVersion.match(/^(\d+)\./)?.[1];
-  if (!major || major === '0') {
-    throw new Error(`[env] App version must start with a positive major version to derive API version, got "${appVersion}"`);
-  }
+/**
+ * The only supported API contract.
+ *
+ * This is deliberately a constant rather than derived from the app's semver:
+ * the app may keep a 2.x version while speaking `/v3`, and a missing/old build
+ * env must not silently fall back to a retired API namespace.
+ */
+const SUPPORTED_API_VERSION = 'v3';
 
-  return `v${major}`;
+function resolveConfiguredApiVersion(value: string | undefined): string {
+  const parsed = parseApiVersion(value, SUPPORTED_API_VERSION);
+  if (parsed !== SUPPORTED_API_VERSION) {
+    throw new Error(
+      `[env] EXPO_PUBLIC_API_VERSION=${parsed} is no longer supported; use ${SUPPORTED_API_VERSION}.`,
+    );
+  }
+  return parsed;
 }
 
 function parseOptionalString(value: string | undefined): string | null {
@@ -107,7 +116,7 @@ const appEnv = resolveExtraValue('appEnv') ?? (__DEV__ ? 'development' : 'produc
 
 export const ENV = {
   apiBaseUrl: parseApiBaseUrl(getRequiredEnv('EXPO_PUBLIC_API_BASE_URL')),
-  apiVersion: parseApiVersion(rawEnv.EXPO_PUBLIC_API_VERSION, resolveApiVersionFallback()),
+  apiVersion: resolveConfiguredApiVersion(rawEnv.EXPO_PUBLIC_API_VERSION),
   appBuildVersion: Constants.nativeBuildVersion ?? null,
   appEnv,
   appVersion: resolveAppVersion(),

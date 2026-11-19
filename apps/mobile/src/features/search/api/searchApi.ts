@@ -21,9 +21,16 @@ export function useSearchApi() {
                 await apiClient.request<SearchReleaseGroupsResponse>('searchReleaseGroups', {
                     body: { query, offset, limit },
                 }),
-            searchAll: async (query: string, limit: number, offset = 0, category?: 'artists' | 'releaseGroups' | 'tracks') =>
+            searchAll: async (
+                query: string,
+                limit: number,
+                offset = 0,
+                category?: 'artists' | 'releaseGroups' | 'tracks',
+                signal?: AbortSignal,
+            ) =>
                 await apiClient.request<UnifiedSearchResponse>('searchAll', {
                     body: { query, offset, limit, ...(category ? { category } : {}) },
+                    signal,
                 }),
             waitForTaskResultById: apiClient.waitForTaskResultById,
         };

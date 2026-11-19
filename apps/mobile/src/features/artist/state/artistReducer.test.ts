@@ -36,7 +36,6 @@ describe('artistReducer', () => {
       expect(state.allReleaseGroups).toEqual([]);
       expect(state.isLoadingArtist).toBe(true);
       expect(state.isLoadingReleases).toBe(true);
-      expect(state.isLoadingReleaseGroup).toBe(false);
       expect(state.isFollowLoading).toBe(false);
       expect(state.error).toBeNull();
       expect(state.pendingTasks.artistTaskId).toBeNull();
@@ -181,23 +180,6 @@ describe('artistReducer', () => {
       );
       expect(state.isFollowLoading).toBe(false);
       expect(state.error).toBe('Network error');
-    });
-  });
-
-  describe('release group load actions', () => {
-    it('releaseGroupLoadStarted sets loading', () => {
-      const state = artistReducer(createInitialArtistPageState(), {
-        type: 'releaseGroupLoadStarted',
-      });
-      expect(state.isLoadingReleaseGroup).toBe(true);
-    });
-
-    it('releaseGroupLoadFinished stops loading', () => {
-      const state = artistReducer(
-        { ...createInitialArtistPageState(), isLoadingReleaseGroup: true },
-        { type: 'releaseGroupLoadFinished' },
-      );
-      expect(state.isLoadingReleaseGroup).toBe(false);
     });
   });
 

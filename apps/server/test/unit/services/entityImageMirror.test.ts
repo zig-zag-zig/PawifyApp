@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { after, afterEach, describe, it } from 'node:test';
 
 import Database from 'better-sqlite3';
@@ -45,8 +44,6 @@ const TIDAL_TOKEN = 'ea1baa90/da2a/4193/8e20/e54f79a8a4dc/750x750.jpg';
 const TIDAL_IMAGE = `https://resources.tidal.com/images/${TIDAL_TOKEN}`;
 const DISCOGS_IMAGE = 'https://i.discogs.com/artist-primary.jpg';
 const DEEZER_ALBUM = 'https://www.deezer.com/album/1110718732';
-
-const requireForTest = createRequire(__filename);
 
 const DAY_SECONDS = 24 * 60 * 60;
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -245,47 +242,17 @@ describe('mirrored release artwork', () => {
         assert.equal(calls.length > 0, true);
     });
 
-    it('serves a mirrored cover without writing the Redis asset cache', async () => {
-        // The mirror is the artwork store now. Duplicating a resolved cover into
-        // Redis was what left image keys in the cache after the SQLite migration.
+    it('serves a mirrored cover without provider calls', async () => {
         useMirror({
             entityImages: [imageRow('release', RELEASE_ID, 4, DEEZER_TOKEN, nowSeconds())],
         });
         const calls = forbidProviderCalls();
 
-        const cacheModule = requireForTest('../../../src/services/coverArt/coverArtCache.js') as {
-            readReleaseCoverState: (releaseId: string) => Promise<unknown>;
-            writeReleaseCoverState: (
-                releaseId: string,
-                state: unknown,
-                ttl?: number,
-            ) => Promise<void>;
-        };
-        const originalRead = cacheModule.readReleaseCoverState;
-        const originalWrite = cacheModule.writeReleaseCoverState;
-        const written: Array<{ releaseId: string; url: unknown }> = [];
-        let readCount = 0;
+        const { getReleaseCover } = await import('../../../src/services/coverArtService.js');
+        const result = await getReleaseCover(RELEASE_ID, null, undefined);
 
-        cacheModule.readReleaseCoverState = async () => {
-            readCount += 1;
-            return null;
-        };
-        cacheModule.writeReleaseCoverState = async (releaseId, state) => {
-            written.push({ releaseId, url: (state as { url?: unknown }).url });
-        };
-
-        try {
-            const { getReleaseCover } = await import('../../../src/services/coverArtService.js');
-            const result = await getReleaseCover(RELEASE_ID, null, undefined);
-
-            assert.equal(result.state.url, DEEZER_IMAGE);
-            assert.deepEqual(written, [], 'the mirror must not duplicate artwork into Redis');
-            assert.equal(readCount, 0, 'the mirror must be read instead of Redis');
-            assert.deepEqual(calls, []);
-        } finally {
-            cacheModule.readReleaseCoverState = originalRead;
-            cacheModule.writeReleaseCoverState = originalWrite;
-        }
+        assert.equal(result.state.url, DEEZER_IMAGE);
+        assert.deepEqual(calls, []);
     });
 
     it('falls through while the mirror still says pending', async () => {

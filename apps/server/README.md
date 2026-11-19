@@ -2,15 +2,16 @@
 
 This is the backend package (`apps/server`) of the Pawify monorepo. Pawify API is the backend for the Pawify mobile app (`apps/mobile`); shared TypeScript types and helpers live in `@pawify/shared` (`packages/shared`) and are imported by both apps. It connects Firebase-authenticated users with artist following, release lookup, cached background tasks, email OTP flows, and Expo push notifications for new music.
 
-For non-technical readers: this service does the heavy lifting behind the app. It asks music providers for metadata, caches expensive results, remembers followed artists, and tells phones when new releases are found.
+For non-technical readers: this service does the heavy lifting behind the app. It serves catalogue/search/track data from a required local MusicBrainz SQLite mirror, enriches artwork/lyrics from providers, remembers followed artists, and tells phones when new releases are found.
 
 ## Features
 
-- Firebase-authenticated REST API under `/v1` and `/v2` (see [API versions](#api-versions)).
+- Firebase-authenticated REST API under `/v3` (see [API versions](#api-versions)).
 - Artist search, artist details, following, and unfollowing.
 - Release, release-group, and new-release lookup.
 - Background task results for heavier artwork/profile/lyrics work.
-- Redis-backed caching and notification locking through Dapr.
+- Required local SQLite MusicBrainz mirror plus an application-owned lyrics SQLite store.
+- Redis/Dapr for job state, provider rate limits and notification locking (not catalogue payloads).
 - Expo push notification delivery.
 - Email OTP support through a Dapr SMTP binding.
 - GitHub/scheduler-friendly new-release notification endpoint.
@@ -62,7 +63,7 @@ The local server uses `PORT`, defaulting to `10000`.
 Health check:
 
 ```bash
-curl http://localhost:10000/v1/health
+curl http://localhost:10000/health
 ```
 
 ## Local Docker
@@ -104,7 +105,7 @@ Then run:
 
 ```bash
 docker compose --env-file .env.local up -d --build --wait
-curl http://127.0.0.1:10000/v1/health
+curl http://127.0.0.1:10000/health
 ```
 
 For local development with hot reload, use the dev override instead. This mounts `src/` and runs `npm run dev` (`tsx watch`) so code changes restart the server automatically:
@@ -372,13 +373,13 @@ Pawify keeps provider concurrency and provider-specific rate-limit backoff in ap
 
 Public endpoints:
 
-- `GET /v1/health`
-- `POST /v1/sendOtp`
-- `POST /v1/verifyOtp`
+- `GET /health` (liveness), `GET /ready` (catalogue readiness)
+- `POST /v3/sendOtp`
+- `POST /v3/verifyOtp`
 
 Scheduled/admin endpoint:
 
-- `GET /v1/notifyNewReleases` with `x-api-key`
+- `GET /v3/notifyNewReleases` with `x-api-key`
 
 Authenticated endpoints expect:
 
@@ -388,34 +389,64 @@ Authorization: Bearer <firebase-id-token>
 
 Common authenticated routes:
 
-- Account: `GET /v1/revokeToken`, `POST /v1/changeEmail`, `POST /v1/deleteUserAccount`
-- Artists: `GET /v1/getFollowing`, `POST /v1/searchArtists`, `POST /v1/getArtistDetails`, `POST /v1/followArtist`, `POST /v1/unfollowArtist`, `POST /v1/unfollowArtists`
-- Releases: `GET /v1/getNewReleases`, `POST /v1/removeNewReleases`, `POST /v1/getArtistReleases`, `POST /v1/getReleaseGroupReleases`, `POST /v1/getRelease`, `POST /v1/verifyReleaseExistence`
-- Push tokens: `POST /v1/savePushToken`, `POST /v1/deletePushToken`
-- Tasks: `POST /v1/getTaskResult`
+- Account: `GET /v3/revokeToken`, `POST /v3/changeEmail`, `POST /v3/deleteUserAccount`
+- Artists: `GET /v3/getFollowing`, `POST /v3/searchArtists`, `POST /v3/getArtistDetails`, `POST /v3/followArtist`, `POST /v3/unfollowArtist`, `POST /v3/unfollowArtists`
+- Releases: `GET /v3/getNewReleases`, `POST /v3/removeNewReleases`, `POST /v3/getArtistReleases`, `POST /v3/getReleaseGroupReleases`, `POST /v3/getRelease`, `POST /v3/resolveReleaseGroupReleaseCovers`, `POST /v3/verifyReleaseExistence`
+- Push tokens: `POST /v3/savePushToken`, `POST /v3/deletePushToken`
+- Tasks: `POST /v3/getTaskResult`
 
 ### API versions
 
-All endpoints are mounted under both `/v1` and `/v2`; the versions differ only
-in how expensive background assets (artist profile images, release covers,
-track lyrics) are delivered:
+There is exactly one supported runtime contract: **`/v3`**.
 
-- **`/v1` (legacy contract):** responses always carry a task id
-  (`profileImageTaskId`, `releaseCoverTaskId`, `releaseGroupCoverTaskId`,
-  `lyricsTaskId`) and queue the full set of work in the background. They
-  contain **no immediate asset maps** — clients must poll
-  `POST /v1/getTaskResult` to collect the results.
-- **`/v2` (cache-first contract):** every asset resolvable from cache is
-  returned **immediately** in the response — `profileImages` on the artist
-  endpoints, `releaseCovers` on the release endpoints, `trackLyrics` on
-  `getRelease` — and only the pending subset is queued. Task ids are
-  **nullable**: when nothing is pending the task id is `null` and no polling
-  is needed. Clients that understand this contract get first paint without
-  a background round-trip.
+- Every route family — auth, following, settings, notifications, catalogue,
+  task results and artwork — is mounted under `/v3`.
+- `getRelease` returns metadata, all media/tracks and the persisted enrichment
+  state in one request. There is no `getReleaseTracks` endpoint.
+- `/v1`, `/v2` and unversioned legacy API paths are rejected (v1/v2 with
+  `410 API_VERSION_UNSUPPORTED`). They are not aliases or emulation layers.
+- `GET /health` is liveness only; `GET /ready` reports required catalogue
+  readiness. Both stay unversioned for orchestration probes.
 
-`PawifyApp` selects the prefix from its app major version. The unversioned
-paths (`/getFollowing`, …) are a deprecated compatibility alias for ancient
-builds and serve the v1 contract.
+An old app build must be upgraded; it will not silently continue on a retired
+contract.
+
+## Search concurrency and work bounds
+
+Search categories are independent HTTP requests with their own loading/error state;
+the client uses query generations and `AbortSignal` to discard stale responses.
+`better-sqlite3` is synchronous, so the server does not claim SQL parallelism by
+wrapping calls in `Promise.all`. The independent artwork planners do run
+concurrently, but that is provider/cache I/O, not parallel SQL.
+
+Recording search batches credits for the ranked candidate window and hydrates
+representative releases only for the final page; broad queries are capped at the
+existing candidate/count budgets. A bounded worker-thread pool is not enabled by
+default: there is no production measurement showing independent categories stalling
+behind synchronous recording SQL. Measure representative common/broad/no-result
+queries before adding one, and keep any pool small (one or two lanes) on the 2-GB
+VPS if it becomes necessary.
+
+## SQLite requirements
+
+- `MUSIC_DB_PATH` must point at a ready mirror built by
+  `zig-zag-zig/pawify_mb_sqlite`. Missing/corrupt/unready mirror data fails
+  startup/readiness with an actionable reason. Catalogue requests then return a
+  retriable `503`, never empty results or a MusicBrainz Web Service fallback.
+- `LYRICS_DB_PATH` points at the application-owned lyrics SQLite file, mounted
+  outside disposable container layers and outside mirror replacement. Create it
+  explicitly:
+
+```bash
+npm run lyrics:db:migrate -- --preview
+npm run lyrics:db:migrate -- --apply
+npm run lyrics:db:housekeeping   # preview retention candidates
+```
+
+- The MusicBrainz Web Service is used at runtime only by the narrow lyrics
+  fallback adapter (Genius first). Artwork providers (Deezer/Tidal/Discogs/Cover
+  Art Archive) remain allowed but read their id/link inputs from local state.
+
 
 ## Deployment
 
@@ -426,7 +457,7 @@ builds and serve the v1 contract.
 - Dapr components live in `dapr/components`; secret files are mounted from `secrets/<environment>`.
 - Redis is local to each Compose network, password-protected, and configured with AOF plus RDB snapshots.
 - Use `scripts/backup-redis-docker.sh` for Redis backups.
-- Trigger `GET /v1/notifyNewReleases` from a trusted scheduler with `x-api-key: <NOTIFY_API_KEY>`.
+- Trigger `GET /v3/notifyNewReleases` from a trusted scheduler with `x-api-key: <NOTIFY_API_KEY>`.
 - Keep origin-only secrets out of mobile apps and public repositories.
 
 ## Project Layout

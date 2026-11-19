@@ -25,7 +25,7 @@ beforeEach(async () => {
     router.use(healthRoutes);
     router.use(authRoutes);
     router.use(pushTokenRoutes);
-    app.use('/v1', router);
+    app.use('/v3', router);
     app.use(errorMiddleware);
 
     baseUrl = await startTestServer(app);
@@ -44,14 +44,14 @@ afterEach(async () => {
 
 describe('HTTP route integration', () => {
     describe('public routes', () => {
-        it('GET /v1/health returns 200', async () => {
-            const response = await fetch(`${baseUrl}/v1/health`);
+        it('GET /v3/health returns 200', async () => {
+            const response = await fetch(`${baseUrl}/v3/health`);
             assert.equal(response.status, 200);
             assert.equal(await response.text(), 'Server is healthy.');
         });
 
-        it('POST /v1/sendOtp accepts email and returns success', async () => {
-            const response = await fetch(`${baseUrl}/v1/sendOtp`, {
+        it('POST /v3/sendOtp accepts email and returns success', async () => {
+            const response = await fetch(`${baseUrl}/v3/sendOtp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: 'test@example.com' }),
@@ -61,8 +61,8 @@ describe('HTTP route integration', () => {
             assert.equal(body, 'OTP sent successfully');
         });
 
-        it('POST /v1/sendOtp returns 400 when email is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/sendOtp`, {
+        it('POST /v3/sendOtp returns 400 when email is missing', async () => {
+            const response = await fetch(`${baseUrl}/v3/sendOtp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -70,8 +70,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 400);
         });
 
-        it('POST /v1/sendOtp returns 400 when email is not a string', async () => {
-            const response = await fetch(`${baseUrl}/v1/sendOtp`, {
+        it('POST /v3/sendOtp returns 400 when email is not a string', async () => {
+            const response = await fetch(`${baseUrl}/v3/sendOtp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: 123 }),
@@ -79,8 +79,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 400);
         });
 
-        it('POST /v1/verifyOtp accepts email and otp', async () => {
-            const response = await fetch(`${baseUrl}/v1/verifyOtp`, {
+        it('POST /v3/verifyOtp accepts email and otp', async () => {
+            const response = await fetch(`${baseUrl}/v3/verifyOtp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: 'test@example.com', otp: '123456' }),
@@ -90,20 +90,20 @@ describe('HTTP route integration', () => {
     });
 
     describe('authenticated routes', () => {
-        it('GET /v1/revokeToken returns 401 without authorization header', async () => {
-            const response = await fetch(`${baseUrl}/v1/revokeToken`);
+        it('GET /v3/revokeToken returns 401 without authorization header', async () => {
+            const response = await fetch(`${baseUrl}/v3/revokeToken`);
             assert.equal(response.status, 401);
         });
 
-        it('GET /v1/revokeToken returns 204 with valid token', async () => {
-            const response = await fetch(`${baseUrl}/v1/revokeToken`, {
+        it('GET /v3/revokeToken returns 204 with valid token', async () => {
+            const response = await fetch(`${baseUrl}/v3/revokeToken`, {
                 headers: { Authorization: 'Bearer valid-token' },
             });
             assert.equal(response.status, 204);
         });
 
-        it('POST /v1/changeEmail returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/changeEmail`, {
+        it('POST /v3/changeEmail returns 401 without authorization', async () => {
+            const response = await fetch(`${baseUrl}/v3/changeEmail`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: 'new@example.com' }),
@@ -111,8 +111,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 401);
         });
 
-        it('POST /v1/changeEmail returns 204 with valid token', async () => {
-            const response = await fetch(`${baseUrl}/v1/changeEmail`, {
+        it('POST /v3/changeEmail returns 204 with valid token', async () => {
+            const response = await fetch(`${baseUrl}/v3/changeEmail`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -123,8 +123,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 204);
         });
 
-        it('POST /v1/changeEmail returns 400 when email is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/changeEmail`, {
+        it('POST /v3/changeEmail returns 400 when email is missing', async () => {
+            const response = await fetch(`${baseUrl}/v3/changeEmail`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -135,15 +135,15 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 400);
         });
 
-        it('POST /v1/deleteUserAccount returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/deleteUserAccount`, {
+        it('POST /v3/deleteUserAccount returns 401 without authorization', async () => {
+            const response = await fetch(`${baseUrl}/v3/deleteUserAccount`, {
                 method: 'POST',
             });
             assert.equal(response.status, 401);
         });
 
-        it('POST /v1/deleteUserAccount returns 200 with valid token', async () => {
-            const response = await fetch(`${baseUrl}/v1/deleteUserAccount`, {
+        it('POST /v3/deleteUserAccount returns 200 with valid token', async () => {
+            const response = await fetch(`${baseUrl}/v3/deleteUserAccount`, {
                 method: 'POST',
                 headers: { Authorization: 'Bearer valid-token' },
             });
@@ -152,8 +152,8 @@ describe('HTTP route integration', () => {
     });
 
     describe('push token routes', () => {
-        it('POST /v1/savePushToken returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/savePushToken`, {
+        it('POST /v3/savePushToken returns 401 without authorization', async () => {
+            const response = await fetch(`${baseUrl}/v3/savePushToken`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ deviceId: 'd1', pushToken: 'ExpoPushToken[abc]' }),
@@ -161,8 +161,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 401);
         });
 
-        it('POST /v1/savePushToken returns 200 with valid token', async () => {
-            const response = await fetch(`${baseUrl}/v1/savePushToken`, {
+        it('POST /v3/savePushToken returns 200 with valid token', async () => {
+            const response = await fetch(`${baseUrl}/v3/savePushToken`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -173,8 +173,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 200);
         });
 
-        it('POST /v1/deletePushToken returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/deletePushToken`, {
+        it('POST /v3/deletePushToken returns 401 without authorization', async () => {
+            const response = await fetch(`${baseUrl}/v3/deletePushToken`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ deviceId: 'd1' }),
@@ -182,8 +182,8 @@ describe('HTTP route integration', () => {
             assert.equal(response.status, 401);
         });
 
-        it('POST /v1/deletePushToken returns 200 with valid token', async () => {
-            const response = await fetch(`${baseUrl}/v1/deletePushToken`, {
+        it('POST /v3/deletePushToken returns 200 with valid token', async () => {
+            const response = await fetch(`${baseUrl}/v3/deletePushToken`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -196,15 +196,15 @@ describe('HTTP route integration', () => {
     });
 
     describe('v2 routes', () => {
-        it('GET /v2/health returns 200', async () => {
-            const { v2Routes } = await import('../../src/api/v2Routes.js');
+        it('GET /v3/health returns 200', async () => {
+            const { v3Routes } = await import('../../src/api/v3Routes.js');
             const app = express();
             app.use(express.json());
-            app.use(v2Routes);
+            app.use(v3Routes);
             app.use(errorMiddleware);
             const v2Url = await startTestServer(app);
             try {
-                const response = await fetch(`${v2Url}/v2/health`);
+                const response = await fetch(`${v2Url}/v3/health`);
                 assert.equal(response.status, 200);
                 assert.equal(await response.text(), 'Server is healthy.');
             } finally {
@@ -215,7 +215,7 @@ describe('HTTP route integration', () => {
 
     describe('error handling', () => {
         it('returns 404 for unknown routes', async () => {
-            const response = await fetch(`${baseUrl}/v1/nonexistent`);
+            const response = await fetch(`${baseUrl}/v3/nonexistent`);
             assert.equal(response.status, 404);
         });
 
@@ -223,7 +223,7 @@ describe('HTTP route integration', () => {
             setFakeCheckAuth(async () => {
                 throw new Error('Unauthorized');
             });
-            const response = await fetch(`${baseUrl}/v1/revokeToken`);
+            const response = await fetch(`${baseUrl}/v3/revokeToken`);
             assert.equal(response.status, 401);
             const body = await response.json();
             assert.equal(typeof body.message, 'string');
@@ -231,7 +231,7 @@ describe('HTTP route integration', () => {
         });
 
         it('returns 400 for missing required body fields', async () => {
-            const response = await fetch(`${baseUrl}/v1/verifyOtp`, {
+            const response = await fetch(`${baseUrl}/v3/verifyOtp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: 'test@example.com' }),

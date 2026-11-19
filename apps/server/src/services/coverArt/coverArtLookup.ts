@@ -7,14 +7,7 @@ import {
 import {
     getProviderUrlsForReleasesFromMirror,
     getReleaseIdsForGroupFromMirror,
-    releaseExistsInMirror,
-    releaseGroupExistsInMirror,
 } from '../../infrastructure/musicDb/musicDbRepositories.js';
-import {
-    getReleaseGroupLinksFromApi,
-    getReleaseLinksFromApi,
-    type ProviderUrls,
-} from './providerLinks.js';
 import {
     mapCoverState,
     shouldRefetchRemoteState,
@@ -70,48 +63,6 @@ export const getReleaseProviderUrls = (
 ): Map<string, { deezerUrls: string[]; tidalUrls: string[] }> =>
     getProviderUrlsForReleasesFromMirror(releaseIds);
 
-const hasProviderUrls = (urls: ProviderUrls): boolean =>
-    urls.deezerUrls.length > 0 || urls.tidalUrls.length > 0;
-
-/**
- * Provider links for a release the mirror has never stored.
- *
- * The mirror is the cheap, always-on source, but it is a snapshot: a release added
- * after the last sync has no url-rels locally even though MusicBrainz has them. In
- * that case (and only in that case) the API is asked once, and the answer is cached
- * in-process for the cover task's lifetime.
- */
-const providerUrlsForUnknownRelease = async (
-    releaseId: string,
-    signal?: AbortSignal,
-): Promise<ProviderUrls> => {
-    if (releaseExistsInMirror(releaseId) === true) {
-        return { deezerUrls: [], tidalUrls: [] };
-    }
-    return await getReleaseLinksFromApi(releaseId, signal);
-};
-
-/**
- * Provider links for a release group the mirror has never stored.
- *
- * Same idea as the release fallback: only a group absent from SQLite can be missing
- * from it, so groups the mirror knows are never re-probed against the 1 req/s API.
- * A group can be known while its release rows are not, so both checks are needed.
- */
-const providerUrlsForUnknownGroup = async (
-    releaseGroupId: string,
-    signal?: AbortSignal,
-): Promise<ProviderUrls> => {
-    if (
-        releaseGroupExistsInMirror(releaseGroupId) === true ||
-        getReleaseIdsForGroupFromMirror(releaseGroupId).length > 0
-    ) {
-        return { deezerUrls: [], tidalUrls: [] };
-    }
-    const links = await getReleaseGroupLinksFromApi(releaseGroupId, signal);
-    return { deezerUrls: links.deezerUrls, tidalUrls: links.tidalUrls };
-};
-
 /**
  * Resolves a release cover through Deezer → Tidal → Cover Art Archive.
  *
@@ -165,14 +116,7 @@ export const fetchReleaseCover = async (
         return null;
     }
 
-    let urls = providerUrls ?? getReleaseProviderUrlsForOne(releaseId);
-
-    if (!hasProviderUrls(urls)) {
-        const fallback = await providerUrlsForUnknownRelease(releaseId, signal);
-        if (hasProviderUrls(fallback)) {
-            urls = fallback;
-        }
-    }
+    const urls = providerUrls ?? getReleaseProviderUrlsForOne(releaseId);
 
     const resolution = await resolveReleaseImage({
         deezerUrls: urls.deezerUrls,
@@ -280,15 +224,6 @@ export const fetchReleaseGroupCover = async (
             deezerUrls.push(...urls.deezerUrls);
             tidalUrls.push(...urls.tidalUrls);
         }
-    }
-
-    if (deezerUrls.length === 0 && tidalUrls.length === 0) {
-        // A brand-new group: the mirror has no release ids for it, so its url-rels
-        // (or its releases') have to come from the API. Groups the mirror knows are
-        // left alone even when they have no streaming links at all.
-        const fallback = await providerUrlsForUnknownGroup(releaseGroupId, signal);
-        deezerUrls = fallback.deezerUrls;
-        tidalUrls = fallback.tidalUrls;
     }
 
     const resolution = await resolveReleaseImage({

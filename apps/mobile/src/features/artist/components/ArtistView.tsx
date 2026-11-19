@@ -34,7 +34,7 @@ const ArtistView = ({
         isLoadingPrimaryContent,
         !!state.artist && !isLoadingPrimaryContent
     );
-    useGlobalSpinner(state.isLoadingReleaseGroup || isLoadingPrimaryContent || isWaitingForContent);
+    useGlobalSpinner(isLoadingPrimaryContent || isWaitingForContent);
     const artistHeader = React.useMemo(() => {
         if (!state.artist) {
             return null;
@@ -102,7 +102,6 @@ const ArtistView = ({
                     pendingReleaseGroupCoverIds={state.pendingReleaseGroupCoverIds}
                     loadedItemsByType={state.loadedItemsByType}
                     isLoadingReleases={state.isLoadingReleases}
-                    isLoadingReleaseGroup={state.isLoadingReleaseGroup}
                     onReleaseGroupPressed={onReleaseGroupPressed}
                     onLoadMore={onLoadMoreReleases}
                     onContentReady={onContentReady}

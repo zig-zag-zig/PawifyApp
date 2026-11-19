@@ -6,7 +6,6 @@ import type {
     NewReleasesResponse,
     ReleaseGroupReleasesResponse,
     ReleaseResponse,
-    ReleaseTracksResponse,
 } from '../../../types/apiTypes';
 
 export function useReleaseApi() {
@@ -19,14 +18,15 @@ export function useReleaseApi() {
                 await apiClient.request<ReleaseResponse>('getRelease', {
                     body: { releaseId },
                 }),
-            getReleaseTracks: async (releaseId: string) =>
-                await apiClient.request<ReleaseTracksResponse>('getReleaseTracks', {
-                    body: { releaseId },
-                }),
             getReleaseGroupReleases: async (releaseGroupId: string) =>
                 await apiClient.request<ReleaseGroupReleasesResponse>('getReleaseGroupReleases', {
                     body: { releaseGroupId },
                 }),
+            resolveReleaseGroupReleaseCovers: async (releaseGroupId: string, releaseIds: string[]) =>
+                await apiClient.request<ResolveNewReleaseCoversResponse>(
+                    'resolveReleaseGroupReleaseCovers',
+                    { body: { releaseGroupId, releaseIds } }
+                ),
             getNewReleases: async () =>
                 await apiClient.request<NewReleasesResponse>('getNewReleases', { method: 'GET' }),
             resolveNewReleaseCovers: async (releaseIds: string[]) =>

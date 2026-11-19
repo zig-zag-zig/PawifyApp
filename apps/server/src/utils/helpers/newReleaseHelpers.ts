@@ -1,8 +1,6 @@
 import type { ArtistCredit, ReleaseNotificationSettings, NewRelease } from '@pawify/shared';
 import { DEFAULT_RELEASE_NOTIFICATION_SETTINGS } from '@pawify/shared';
 
-import { deleteCachedData } from '../../services/cacheService.js';
-import { getCacheKey } from './cacheHelpers.js';
 import { getReleaseCover } from '../../services/coverArtService.js';
 import { saveArtistAndKnownReleasesToDb } from '../../services/firebase/artistStore.js';
 import type { StoredNewRelease } from '../../services/firebase/types.js';
@@ -18,7 +16,6 @@ import {
     removePrunedNewReleaseGroups,
 } from '../../services/firebase/newReleaseMaintenance.js';
 import { getReleaseGroupCreditsFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
-import { isMusicDbEnabled } from '../../infrastructure/musicDb/musicDbClient.js';
 import { mapWithConcurrency } from './promisePool.js';
 import type { ArtistReleaseGroupCatalog } from '../../services/musicbrainz/artistReleaseGroupCatalog.js';
 
@@ -53,10 +50,8 @@ const resolveCredits = (
     // Mirror mode builds credits on demand: only new groups need them, and a scan
     // usually finds none.
     const merged = new Map(catalog.creditsByGroupId);
-    if (isMusicDbEnabled()) {
-        for (const [groupId, credits] of getReleaseGroupCreditsFromMirror(missing)) {
-            merged.set(groupId, credits);
-        }
+    for (const [groupId, credits] of getReleaseGroupCreditsFromMirror(missing)) {
+        merged.set(groupId, credits);
     }
     return merged;
 };
@@ -127,11 +122,6 @@ const handleGroupChanges = async ({
     newEvents,
     storedNewReleases,
 }: HandleGroupChangesOptions): Promise<void> => {
-    // Everything the feed shows for this artist comes from the catalog, so the
-    // cached artist listing is stale as soon as a group is added or removed.
-    // Dropping it is cheaper and safer than patching it per release.
-    await deleteCachedData(getCacheKey(artistId, 'artistReleases'));
-
     await cacheNewReleaseCovers(newEvents);
 
     await saveArtistAndKnownReleasesToDb(

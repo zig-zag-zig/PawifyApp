@@ -6,15 +6,7 @@ type ReleaseAction =
     | { type: 'releaseLoadStarted' }
     | { type: 'releaseLoadFailed'; notFound: boolean }
     | {
-        type: 'releaseMetadataLoaded';
-        release: Release;
-        artistProfileImages: Record<string, string | null | undefined>;
-        pendingArtistImageIds: string[];
-    }
-    | { type: 'tracksLoadStarted' }
-    | { type: 'tracksLoadFailed' }
-    | {
-        type: 'lyricsLoadingStarted';
+        type: 'releaseLoaded';
         release: Release;
         trackLyrics: Record<string, string | null | undefined>;
         artistProfileImages: Record<string, string | null | undefined>;
@@ -23,13 +15,11 @@ type ReleaseAction =
     }
     | {
         type: 'lyricsLoadingFinished';
-        release: Release;
         trackLyrics: Record<string, string | null | undefined>;
         resolvedLyricTrackIds: string[];
     }
     | {
         type: 'artistImagesLoadingFinished';
-        release: Release;
         artistProfileImages: Record<string, string | null | undefined>;
         resolvedArtistImageIds: string[];
     }
@@ -43,8 +33,6 @@ export function createInitialReleaseState(): ReleasePageState {
         artistProfileImages: {},
         pendingLyricTrackIds: [],
         pendingArtistImageIds: [],
-        loadingTracks: false,
-        tracksLoadFailed: false,
         loadingLyrics: false,
         releaseExists: null,
         checkingExistence: true,
@@ -55,9 +43,7 @@ export function createInitialReleaseState(): ReleasePageState {
 export function releaseReducer(state: ReleasePageState, action: ReleaseAction): ReleasePageState {
     switch (action.type) {
         case 'releaseLoadStarted':
-            return {
-                ...createInitialReleaseState(),
-            };
+            return createInitialReleaseState();
 
         case 'releaseLoadFailed':
             return {
@@ -68,58 +54,25 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 artistProfileImages: {},
                 pendingLyricTrackIds: [],
                 pendingArtistImageIds: [],
-                loadingTracks: false,
-                tracksLoadFailed: false,
                 loadingLyrics: false,
-                // A 404 means the release is gone for good; anything else
-                // (network failure, server error) may succeed on retry.
+                // A 404 is a local not-found; anything else may succeed on retry.
                 releaseExists: action.notFound ? false : state.releaseExists,
                 checkingExistence: false,
                 loadFailed: !action.notFound,
             };
 
-        case 'releaseMetadataLoaded':
+        case 'releaseLoaded':
             return {
                 ...state,
                 release: action.release,
                 releaseExists: true,
                 checkingExistence: false,
                 loadFailed: false,
-                loadingTracks: true,
-                tracksLoadFailed: false,
-                artistProfileImages: action.artistProfileImages,
-                pendingArtistImageIds: action.pendingArtistImageIds,
-            };
-
-        case 'tracksLoadStarted':
-            return {
-                ...state,
-                loadingTracks: true,
-                tracksLoadFailed: false,
-            };
-
-        case 'tracksLoadFailed':
-            return {
-                ...state,
-                loadingTracks: false,
-                tracksLoadFailed: true,
-            };
-
-        case 'lyricsLoadingStarted':
-            return {
-                ...state,
-                release: action.release,
-                releaseExists: true,
-                checkingExistence: false,
-                loadFailed: false,
-                loadingTracks: false,
-                tracksLoadFailed: false,
                 trackLyrics: action.trackLyrics,
                 artistProfileImages: action.artistProfileImages,
                 pendingLyricTrackIds: action.pendingLyricTrackIds,
                 pendingArtistImageIds: action.pendingArtistImageIds,
                 loadingLyrics: action.pendingLyricTrackIds.length > 0,
-                selectedSong: null,
             };
 
         case 'lyricsLoadingFinished': {
@@ -128,9 +81,10 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
                 action.resolvedLyricTrackIds
             );
 
+            // Asset-only update: never replace the release object or clear the
+            // user's selected track when enrichment arrives.
             return {
                 ...state,
-                release: action.release,
                 trackLyrics: action.trackLyrics,
                 pendingLyricTrackIds,
                 loadingLyrics: pendingLyricTrackIds.length > 0,
@@ -140,7 +94,6 @@ export function releaseReducer(state: ReleasePageState, action: ReleaseAction): 
         case 'artistImagesLoadingFinished':
             return {
                 ...state,
-                release: action.release,
                 artistProfileImages: {
                     ...state.artistProfileImages,
                     ...action.artistProfileImages,

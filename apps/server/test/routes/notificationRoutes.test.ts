@@ -32,13 +32,13 @@ afterEach(async () => {
 });
 
 describe('notification route integration', () => {
-    it('GET /v1/notifyNewReleases returns 401 without API key', async () => {
-        const response = await fetch(`${baseUrl}/v1/notifyNewReleases`);
+    it('GET /v3/notifyNewReleases returns 401 without API key', async () => {
+        const response = await fetch(`${baseUrl}/v3/notifyNewReleases`);
         assert.equal(response.status, 401);
     });
 
-    it('GET /v1/notifyNewReleases returns 401 with wrong API key', async () => {
-        const response = await fetch(`${baseUrl}/v1/notifyNewReleases`, {
+    it('GET /v3/notifyNewReleases returns 401 with wrong API key', async () => {
+        const response = await fetch(`${baseUrl}/v3/notifyNewReleases`, {
             headers: { 'x-api-key': 'wrong-key' },
         });
         assert.equal(response.status, 401);

@@ -156,7 +156,9 @@ export const readArtistRow = (db: MusicDb, artistId: string) =>
 export const readArtistAliases = (db: MusicDb, artistId: string): string[] =>
     (
         db
-            .prepare('SELECT name FROM artist_aliases WHERE artist_id = (SELECT id FROM artists WHERE mbid = ?) ORDER BY name')
+            .prepare(
+                'SELECT name FROM artist_aliases WHERE artist_id = (SELECT id FROM artists WHERE mbid = ?) ORDER BY name',
+            )
             .all(artistId) as { name: string }[]
     ).map((row) => row.name);
 
@@ -745,6 +747,105 @@ export const readRecordingLyrics = (db: MusicDb, recordingId: string): string | 
             )
             .get(recordingId) as { url: string } | undefined
     )?.url ?? null;
+
+/**
+ * Track credits for every track on a release, in one grouped query.
+ *
+ * The unified release read must not issue one credit query per track: releases in
+ * the mirror can carry thousands of tracks.
+ */
+export const readTrackArtistsForRelease = (
+    db: MusicDb,
+    releaseId: string,
+): Map<number, ArtistCredit[]> => {
+    const rows = db
+        .prepare(
+            `SELECT ta.track_id, a.mbid AS artist_mbid, ta.artist_name, ta.join_phrase
+             FROM track_artists ta
+             JOIN artists a ON a.id = ta.artist_id
+             JOIN tracks t ON t.id = ta.track_id
+             WHERE t.release_id = (SELECT id FROM releases WHERE mbid = ?)
+             ORDER BY ta.track_id, ta.position`,
+        )
+        .all(releaseId) as {
+        track_id: number;
+        artist_mbid: string;
+        artist_name: string;
+        join_phrase: string;
+    }[];
+
+    const result = new Map<number, ArtistCredit[]>();
+    for (const row of rows) {
+        const credits = result.get(row.track_id) ?? [];
+        credits.push({
+            id: row.artist_mbid,
+            name: row.artist_name,
+            joinphrase: row.join_phrase || null,
+        });
+        result.set(row.track_id, credits);
+    }
+    return result;
+};
+
+/** Recording credits for a batch of recording MBIDs (compacted-track fallback). */
+export const readRecordingArtistsForRecordings = (
+    db: MusicDb,
+    recordingIds: readonly string[],
+): Map<string, ArtistCredit[]> => {
+    const result = new Map<string, ArtistCredit[]>();
+    if (recordingIds.length === 0) return result;
+
+    const statement = db.prepare(
+        `SELECT rec.mbid AS recording_mbid, a.mbid AS artist_mbid, ra.artist_name, ra.join_phrase
+         FROM recording_artists ra
+         JOIN artists a ON a.id = ra.artist_id
+         JOIN recordings rec ON rec.id = ra.recording_id
+         WHERE rec.mbid = ?
+         ORDER BY ra.position`,
+    );
+
+    for (const recordingId of recordingIds) {
+        const rows = statement.all(recordingId) as {
+            recording_mbid: string;
+            artist_mbid: string;
+            artist_name: string;
+            join_phrase: string;
+        }[];
+        if (rows.length === 0) continue;
+        result.set(
+            recordingId,
+            rows.map((row) => ({
+                id: row.artist_mbid,
+                name: row.artist_name,
+                joinphrase: row.join_phrase || null,
+            })),
+        );
+    }
+    return result;
+};
+
+/** Best mirror lyric URL per recording MBID, batched for the unified release read. */
+export const readRecordingLyricsForRecordings = (
+    db: MusicDb,
+    recordingIds: readonly string[],
+): Map<string, string> => {
+    const result = new Map<string, string>();
+    if (recordingIds.length === 0) return result;
+
+    const statement = db.prepare(
+        `SELECT url FROM recording_lyrics
+         WHERE recording_id = (SELECT id FROM recordings WHERE mbid = ?)
+         ORDER BY source, url LIMIT 1`,
+    );
+
+    for (const recordingId of recordingIds) {
+        const row = statement.get(recordingId) as { url: string } | undefined;
+        if (row?.url) {
+            result.set(recordingId, row.url);
+        }
+    }
+    return result;
+};
 
 export const readReleaseExists = (db: MusicDb, releaseId: string): boolean =>
     db.prepare('SELECT 1 FROM releases WHERE mbid = ?').get(releaseId) !== undefined;

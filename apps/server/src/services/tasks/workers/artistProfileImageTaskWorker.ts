@@ -1,35 +1,16 @@
 import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
-import {
-    getExternalLinkUrlsByService,
-    mapRelationsToExternalLinks,
-} from '../../../utils/helpers/externalLinks.js';
-import { getCacheKey } from '../../../utils/helpers/cacheHelpers.js';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
-import type {
-    ArtistWithLegacyDiscogsUrls,
-    CachedArtistDetails,
-    CachedArtistImage,
-} from '../../../utils/types/cacheTypes.js';
+import type { CachedArtistImage } from '../../../utils/types/cacheTypes.js';
 import type {
     ArtistProfileImageLookup,
     ArtistProfileImageTaskResult,
 } from '../../../utils/types/taskTypes.js';
-import { getCachedData, replaceCachedData } from '../../cacheService.js';
 import { resolveArtistImage } from '../../musicApi/artistImageSources.js';
-import { fetchMusicBrainzWithStatus } from '../../musicApi/musicBrainzClient.js';
-import { isConfirmedMissingFetchFailure, isFetchFailureResult } from '../../musicApi/types.js';
 import type { ArtistImageProvider } from '../../musicApi/types.js';
-import {
-    hasLegacyArtistImageFields,
-    mapArtistImageToState,
-    normalizeArtistImageState,
-    shouldRefetchArtistImageState,
-} from '../backgroundTaskMappers.js';
-import { syncArtistDetailsDiscogsUrls } from './artistProfileImageCacheSync.js';
+import { mapArtistImageToState } from '../backgroundTaskMappers.js';
 import { lookupMirrorImage } from '../../musicApi/mirrorEntityImages.js';
 import { getArtistImageProviderLinksFromMirror } from '../../../infrastructure/musicDb/musicDbRepositories.js';
-import { musicDbHasEntityImages } from '../../../infrastructure/musicDb/musicDbClient.js';
 import { persistResolvedEntityImage } from '../../musicApi/entityImageFreshness.js';
 
 const logger = createLogger('services.backgroundTasks.artistImages');
@@ -57,8 +38,6 @@ type LookupProviderResultState = 'present' | 'null' | 'undefined';
  */
 type ArtistImageResolutionContext = {
     artistId: string;
-    imageCacheKey: string;
-    ttl: number | undefined;
     signal: AbortSignal | undefined;
     providedArtistName: string | undefined;
     providedDiscogsUrls: string[] | undefined;
@@ -68,8 +47,6 @@ type ArtistImageResolutionContext = {
     discogsUrlsForLookup: string[] | undefined;
     deezerUrlsForLookup: string[] | undefined;
     tidalUrlsForLookup: string[] | undefined;
-    cachedArtistDetailsForSync: CachedArtistDetails | null | undefined;
-    cachedArtistDetailsHit: boolean;
     usedLookupBypass: boolean;
     lookupProviderResultState: LookupProviderResultState | undefined;
     lookupFallbackToMusicBrainz: boolean;
@@ -84,9 +61,7 @@ type ArtistImageResolutionContext = {
     providerDurationMs: number | undefined;
 };
 
-type CachedImageResolution =
-    | { kind: 'cached'; state: CachedArtistImage; legacyRewriteRequired: boolean }
-    | { kind: 'refetch' };
+type CachedImageResolution = { kind: 'cached'; state: CachedArtistImage } | { kind: 'refetch' };
 
 type LookupBypassResolution =
     | { kind: 'not_attempted' }
@@ -157,7 +132,6 @@ const getProvidedUrls = (urls: string[] | undefined): string[] | undefined =>
 
 const createArtistImageResolutionContext = (
     lookup: ArtistProfileImageLookup,
-    ttl: number | undefined,
     signal: AbortSignal | undefined,
 ): ArtistImageResolutionContext => {
     const providedArtistName = getProvidedArtistName(lookup);
@@ -167,8 +141,6 @@ const createArtistImageResolutionContext = (
 
     return {
         artistId: lookup.artistId,
-        imageCacheKey: getCacheKey(lookup.artistId, 'artistImages'),
-        ttl,
         signal,
         providedArtistName,
         providedDiscogsUrls,
@@ -178,8 +150,6 @@ const createArtistImageResolutionContext = (
         discogsUrlsForLookup: providedDiscogsUrls,
         deezerUrlsForLookup: providedDeezerUrls,
         tidalUrlsForLookup: providedTidalUrls,
-        cachedArtistDetailsForSync: undefined,
-        cachedArtistDetailsHit: false,
         usedLookupBypass: false,
         lookupProviderResultState: undefined,
         lookupFallbackToMusicBrainz: false,
@@ -197,78 +167,14 @@ const createArtistImageResolutionContext = (
 const resolveCachedImage = async (
     context: ArtistImageResolutionContext,
 ): Promise<CachedImageResolution> => {
-    if (musicDbHasEntityImages()) {
-        const mirrored = lookupMirrorImage('artist', context.artistId);
-        if (mirrored.kind === 'resolved') {
-            return {
-                kind: 'cached',
-                state: mapArtistImageToState(mirrored.url),
-                legacyRewriteRequired: false,
-            };
-        }
-        if (mirrored.kind === 'missing') {
-            return {
-                kind: 'cached',
-                state: mapArtistImageToState(null),
-                legacyRewriteRequired: false,
-            };
-        }
-        return { kind: 'refetch' };
+    const mirrored = lookupMirrorImage('artist', context.artistId);
+    if (mirrored.kind === 'resolved') {
+        return { kind: 'cached', state: mapArtistImageToState(mirrored.url) };
     }
-
-    const cachedImage = await getCachedData<CachedArtistImage>(context.imageCacheKey);
-
-    if (cachedImage && !shouldRefetchArtistImageState(cachedImage)) {
-        return {
-            kind: 'cached',
-            state: normalizeArtistImageState(cachedImage),
-            legacyRewriteRequired: hasLegacyArtistImageFields(cachedImage),
-        };
+    if (mirrored.kind === 'missing') {
+        return { kind: 'cached', state: mapArtistImageToState(null) };
     }
-
     return { kind: 'refetch' };
-};
-
-const resolveArtistDetailsFromCache = async (
-    context: ArtistImageResolutionContext,
-): Promise<void> => {
-    if (musicDbHasEntityImages()) {
-        return;
-    }
-
-    const cachedArtistDetails = await getCachedData<CachedArtistDetails>(
-        getCacheKey(context.artistId, 'artistDetails'),
-    );
-    context.cachedArtistDetailsForSync = cachedArtistDetails;
-
-    if (!cachedArtistDetails?.artist) {
-        return;
-    }
-
-    context.cachedArtistDetailsHit = true;
-
-    if (!context.artistNameForLookup && typeof cachedArtistDetails.artist.name === 'string') {
-        const cachedName = cachedArtistDetails.artist.name.trim();
-        if (cachedName.length > 0) {
-            context.artistNameForLookup = cachedName;
-        }
-    }
-
-    const externalLinks = cachedArtistDetails.artist.externalLinks;
-    const legacyDiscogsUrls = (cachedArtistDetails.artist as ArtistWithLegacyDiscogsUrls)
-        .discogsUrls;
-    // Merge rather than overwrite: urls the caller already supplied win, and the
-    // cache only fills the gaps. Deezer and Tidal links live in the cached
-    // external links, which lets the provider chain resolve without a
-    // MusicBrainz round trip even when the caller only knew about Discogs.
-    context.discogsUrlsForLookup = context.discogsUrlsForLookup ?? [
-        ...getExternalLinkUrlsByService(externalLinks, 'discogs'),
-        ...filterValidProviderUrls(legacyDiscogsUrls),
-    ];
-    context.deezerUrlsForLookup =
-        context.deezerUrlsForLookup ?? getExternalLinkUrlsByService(externalLinks, 'deezer');
-    context.tidalUrlsForLookup =
-        context.tidalUrlsForLookup ?? getExternalLinkUrlsByService(externalLinks, 'tidal');
 };
 
 /**
@@ -323,76 +229,32 @@ const resolveViaLookupBypass = async (
 };
 
 /**
- * Moves urls from ended MusicBrainz relations to the end of the list.
+ * Provider links from the local mirror.
  *
- * Relations carry an `ended` flag, but the provider url itself does not, so the
- * flag is recovered here before the urls reach the provider clients. Ordering is
- * stable, so relations MusicBrainz did not mark keep their original order.
- */
-export const preferActiveRelations = (urls: string[], relations: any[] | undefined): string[] => {
-    if (urls.length < 2 || !relations?.length) {
-        return urls;
-    }
-
-    const endedUrls = new Set<string>();
-    for (const relation of relations) {
-        if (relation?.ended !== true) {
-            continue;
-        }
-
-        const relationUrl = relation.url;
-        const entries = Array.isArray(relationUrl) ? relationUrl : [relationUrl];
-        for (const entry of entries) {
-            const resource = typeof entry === 'string' ? entry : entry?.resource;
-            if (typeof resource !== 'string') {
-                continue;
-            }
-
-            try {
-                endedUrls.add(new URL(resource).toString());
-            } catch {
-                // Unparseable resources are left to the provider clients.
-            }
-        }
-    }
-
-    if (endedUrls.size === 0) {
-        return urls;
-    }
-
-    return [...urls].sort(
-        (left, right) => Number(endedUrls.has(left)) - Number(endedUrls.has(right)),
-    );
-};
-
-/**
- * Mirror-backed replacement for the MusicBrainz url-rels fetch.
- *
- * Returns null when the mirror cannot answer, so the caller falls back to the API
- * exactly as before.
+ * This is the only source for artist artwork id/link discovery. An artist missing
+ * from the local snapshot has no trustworthy MusicBrainz identity/relations to
+ * probe remotely, so it resolves to a local miss instead of a Web Service request.
  */
 const resolveViaMirror = async (
     context: ArtistImageResolutionContext,
-): Promise<MusicBrainzResolution | null> => {
+): Promise<MusicBrainzResolution> => {
     const startedAt = Date.now();
     const fromMirror = getArtistImageProviderLinksFromMirror(context.artistId);
     context.musicBrainzDurationMs = (context.musicBrainzDurationMs ?? 0) + (Date.now() - startedAt);
 
     if (!fromMirror) {
-        return null;
+        return {
+            kind: 'name_missing',
+            state: mapArtistImageToState(null),
+            deezerUrls: [],
+            tidalUrls: [],
+        };
     }
 
     context.musicBrainzDiscogsUrlCount = fromMirror.discogsUrls.length;
     context.musicBrainzDeezerUrlCount = fromMirror.deezerUrls.length;
     context.musicBrainzTidalUrlCount = fromMirror.tidalUrls.length;
-    context.artistDetailsDiscogsSyncUpdated = musicDbHasEntityImages()
-        ? false
-        : await syncArtistDetailsDiscogsUrls(
-              context.artistId,
-              fromMirror.discogsUrls,
-              context.cachedArtistDetailsForSync,
-              context.ttl,
-          );
+    context.artistDetailsDiscogsSyncUpdated = false;
 
     if (!fromMirror.artistName) {
         return {
@@ -410,85 +272,6 @@ const resolveViaMirror = async (
         deezerUrls: fromMirror.deezerUrls,
         tidalUrls: fromMirror.tidalUrls,
     };
-};
-
-const resolveViaMusicBrainz = async (
-    context: ArtistImageResolutionContext,
-): Promise<MusicBrainzResolution> => {
-    const musicBrainzStartedAt = Date.now();
-    context.usedMusicBrainzFetch = true;
-    const artistData = await fetchMusicBrainzWithStatus(
-        `/artist/${context.artistId}?fmt=json&inc=url-rels`,
-        'GET',
-        context.signal,
-        'background',
-    );
-    context.musicBrainzDurationMs = Date.now() - musicBrainzStartedAt;
-
-    if (isFetchFailureResult(artistData)) {
-        if (isConfirmedMissingFetchFailure(artistData)) {
-            return {
-                kind: 'resolved',
-                state: mapArtistImageToState(null),
-                source: 'musicbrainz_not_found',
-            };
-        }
-
-        return {
-            kind: 'resolved',
-            state: mapArtistImageToState(undefined),
-            source: 'musicbrainz_transient',
-        };
-    }
-
-    if (artistData === null || artistData === undefined) {
-        return {
-            kind: 'resolved',
-            state: mapArtistImageToState(artistData === null ? null : undefined),
-            source: artistData === null ? 'musicbrainz_not_found' : 'musicbrainz_transient',
-        };
-    }
-
-    const artistRecord = artistData as { name?: unknown; relations?: any[] };
-    const artistName = typeof artistRecord.name === 'string' ? artistRecord.name : undefined;
-    // MusicBrainz files Deezer and Tidal links under the generic `free
-    // streaming` / `streaming` relation types, so the provider is identified by
-    // url host rather than by relation type.
-    const externalLinks = mapRelationsToExternalLinks(artistRecord.relations);
-    // An ended streaming link is usually a stale profile, so put those last
-    // before the provider clients start scoring candidates.
-    const discogsUrls = preferActiveRelations(
-        getExternalLinkUrlsByService(externalLinks, 'discogs'),
-        artistRecord.relations,
-    );
-    const deezerUrls = preferActiveRelations(
-        getExternalLinkUrlsByService(externalLinks, 'deezer'),
-        artistRecord.relations,
-    );
-    const tidalUrls = preferActiveRelations(
-        getExternalLinkUrlsByService(externalLinks, 'tidal'),
-        artistRecord.relations,
-    );
-    context.musicBrainzDiscogsUrlCount = discogsUrls.length;
-    context.musicBrainzDeezerUrlCount = deezerUrls.length;
-    context.musicBrainzTidalUrlCount = tidalUrls.length;
-    context.artistDetailsDiscogsSyncUpdated = await syncArtistDetailsDiscogsUrls(
-        context.artistId,
-        discogsUrls,
-        context.cachedArtistDetailsForSync,
-        context.ttl,
-    );
-
-    if (!artistName?.trim()) {
-        return {
-            kind: 'name_missing',
-            state: mapArtistImageToState(null),
-            deezerUrls,
-            tidalUrls,
-        };
-    }
-
-    return { kind: 'artist_found', artistName, discogsUrls, deezerUrls, tidalUrls };
 };
 
 const resolveViaProviders = async (
@@ -520,7 +303,7 @@ const resolveViaProviders = async (
 export const fetchAndUpsertArtistProfileImages = async (
     _userId: string,
     artistLookups: ArtistProfileImageLookup[],
-    ttl: number | undefined,
+    _ttl: number | undefined,
     signal?: AbortSignal,
 ): Promise<ArtistProfileImageTaskResult> => {
     const uniqueArtistLookups = dedupeArtistLookups(artistLookups);
@@ -528,7 +311,6 @@ export const fetchAndUpsertArtistProfileImages = async (
     const batchStartedAt = Date.now();
     let cacheHitCount = 0;
     let refetchCount = 0;
-    let legacyRewriteCount = 0;
     let musicBrainzNotFoundCount = 0;
     let missingArtistNameCount = 0;
     let imageFoundCount = 0;
@@ -543,7 +325,7 @@ export const fetchAndUpsertArtistProfileImages = async (
 
     logger.debug('artist profile image batch started', {
         artistCount: uniqueArtistLookups.length,
-        ttlHours: ttl ?? null,
+        ttlHours: _ttl ?? null,
     });
 
     await mapWithConcurrency(
@@ -552,7 +334,7 @@ export const fetchAndUpsertArtistProfileImages = async (
         async (lookup) => {
             const artistStartedAt = Date.now();
             const artistId = lookup.artistId;
-            const context = createArtistImageResolutionContext(lookup, ttl, signal);
+            const context = createArtistImageResolutionContext(lookup, signal);
             let source: ArtistProfileImageSource = 'cache';
 
             /**
@@ -563,11 +345,7 @@ export const fetchAndUpsertArtistProfileImages = async (
              * the cache after the SQLite migration.
              */
             const persistArtistImage = async (state: CachedArtistImage) => {
-                if (musicDbHasEntityImages()) {
-                    persistResolvedEntityImage('artist', artistId, state.url);
-                    return;
-                }
-                await replaceCachedData(context.imageCacheKey, state, ttl);
+                persistResolvedEntityImage('artist', artistId, state.url);
             };
 
             const recordResolvedImage = async (
@@ -599,24 +377,11 @@ export const fetchAndUpsertArtistProfileImages = async (
                 const cachedImage = await resolveCachedImage(context);
                 if (cachedImage.kind === 'cached') {
                     cacheHitCount += 1;
-                    if (cachedImage.legacyRewriteRequired && !musicDbHasEntityImages()) {
-                        legacyRewriteCount += 1;
-                        await replaceCachedData(context.imageCacheKey, cachedImage.state, ttl);
-                    }
-
                     artists[artistId] = cachedImage.state.url;
                     return;
                 }
 
                 refetchCount += 1;
-
-                if (
-                    context.discogsUrlsForLookup === undefined ||
-                    context.deezerUrlsForLookup === undefined ||
-                    context.tidalUrlsForLookup === undefined
-                ) {
-                    await resolveArtistDetailsFromCache(context);
-                }
 
                 const lookupBypass = await resolveViaLookupBypass(context);
                 if (lookupBypass.kind === 'resolved') {
@@ -628,10 +393,7 @@ export const fetchAndUpsertArtistProfileImages = async (
                     lookupBypassMusicBrainzCount += 1;
                 }
 
-                // Mirror first: same relations, no MusicBrainz API request and no
-                // 1 req/s budget. Falls back to the API when the mirror cannot answer.
-                const musicBrainz =
-                    (await resolveViaMirror(context)) ?? (await resolveViaMusicBrainz(context));
+                const musicBrainz = await resolveViaMirror(context);
                 if (musicBrainz.kind === 'resolved') {
                     source = musicBrainz.source;
                     if (musicBrainz.source === 'musicbrainz_not_found') {
@@ -711,7 +473,6 @@ export const fetchAndUpsertArtistProfileImages = async (
                         providedDiscogsUrlCount: context.providedDiscogsUrls?.length ?? 0,
                         providedDeezerUrlCount: context.providedDeezerUrls?.length ?? 0,
                         providedTidalUrlCount: context.providedTidalUrls?.length ?? 0,
-                        cachedArtistDetailsHit: context.cachedArtistDetailsHit,
                         lookupDiscogsUrlCount: context.discogsUrlsForLookup?.length ?? 0,
                         lookupDeezerUrlCount: context.deezerUrlsForLookup?.length ?? 0,
                         lookupTidalUrlCount: context.tidalUrlsForLookup?.length ?? 0,
@@ -739,7 +500,6 @@ export const fetchAndUpsertArtistProfileImages = async (
         artistCount: uniqueArtistLookups.length,
         cacheHitCount,
         refetchCount,
-        legacyRewriteCount,
         musicBrainzNotFoundCount,
         missingArtistNameCount,
         imageFoundCount,

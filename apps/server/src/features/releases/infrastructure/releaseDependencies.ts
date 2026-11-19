@@ -1,7 +1,6 @@
 import { requestDeduper } from '../../../common/request/requestDeduper.js';
-import { musicBrainzReleaseCatalog } from './musicBrainzReleaseCatalog.js';
+import { sqliteReleaseCatalog } from './sqliteReleaseCatalog.js';
 import {
-    missingReleaseCleanupRepository,
     newReleasesRepository,
     releaseNotifier,
 } from './releaseInfrastructureAdapters.js';
@@ -9,9 +8,8 @@ import { releaseTaskQueue } from './releaseTaskQueue.js';
 import type { ReleaseUseCaseDependencies } from '../ports.js';
 
 export const releaseDependencies: Omit<ReleaseUseCaseDependencies, 'assetPlanner'> = {
-    missingReleaseCleanupRepository,
     newReleasesRepository,
-    releaseCatalogGateway: musicBrainzReleaseCatalog,
+    releaseCatalogGateway: sqliteReleaseCatalog,
     releaseNotifier,
     releaseTaskQueue,
     requestDeduper,

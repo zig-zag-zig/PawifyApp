@@ -35,19 +35,6 @@ describe('useReleaseApi', () => {
         expect(output).toBe(mockResult);
     });
 
-    it('getReleaseTracks calls apiClient.request with getReleaseTracks endpoint', async () => {
-        const mockResult = { media: [], trackLyrics: {}, lyricsTaskId: null, profileImages: {}, profileImageTaskId: null };
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce(mockResult);
-
-        const { result } = renderHook(() => useReleaseApi());
-        const output = await result.current.getReleaseTracks('r1');
-
-        expect(mockApiClient.request).toHaveBeenCalledWith('getReleaseTracks', {
-            body: { releaseId: 'r1' },
-        });
-        expect(output).toBe(mockResult);
-    });
-
     it('getReleaseGroupReleases calls apiClient.request with correct endpoint', async () => {
         const mockResult = { releases: [] };
         vi.mocked(mockApiClient.request).mockResolvedValueOnce(mockResult);
@@ -58,6 +45,20 @@ describe('useReleaseApi', () => {
         expect(mockApiClient.request).toHaveBeenCalledWith('getReleaseGroupReleases', {
             body: { releaseGroupId: 'rg-1' },
         });
+        expect(output).toBe(mockResult);
+    });
+
+    it('resolveReleaseGroupReleaseCovers replays only pending visible artwork', async () => {
+        const mockResult = { releaseCovers: { r1: 'cover.jpg' }, releaseCoverTaskId: null };
+        vi.mocked(mockApiClient.request).mockResolvedValueOnce(mockResult);
+
+        const { result } = renderHook(() => useReleaseApi());
+        const output = await result.current.resolveReleaseGroupReleaseCovers('rg-1', ['r1']);
+
+        expect(mockApiClient.request).toHaveBeenCalledWith(
+            'resolveReleaseGroupReleaseCovers',
+            { body: { releaseGroupId: 'rg-1', releaseIds: ['r1'] } },
+        );
         expect(output).toBe(mockResult);
     });
 

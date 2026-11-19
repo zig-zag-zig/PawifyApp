@@ -10,9 +10,8 @@ import type {
 
 /**
  * Result of planning a background asset batch for one request. `resolved`
- * holds URL strings (or confirmed nulls) that are already known from cache;
- * `taskId` is null when nothing needs background work (v2 contract) and is
- * always a string when the full set was queued (v1 contract).
+ * holds URL strings (or confirmed nulls) already known from persisted state;
+ * `taskId` is null when nothing needs background work.
  */
 export type AssetPlanResult = {
     taskId: string | null;
@@ -106,9 +105,8 @@ export interface ReleaseArtistProfileImagesPlanner {
 }
 
 /**
- * Combined planner covering every background asset flow. Injected into use
- * cases; a legacy (v1) or cache-first (v2) implementation is chosen at the
- * composition root.
+ * Combined planner covering every background asset flow. There is one
+ * cache-first implementation in the v3 composition root.
  */
 export interface BackgroundAssetPlanner
     extends

@@ -1,10 +1,5 @@
 import { createLogger } from '../../common/logging/logger.js';
-import {
-    getMusicDb,
-    getMusicDbWriter,
-    musicDbHandleHasEntityImages,
-    type MusicDb,
-} from './musicDbClient.js';
+import { getMusicDb, getMusicDbWriter, type MusicDb } from './musicDbClient.js';
 
 const logger = createLogger('infrastructure.musicDb.entityImages');
 
@@ -46,27 +41,15 @@ type EntityImageRow = {
 };
 
 /**
- * Cached per open handle: the table check costs two `PRAGMA table_info` calls and
- * the answer cannot change while a handle is open.
+ * `image_services`/`entity_images` are part of the required mirror contract, so
+ * there is no optional-table probe and no live-provider fallback selection here.
  */
-let checkedHandle: MusicDb | null = null;
-let handleHasTables = false;
-
 const readerFor = (): MusicDb | null => {
-    const db = getMusicDb();
-    if (!db) {
+    try {
+        return getMusicDb();
+    } catch {
         return null;
     }
-
-    if (db !== checkedHandle) {
-        checkedHandle = db;
-        handleHasTables = musicDbHandleHasEntityImages(db);
-        if (!handleHasTables) {
-            logger.debug('mirror has no image-state tables; artwork falls back to providers');
-        }
-    }
-
-    return handleHasTables ? db : null;
 };
 
 /**
@@ -229,10 +212,8 @@ export const readEntityImages = (
     return result;
 };
 
-/** Test-only: forget which handle the table capability was probed on. */
+/** Test-only: reset the cached writer handle state. */
 export const resetEntityImageRepositoryForTests = (): void => {
-    checkedHandle = null;
-    handleHasTables = false;
     writerCheckedHandle = null;
     writerWarned = false;
 };

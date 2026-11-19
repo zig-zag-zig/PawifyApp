@@ -25,3 +25,7 @@ firebase-service-account*.json
 music/*
 !music/.gitkeep
 
+# Application-owned lyrics SQLite store (only .gitkeep is tracked)
+lyrics/*
+!lyrics/.gitkeep
+

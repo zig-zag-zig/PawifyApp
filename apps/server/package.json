@@ -61,6 +61,8 @@
         "pretest:coverage": "npm run build:shared",
         "pretest:integration": "npm run build:shared",
         "docker:up": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait",
-        "docker:down": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down"
+        "docker:down": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down",
+        "lyrics:db:migrate": "tsx scripts/lyricsDbAdmin.ts",
+        "lyrics:db:housekeeping": "tsx scripts/lyricsDbAdmin.ts --housekeeping-preview"
     }
 }

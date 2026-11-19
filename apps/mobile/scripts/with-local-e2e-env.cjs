@@ -7,7 +7,7 @@ const defaults = {
   APP_ENV: 'e2e-test',
   NODE_ENV: 'development',
   EXPO_PUBLIC_API_BASE_URL: 'http://127.0.0.1:10001/',
-  EXPO_PUBLIC_API_VERSION: 'v1',
+  EXPO_PUBLIC_API_VERSION: 'v3',
   EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9199',
   EXPO_PUBLIC_FIREBASE_PROJECT_ID: 'demo-pawify-e2e',
   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 'fake-e2e-google-client-id.apps.googleusercontent.com',

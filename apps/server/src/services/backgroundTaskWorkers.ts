@@ -31,13 +31,15 @@ import type {
 const logger = createLogger('services.backgroundTasks');
 
 /**
- * Namespaces task dedupe keys per API contract so v1 and v2 never share
- * background tasks for the same logical payload.
+ * Namespaces task dedupe keys to the current contract.
+ *
+ * The v3 prefix expires pre-cutover in-flight tasks instead of replaying their
+ * old payloads into the unified release/enrichment contract.
  */
 export const withTaskKeyNamespace = (
     contractNamespace: ContractNamespace | undefined,
     key: string,
-): string => (contractNamespace === 'v2' ? `v2:${key}` : key);
+): string => (contractNamespace === 'v3' ? `v3:${key}` : key);
 
 type QueueChunkedTaskOptions<T extends BackgroundTaskResultPayload, TChunk> = {
     userId: string;

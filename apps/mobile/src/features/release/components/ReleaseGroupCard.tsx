@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import React from 'react';
-import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CachedImageComponent } from '../../../components/cachedImage/CachedImageComponent';
 import { InlineLink, ScreenContainer, SelectableText } from '../../../components/ui';
 import { ReleaseGroupReleaseListItem } from '@pawify/shared';
@@ -11,30 +11,38 @@ import {
 } from '../domain/releaseEditionSummary';
 
 interface ReleaseGroupCardProps {
+    releaseGroupTitle: string | null;
     releases: ReleaseGroupReleaseListItem[];
+    releaseCount: number;
     releaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     releaseGroupId: string | null;
+    isLoadingReleases: boolean;
     releaseLoadFailed: boolean;
+    releaseGroupNotFound: boolean;
     onPress: (release: ReleaseGroupReleaseListItem) => void;
     onRetryLoadReleases: () => void;
     onContentReady: () => void;
 }
 
 const ReleaseGroupCard = ({
+    releaseGroupTitle,
     releases,
+    releaseCount,
     releaseCovers,
     pendingReleaseCoverIds,
     releaseGroupId,
+    isLoadingReleases,
     releaseLoadFailed,
+    releaseGroupNotFound,
     onPress,
     onRetryLoadReleases,
     onContentReady,
 }: ReleaseGroupCardProps) => {
     const pendingReleaseCoverIdSet = new Set(pendingReleaseCoverIds);
     const releaseCountLabel =
-        releases.length > 0
-            ? `${releases.length} ${releases.length === 1 ? 'release' : 'releases'}`
+        releaseCount > 0
+            ? `${releaseCount} ${releaseCount === 1 ? 'release' : 'releases'}`
             : 'Releases';
 
     const onShare = React.useCallback(() => {
@@ -43,14 +51,14 @@ const ReleaseGroupCard = ({
         }
 
         const link = Linking.createURL(`release-group/${releaseGroupId}`);
-        const title = releases[0]?.title;
+        const title = releaseGroupTitle ?? undefined;
         void Share.share({
             message: `${title ? `${title} — ` : ''}${link}`,
             url: link,
         }).catch(() => {
             // User dismissed the sheet — nothing to do.
         });
-    }, [releaseGroupId, releases]);
+    }, [releaseGroupId, releaseGroupTitle]);
 
     return (
         <ScreenContainer>
@@ -69,83 +77,92 @@ const ReleaseGroupCard = ({
                     </TouchableOpacity>
                 )}
             </View>
-            <ScrollView
-                style={cardStyles.releaseList}
-                contentContainerStyle={cardStyles.releaseListContent}
-                showsVerticalScrollIndicator={false}
-                onContentSizeChange={onContentReady}
-            >
-                {releaseLoadFailed ? (
-                    <View style={cardStyles.errorState}>
-                        <Text style={cardStyles.errorText}>Unable to load this release group.</Text>
-                        <InlineLink onPress={onRetryLoadReleases}>Retry</InlineLink>
-                    </View>
-                ) : (
-                    <>
-                        {releases.map((release) => {
-                            const editionSummary = formatReleaseEditionSummary({
-                                formats: release.formats,
-                                trackCount: release.trackCount,
-                                date: release.date,
-                                status: release.status,
-                            });
+            {releaseGroupNotFound ? (
+                <View style={cardStyles.errorState}>
+                    <Text style={cardStyles.errorText}>
+                        This release group was not found in the local catalogue.
+                    </Text>
+                </View>
+            ) : releaseLoadFailed ? (
+                <View style={cardStyles.errorState}>
+                    <Text style={cardStyles.errorText}>Unable to load this release group.</Text>
+                    <InlineLink onPress={onRetryLoadReleases}>Retry</InlineLink>
+                </View>
+            ) : (
+                <FlatList
+                    style={cardStyles.releaseList}
+                    contentContainerStyle={cardStyles.releaseListContent}
+                    data={releases}
+                    keyExtractor={release => `release-${release.id}`}
+                    showsVerticalScrollIndicator={false}
+                    onContentSizeChange={onContentReady}
+                    initialNumToRender={12}
+                    windowSize={7}
+                    removeClippedSubviews
+                    ListEmptyComponent={
+                        <Text style={cardStyles.emptyText}>
+                            {isLoadingReleases ? 'Loading releases…' : 'No releases available.'}
+                        </Text>
+                    }
+                    renderItem={({ item: release }) => {
+                        const editionSummary = formatReleaseEditionSummary({
+                            formats: release.formats,
+                            trackCount: release.trackCount,
+                            date: release.date,
+                            status: release.status,
+                        });
 
-                            return (
-                                <TouchableOpacity
-                                    key={`release-${release.id}`}
-                                    onPress={() => onPress(release)}
-                                    activeOpacity={0.72}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={formatReleaseEditionAccessibilityLabel(
-                                        release.title,
-                                        editionSummary,
+                        return (
+                            <TouchableOpacity
+                                onPress={() => onPress(release)}
+                                activeOpacity={0.72}
+                                accessibilityRole="button"
+                                accessibilityLabel={formatReleaseEditionAccessibilityLabel(
+                                    release.title,
+                                    editionSummary,
+                                )}
+                                style={cardStyles.releaseRow}
+                            >
+                                <CachedImageComponent
+                                    imageUrl={releaseCovers[release.id]}
+                                    type="release"
+                                    showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(
+                                        release.id,
                                     )}
-                                    style={cardStyles.releaseRow}
-                                >
-                                    <CachedImageComponent
-                                        imageUrl={releaseCovers[release.id]}
-                                        type="release"
-                                        showSpinnerWhenNoImage={pendingReleaseCoverIdSet.has(
-                                            release.id,
-                                        )}
-                                        entityType="release"
-                                        entityId={release.id}
-                                        style={cardStyles.releaseCover}
-                                    />
-                                    <View style={cardStyles.releaseTextGroup}>
+                                    entityType="release"
+                                    entityId={release.id}
+                                    style={cardStyles.releaseCover}
+                                />
+                                <View style={cardStyles.releaseTextGroup}>
+                                    <SelectableText
+                                        style={cardStyles.releaseTitle}
+                                        numberOfLines={2}
+                                        ellipsizeMode="tail"
+                                        selectable={false}
+                                    >
+                                        {release.title}
+                                    </SelectableText>
+                                    {editionSummary ? (
                                         <SelectableText
-                                            style={cardStyles.releaseTitle}
+                                            style={cardStyles.releaseEdition}
                                             numberOfLines={2}
                                             ellipsizeMode="tail"
                                             selectable={false}
                                         >
-                                            {release.title}
+                                            {editionSummary}
                                         </SelectableText>
-                                        {editionSummary ? (
-                                            <SelectableText
-                                                style={cardStyles.releaseEdition}
-                                                numberOfLines={2}
-                                                ellipsizeMode="tail"
-                                                selectable={false}
-                                            >
-                                                {editionSummary}
-                                            </SelectableText>
-                                        ) : null}
-                                    </View>
-                                    <MaterialIcons
-                                        name="chevron-right"
-                                        size={22}
-                                        color="#64748B"
-                                    />
-                                </TouchableOpacity>
-                            );
-                        })}
-                        {releases.length === 0 && (
-                            <Text style={cardStyles.emptyText}>No releases available.</Text>
-                        )}
-                    </>
-                )}
-            </ScrollView>
+                                    ) : null}
+                                </View>
+                                <MaterialIcons
+                                    name="chevron-right"
+                                    size={22}
+                                    color="#64748B"
+                                />
+                            </TouchableOpacity>
+                        );
+                    }}
+                />
+            )}
         </ScreenContainer>
     );
 };

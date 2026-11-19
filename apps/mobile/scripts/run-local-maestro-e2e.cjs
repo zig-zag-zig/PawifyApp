@@ -343,7 +343,7 @@ async function runInsideEmulators() {
   process.once('SIGTERM', onSigterm);
 
   try {
-    await waitForUrlOrChildExit(`http://127.0.0.1:${backendPort}/v1/health`, backend, 'Pawify backend');
+    await waitForUrlOrChildExit(`http://127.0.0.1:${backendPort}/health`, backend, 'Pawify backend');
     await runAsync('node', ['scripts/run-maestro.cjs', maestroTarget], { cwd: appRoot, env: e2eBackendEnv });
   } finally {
     process.off('SIGINT', onSigint);

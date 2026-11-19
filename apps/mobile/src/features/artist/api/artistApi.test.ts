@@ -75,19 +75,6 @@ describe('useArtistApi', () => {
         expect(output).toBe('ok');
     });
 
-    it('getReleaseGroupReleases calls apiClient.request with correct endpoint', async () => {
-        const mockResult = { releases: [] };
-        vi.mocked(mockApiClient.request).mockResolvedValueOnce(mockResult);
-
-        const { result } = renderHook(() => useArtistApi());
-        const output = await result.current.getReleaseGroupReleases('rg-1');
-
-        expect(mockApiClient.request).toHaveBeenCalledWith('getReleaseGroupReleases', {
-            body: { releaseGroupId: 'rg-1' },
-        });
-        expect(output).toBe(mockResult);
-    });
-
     it('waitForTaskResultById delegates to apiClient.waitForTaskResultById', async () => {
         const taskResult = { taskId: 't1', type: 'test', status: 'completed', createdAt: '' };
         vi.mocked(mockApiClient.waitForTaskResultById).mockResolvedValueOnce(taskResult);

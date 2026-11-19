@@ -31,9 +31,9 @@ afterEach(async () => {
 describe('task route integration', () => {
     const authHeader = { Authorization: 'Bearer valid-token' };
 
-    describe('POST /v1/getTaskResult', () => {
+    describe('POST /v3/getTaskResult', () => {
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getTaskResult`, {
+            const response = await fetch(`${baseUrl}/v3/getTaskResult`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ taskId: 'task-1' }),
@@ -42,7 +42,7 @@ describe('task route integration', () => {
         });
 
         it('returns 400 when taskId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/getTaskResult`, {
+            const response = await fetch(`${baseUrl}/v3/getTaskResult`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),

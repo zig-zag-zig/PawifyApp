@@ -1,13 +1,21 @@
-import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
+import type { ReleaseGroup, ReleaseGroupReleaseListItem } from '@pawify/shared';
 import type { ReleaseReadUseCaseDependencies } from '../ports.js';
-import type { ReleaseGroupReleasesPageEntry } from '../../../utils/types/taskTypes.js';
 
-type GetReleaseGroupReleasesResult = {
+export type GetReleaseGroupReleasesResult = {
+    releaseGroup: ReleaseGroup;
     releases: ReleaseGroupReleaseListItem[];
+    releaseCount: number;
     releaseCoverTaskId: string | null;
     releaseCovers: Record<string, string | null>;
-};
+} | null;
 
+/**
+ * Release-group screen data from one local snapshot.
+ *
+ * The group identity and edition list are read together, and cover inputs are
+ * constructed once from the actual result. There is no upstream page callback to
+ * accumulate: the mirror answers the whole group.
+ */
 export const createGetReleaseGroupReleasesUseCase =
     ({
         releaseCatalogGateway,
@@ -21,31 +29,22 @@ export const createGetReleaseGroupReleasesUseCase =
     async (userId: string, releaseGroupId: string): Promise<GetReleaseGroupReleasesResult> => {
         const payload = await requestDeduper.run(
             `getReleaseGroupReleases:${userId}:${releaseGroupId}`,
-            async () => {
-                const coverPageEntries: ReleaseGroupReleasesPageEntry[] = [];
-
-                const releases = await releaseCatalogGateway.getReleaseGroupReleases(
-                    releaseGroupId,
-                    undefined,
-                    async (groupId, releaseIds) => {
-                        coverPageEntries.push({
-                            releaseGroupId: groupId,
-                            releaseIds,
-                        });
-                    },
-                );
-
-                return {
-                    releases,
-                    coverPageEntries,
-                };
-            },
+            async () => await releaseCatalogGateway.getReleaseGroupReleases(releaseGroupId),
         );
+
+        if (!payload) {
+            return null;
+        }
 
         const plan = await assetPlanner.planReleaseGroupReleaseCovers({
             userId,
             releaseGroupId,
-            pageEntries: payload.coverPageEntries,
+            pageEntries: [
+                {
+                    releaseGroupId,
+                    releaseIds: payload.releases.map((release) => release.id),
+                },
+            ],
             ttl: undefined,
         });
 
@@ -54,7 +53,9 @@ export const createGetReleaseGroupReleasesUseCase =
         }
 
         return {
+            releaseGroup: payload.releaseGroup,
             releases: payload.releases,
+            releaseCount: payload.releaseCount,
             releaseCovers: plan.resolved,
             releaseCoverTaskId: plan.taskId,
         };

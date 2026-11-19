@@ -5,22 +5,7 @@ import { createVerifyReleaseExistenceUseCase } from '../src/features/releases/us
 import type { ReleaseWriteUseCaseDependencies } from '../src/features/releases/ports.js';
 
 const createDependencies = (exists: boolean) => {
-    const cleanupCalls: string[] = [];
-    const notificationCalls: string[] = [];
-
-    const dependencies: Pick<
-        ReleaseWriteUseCaseDependencies,
-        'missingReleaseCleanupRepository' | 'releaseCatalogGateway' | 'releaseNotifier'
-    > = {
-        missingReleaseCleanupRepository: {
-            async removeMissingRelease(releaseId) {
-                cleanupCalls.push(releaseId);
-                return {
-                    affectedUserIds: ['user-1', 'user-2'],
-                    removedFromNewReleasesUserIds: ['user-2', 'user-3'],
-                };
-            },
-        },
+    const dependency: Pick<ReleaseWriteUseCaseDependencies, 'releaseCatalogGateway'> = {
         releaseCatalogGateway: {
             getArtistReleasesPage: async () => ({
                 releaseGroups: [],
@@ -36,47 +21,23 @@ const createDependencies = (exists: boolean) => {
             async getRelease() {
                 throw new Error('getRelease should not run');
             },
-            async getReleaseTracks() {
-                throw new Error('getReleaseTracks should not run');
-            },
             async releaseExists() {
                 return exists;
             },
         },
-        releaseNotifier: {
-            async notifyReleasesChanged(userId) {
-                notificationCalls.push(userId);
-            },
-        },
     };
 
-    return {
-        cleanupCalls,
-        dependencies,
-        notificationCalls,
-    };
+    return dependency;
 };
 
 describe('verify release existence use case', () => {
-    it('returns true without cleanup when MusicBrainz still has the release', async () => {
-        const state = createDependencies(true);
-        const useCase = createVerifyReleaseExistenceUseCase(state.dependencies);
-
-        const result = await useCase('request-user', 'release-1');
-
-        assert.deepEqual(result, { exists: true });
-        assert.deepEqual(state.cleanupCalls, []);
-        assert.deepEqual(state.notificationCalls, []);
+    it('returns true from the local mirror', async () => {
+        const useCase = createVerifyReleaseExistenceUseCase(createDependencies(true));
+        assert.deepEqual(await useCase('request-user', 'release-1'), { exists: true });
     });
 
-    it('removes confirmed-missing releases and notifies users with new-release changes', async () => {
-        const state = createDependencies(false);
-        const useCase = createVerifyReleaseExistenceUseCase(state.dependencies);
-
-        const result = await useCase('request-user', 'release-1');
-
-        assert.deepEqual(result, { exists: false });
-        assert.deepEqual(state.cleanupCalls, ['release-1']);
-        assert.deepEqual(state.notificationCalls, ['user-2', 'user-3']);
+    it('reports a local miss without destructive global cleanup', async () => {
+        const useCase = createVerifyReleaseExistenceUseCase(createDependencies(false));
+        assert.deepEqual(await useCase('request-user', 'release-1'), { exists: false });
     });
 });

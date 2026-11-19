@@ -22,10 +22,12 @@ services:
             # Local mirror so dev behaves like prod (writable: SQLite WAL needs the
             # -shm/-wal side files).
             - ${PAWIFY_MUSIC_DB_DIR:-/var/tmp/mbforge}:/var/pawify/music
+            - ${PAWIFY_LYRICS_DB_DIR:-/var/tmp/pawify-lyrics}:/var/pawify/lyrics
         environment:
             NODE_ENV: development
             PORT: 10000
             MUSIC_DB_PATH: ${MUSIC_DB_PATH:-/var/pawify/music/fts-test.db}
+            LYRICS_DB_PATH: ${LYRICS_DB_PATH:-/var/pawify/lyrics/lyrics.db}
         depends_on:
             pawify-dapr:
                 condition: service_started

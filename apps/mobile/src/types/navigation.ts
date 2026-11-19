@@ -1,6 +1,5 @@
 import { StackNavigationProp } from "@react-navigation/stack";
 import type { NavigatorScreenParams } from "@react-navigation/native";
-import { ReleaseGroupReleaseListItem } from "@pawify/shared";
 
 export type HomeTabParamList = {
     Search: undefined;
@@ -21,14 +20,7 @@ export type RootStackParamList = {
     Releases: undefined;
     Artist: { artistId: string };
     Release: { releaseId: string };
-    ReleaseGroup: {
-        releaseGroupId?: string;
-        // Optional so the screen can be deep-linked by id alone; when absent
-        // the page fetches the release list itself.
-        releases?: ReleaseGroupReleaseListItem[];
-        initialReleaseCoverTaskId?: string | null;
-        initialReleaseCovers?: Record<string, string | null>;
-    };
+    ReleaseGroup: { releaseGroupId: string };
     Auth: undefined;
     Home: NavigatorScreenParams<HomeTabParamList> | undefined;
 };

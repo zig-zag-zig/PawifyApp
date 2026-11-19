@@ -10,7 +10,6 @@ const ReleasePage = () => {
             state={releasePage.state}
             onSongPressed={releasePage.onSongPressed}
             onLyricsOpened={releasePage.onLyricsOpened}
-            onRetryTracks={releasePage.onRetryTracks}
         />
     );
 };

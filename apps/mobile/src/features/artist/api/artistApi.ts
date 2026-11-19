@@ -1,11 +1,7 @@
 import { useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useApiClient } from '../../../hooks/useApiClient';
-import type {
-    ArtistDetailsResponse,
-    ArtistReleasesResponse,
-    ReleaseGroupReleasesResponse,
-} from '../../../types/apiTypes';
+import type { ArtistDetailsResponse, ArtistReleasesResponse } from '../../../types/apiTypes';
 
 export function useArtistApi() {
     const { getAccessToken } = useAuth();
@@ -37,10 +33,6 @@ export function useArtistApi() {
                         ...(options?.limit ? { limit: options.limit } : {}),
                         ...(options?.cursor ? { cursor: options.cursor } : {}),
                     },
-                }),
-            getReleaseGroupReleases: async (releaseGroupId: string) =>
-                await apiClient.request<ReleaseGroupReleasesResponse>('getReleaseGroupReleases', {
-                    body: { releaseGroupId },
                 }),
             waitForTaskResultById: apiClient.waitForTaskResultById,
         };

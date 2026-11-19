@@ -17,7 +17,6 @@ export interface ArtistPageState {
     loadedItemsByType: Record<string, number>;
     isLoadingArtist: boolean;
     isLoadingReleases: boolean;
-    isLoadingReleaseGroup: boolean;
     isLoadingMoreReleases: boolean;
     isFollowLoading: boolean;
     error: string | null;
@@ -60,7 +59,6 @@ export interface ArtistPageUiState {
     isFollowDisabled: boolean;
     isLoadingArtist: boolean;
     isLoadingReleases: boolean;
-    isLoadingReleaseGroup: boolean;
     isFollowLoading: boolean;
     allReleaseGroups: ArtistReleaseGroup[];
     releaseGroupCovers: Record<string, string | null | undefined>;

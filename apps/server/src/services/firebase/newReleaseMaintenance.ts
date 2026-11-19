@@ -45,7 +45,7 @@ export const removePrunedNewReleaseGroups = async (
     if (legacyReleaseIds.length > 0) {
         try {
             releaseToGroupId =
-                getReleaseToGroupIdMapFromMirror(legacyReleaseIds) ?? releaseToGroupId;
+                getReleaseToGroupIdMapFromMirror(legacyReleaseIds);
         } catch {
             // Mirror unavailable: leave legacy entries rather than guessing.
         }
