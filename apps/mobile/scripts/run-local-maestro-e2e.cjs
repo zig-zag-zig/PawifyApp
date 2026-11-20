@@ -1,22 +1,32 @@
 #!/usr/bin/env node
 
-const http = require('http');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { generateKeyPairSync } = require('crypto');
-const { spawn, spawnSync } = require('child_process');
-const { startDaprFixtureServer } = require('../tests/e2e/daprFixtureServer.cjs');
+const http = require("http");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { generateKeyPairSync } = require("crypto");
+const { spawn, spawnSync } = require("child_process");
+const {
+  startDaprFixtureServer,
+} = require("../tests/e2e/daprFixtureServer.cjs");
+const {
+  createE2EServerState,
+  cleanE2EServerState,
+} = require("../tests/e2e/serverStateFixture.cjs");
 
-const appRoot = path.resolve(__dirname, '..');
-const backendRoot = path.resolve(appRoot, '..', 'server');
+const appRoot = path.resolve(__dirname, "..");
+const backendRoot = path.resolve(appRoot, "..", "server");
 const backendPort = Number(process.env.PAWIFY_E2E_BACKEND_PORT || 10001);
-const firebaseProject = process.env.PAWIFY_E2E_FIREBASE_PROJECT || 'demo-pawify-e2e';
-const firebaseAuthHost = process.env.PAWIFY_E2E_FIREBASE_AUTH_HOST || '127.0.0.1:9199';
-const firestoreHost = process.env.PAWIFY_E2E_FIRESTORE_HOST || '127.0.0.1:8180';
-const firebaseDatabaseHost = process.env.PAWIFY_E2E_FIREBASE_DATABASE_HOST || '127.0.0.1:9100';
-const firebaseHubHost = process.env.PAWIFY_E2E_FIREBASE_HUB_HOST || '127.0.0.1:4402';
-const insideEmulators = process.argv.includes('--inside-emulators');
+const firebaseProject =
+  process.env.PAWIFY_E2E_FIREBASE_PROJECT || "demo-pawify-e2e";
+const firebaseAuthHost =
+  process.env.PAWIFY_E2E_FIREBASE_AUTH_HOST || "127.0.0.1:9199";
+const firestoreHost = process.env.PAWIFY_E2E_FIRESTORE_HOST || "127.0.0.1:8180";
+const firebaseDatabaseHost =
+  process.env.PAWIFY_E2E_FIREBASE_DATABASE_HOST || "127.0.0.1:9100";
+const firebaseHubHost =
+  process.env.PAWIFY_E2E_FIREBASE_HUB_HOST || "127.0.0.1:4402";
+const insideEmulators = process.argv.includes("--inside-emulators");
 
 class CommandError extends Error {
   constructor(message, exitCode = 1) {
@@ -34,12 +44,12 @@ function getArgValue(name) {
 }
 
 function getMaestroTarget() {
-  const explicitFlow = getArgValue('--flow');
+  const explicitFlow = getArgValue("--flow");
   if (explicitFlow) {
     return explicitFlow;
   }
 
-  return process.argv.includes('--smoke') ? '.maestro/smoke.yaml' : '.maestro';
+  return process.argv.includes("--smoke") ? ".maestro/smoke.yaml" : ".maestro";
 }
 
 const maestroTarget = getMaestroTarget();
@@ -57,7 +67,12 @@ function parseEmulatorHost(value, label) {
     throw new CommandError(`[e2e] ${label} must be host:port`);
   }
 
-  if (parsed.protocol !== 'http:' || !parsed.hostname || !parsed.port || parsed.pathname !== '/') {
+  if (
+    parsed.protocol !== "http:" ||
+    !parsed.hostname ||
+    !parsed.port ||
+    parsed.pathname !== "/"
+  ) {
     throw new CommandError(`[e2e] ${label} must be host:port`);
   }
 
@@ -68,14 +83,22 @@ function parseEmulatorHost(value, label) {
 }
 
 function createFirebaseEmulatorConfig() {
-  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-e2e-firebase-'));
-  const configPath = path.join(configDir, 'firebase.json');
+  const configDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pawify-e2e-firebase-"),
+  );
+  const configPath = path.join(configDir, "firebase.json");
   const config = {
     emulators: {
-      auth: parseEmulatorHost(firebaseAuthHost, 'PAWIFY_E2E_FIREBASE_AUTH_HOST'),
-      firestore: parseEmulatorHost(firestoreHost, 'PAWIFY_E2E_FIRESTORE_HOST'),
-      database: parseEmulatorHost(firebaseDatabaseHost, 'PAWIFY_E2E_FIREBASE_DATABASE_HOST'),
-      hub: parseEmulatorHost(firebaseHubHost, 'PAWIFY_E2E_FIREBASE_HUB_HOST'),
+      auth: parseEmulatorHost(
+        firebaseAuthHost,
+        "PAWIFY_E2E_FIREBASE_AUTH_HOST",
+      ),
+      firestore: parseEmulatorHost(firestoreHost, "PAWIFY_E2E_FIRESTORE_HOST"),
+      database: parseEmulatorHost(
+        firebaseDatabaseHost,
+        "PAWIFY_E2E_FIREBASE_DATABASE_HOST",
+      ),
+      hub: parseEmulatorHost(firebaseHubHost, "PAWIFY_E2E_FIREBASE_HUB_HOST"),
     },
   };
 
@@ -84,7 +107,7 @@ function createFirebaseEmulatorConfig() {
 }
 
 function createE2EFirebaseServiceAccountJson() {
-  const { privateKey } = generateKeyPairSync('rsa', {
+  const { privateKey } = generateKeyPairSync("rsa", {
     modulusLength: 2048,
   });
 
@@ -92,32 +115,48 @@ function createE2EFirebaseServiceAccountJson() {
     project_id: firebaseProject,
     client_email: `firebase-adminsdk-e2e@${firebaseProject}.iam.gserviceaccount.com`,
     private_key: privateKey.export({
-      type: 'pkcs8',
-      format: 'pem',
+      type: "pkcs8",
+      format: "pem",
     }),
   });
 }
 
 const backendEnv = {
   ...process.env,
-  E2E_EMAIL: process.env.E2E_EMAIL || `pawify-e2e-${Date.now().toString(36)}@example.test`,
-  E2E_MUSIC_EMAIL: process.env.E2E_MUSIC_EMAIL || `pawify-e2e-music-${Date.now().toString(36)}@example.test`,
-  E2E_NOTIFICATION_EMAIL: process.env.E2E_NOTIFICATION_EMAIL || `pawify-e2e-notification-${Date.now().toString(36)}@example.test`,
-  E2E_FEATURE_SEARCH_EMAIL: process.env.E2E_FEATURE_SEARCH_EMAIL || `pawify-e2e-search-${Date.now().toString(36)}@example.test`,
-  E2E_FEATURE_RELATED_EMAIL: process.env.E2E_FEATURE_RELATED_EMAIL || `pawify-e2e-related-${Date.now().toString(36)}@example.test`,
-  E2E_FEATURE_DEEPLINK_EMAIL: process.env.E2E_FEATURE_DEEPLINK_EMAIL || `pawify-e2e-deeplink-${Date.now().toString(36)}@example.test`,
-  E2E_FEATURE_LISTEN_EMAIL: process.env.E2E_FEATURE_LISTEN_EMAIL || `pawify-e2e-listen-${Date.now().toString(36)}@example.test`,
-  APP_ENV: 'e2e-test',
-  NODE_ENV: 'development',
-  DEBUG: '',
+  E2E_EMAIL:
+    process.env.E2E_EMAIL ||
+    `pawify-e2e-${Date.now().toString(36)}@example.test`,
+  E2E_MUSIC_EMAIL:
+    process.env.E2E_MUSIC_EMAIL ||
+    `pawify-e2e-music-${Date.now().toString(36)}@example.test`,
+  E2E_NOTIFICATION_EMAIL:
+    process.env.E2E_NOTIFICATION_EMAIL ||
+    `pawify-e2e-notification-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_SEARCH_EMAIL:
+    process.env.E2E_FEATURE_SEARCH_EMAIL ||
+    `pawify-e2e-search-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_RELATED_EMAIL:
+    process.env.E2E_FEATURE_RELATED_EMAIL ||
+    `pawify-e2e-related-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_DEEPLINK_EMAIL:
+    process.env.E2E_FEATURE_DEEPLINK_EMAIL ||
+    `pawify-e2e-deeplink-${Date.now().toString(36)}@example.test`,
+  E2E_FEATURE_LISTEN_EMAIL:
+    process.env.E2E_FEATURE_LISTEN_EMAIL ||
+    `pawify-e2e-listen-${Date.now().toString(36)}@example.test`,
+  APP_ENV: "e2e-test",
+  NODE_ENV: "development",
+  DEBUG: "",
   PORT: String(backendPort),
-  LOG_LEVEL: process.env.E2E_BACKEND_LOG_LEVEL || 'error',
-  SENTRY_ENABLED: 'false',
-  FIREBASE_USE_EMULATOR: 'true',
+  LOG_LEVEL: process.env.E2E_BACKEND_LOG_LEVEL || "error",
+  SENTRY_ENABLED: "false",
+  FIREBASE_USE_EMULATOR: "true",
   FIREBASE_PROJECT_ID: firebaseProject,
   GCLOUD_PROJECT: firebaseProject,
   FIREBASE_DATABASE_URL: `https://${firebaseProject}-default-rtdb.firebaseio.com`,
-  FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || createE2EFirebaseServiceAccountJson(),
+  FIREBASE_SERVICE_ACCOUNT_JSON:
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+    createE2EFirebaseServiceAccountJson(),
   FIREBASE_AUTH_EMULATOR_HOST: firebaseAuthHost,
   FIRESTORE_EMULATOR_HOST: firestoreHost,
   FIREBASE_DATABASE_EMULATOR_HOST: firebaseDatabaseHost,
@@ -125,7 +164,7 @@ const backendEnv = {
 
 function readBackendScripts() {
   try {
-    return require(path.join(backendRoot, 'package.json')).scripts ?? {};
+    return require(path.join(backendRoot, "package.json")).scripts ?? {};
   } catch {
     return {};
   }
@@ -133,28 +172,33 @@ function readBackendScripts() {
 
 function getBackendBuildScript() {
   const scripts = readBackendScripts();
-  if (scripts['build:unchecked']) {
-    return 'build:unchecked';
+  if (scripts["build:unchecked"]) {
+    return "build:unchecked";
   }
   if (scripts.build) {
-    return 'build';
+    return "build";
   }
 
-  throw new CommandError('[e2e] Pawify backend is missing an npm build script');
+  throw new CommandError("[e2e] Pawify backend is missing an npm build script");
 }
 
 function runSync(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? appRoot,
     env: options.env ?? process.env,
-    stdio: options.stdio ?? 'inherit',
+    stdio: options.stdio ?? "inherit",
   });
 
   if (result.error) {
-    throw new CommandError(`[e2e] Failed to run ${command}: ${result.error.message}`);
+    throw new CommandError(
+      `[e2e] Failed to run ${command}: ${result.error.message}`,
+    );
   }
   if (result.status !== 0) {
-    throw new CommandError(`[e2e] ${command} exited with status ${result.status}`, result.status ?? 1);
+    throw new CommandError(
+      `[e2e] ${command} exited with status ${result.status}`,
+      result.status ?? 1,
+    );
   }
   return result;
 }
@@ -164,19 +208,28 @@ function runAsync(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: options.cwd ?? appRoot,
       env: options.env ?? process.env,
-      stdio: options.stdio ?? 'inherit',
+      stdio: options.stdio ?? "inherit",
     });
 
-    child.on('error', (error) => {
-      reject(new CommandError(`[e2e] Failed to run ${command}: ${error.message}`));
+    child.on("error", (error) => {
+      reject(
+        new CommandError(`[e2e] Failed to run ${command}: ${error.message}`),
+      );
     });
-    child.on('exit', (code, signal) => {
+    child.on("exit", (code, signal) => {
       if (signal) {
-        reject(new CommandError(`[e2e] ${command} exited with signal ${signal}`, 1));
+        reject(
+          new CommandError(`[e2e] ${command} exited with signal ${signal}`, 1),
+        );
         return;
       }
       if (code !== 0) {
-        reject(new CommandError(`[e2e] ${command} exited with status ${code}`, code ?? 1));
+        reject(
+          new CommandError(
+            `[e2e] ${command} exited with status ${code}`,
+            code ?? 1,
+          ),
+        );
         return;
       }
       resolve();
@@ -191,14 +244,18 @@ function waitForUrl(url, timeoutMs = 30000) {
     const attempt = () => {
       const request = http.get(url, (response) => {
         response.resume();
-        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+        if (
+          response.statusCode &&
+          response.statusCode >= 200 &&
+          response.statusCode < 300
+        ) {
           resolve();
           return;
         }
         retry();
       });
 
-      request.on('error', retry);
+      request.on("error", retry);
       request.setTimeout(1000, () => {
         request.destroy();
         retry();
@@ -222,29 +279,37 @@ function waitForUrlOrChildExit(url, child, childLabel, timeoutMs = 30000) {
 
   return new Promise((resolve, reject) => {
     if (child.exitCode !== null) {
-      reject(new CommandError(
-        `[e2e] ${childLabel} exited with code ${child.exitCode} before health check started`
-      ));
+      reject(
+        new CommandError(
+          `[e2e] ${childLabel} exited with code ${child.exitCode} before health check started`,
+        ),
+      );
       return;
     }
     if (child.signalCode !== null) {
-      reject(new CommandError(
-        `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check started`
-      ));
+      reject(
+        new CommandError(
+          `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check started`,
+        ),
+      );
       return;
     }
 
     const attempt = () => {
       const request = http.get(url, (response) => {
         response.resume();
-        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+        if (
+          response.statusCode &&
+          response.statusCode >= 200 &&
+          response.statusCode < 300
+        ) {
           resolve();
           return;
         }
         retry();
       });
 
-      request.on('error', retry);
+      request.on("error", retry);
       request.setTimeout(1000, () => {
         request.destroy();
         retry();
@@ -253,15 +318,19 @@ function waitForUrlOrChildExit(url, child, childLabel, timeoutMs = 30000) {
 
     const retry = () => {
       if (child.exitCode !== null) {
-        reject(new CommandError(
-          `[e2e] ${childLabel} exited with code ${child.exitCode} before health check succeeded`
-        ));
+        reject(
+          new CommandError(
+            `[e2e] ${childLabel} exited with code ${child.exitCode} before health check succeeded`,
+          ),
+        );
         return;
       }
       if (child.signalCode !== null) {
-        reject(new CommandError(
-          `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check succeeded`
-        ));
+        reject(
+          new CommandError(
+            `[e2e] ${childLabel} was killed (signal ${child.signalCode}) before health check succeeded`,
+          ),
+        );
         return;
       }
 
@@ -295,29 +364,37 @@ function stopChild(child, label) {
 
     const killTimer = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
-        console.warn(`[e2e] ${label} did not stop after SIGTERM; sending SIGKILL`);
-        child.kill('SIGKILL');
+        console.warn(
+          `[e2e] ${label} did not stop after SIGTERM; sending SIGKILL`,
+        );
+        child.kill("SIGKILL");
       }
     }, 5000);
 
-    child.once('exit', finish);
+    child.once("exit", finish);
     console.log(`[e2e] stopping ${label}`);
-    child.kill('SIGTERM');
+    child.kill("SIGTERM");
   });
 }
 
 async function runInsideEmulators() {
-  const daprFixtureServer = process.env.PAWIFY_E2E_USE_DAPR_FIXTURES === 'false'
-    ? null
-    : await startDaprFixtureServer({
-        useRealUpstreams: process.env.PAWIFY_E2E_REAL_UPSTREAMS === 'true',
-      });
+  const daprFixtureServer =
+    process.env.PAWIFY_E2E_USE_DAPR_FIXTURES === "false"
+      ? null
+      : await startDaprFixtureServer({
+          useRealUpstreams: process.env.PAWIFY_E2E_REAL_UPSTREAMS === "true",
+        });
 
-  if (daprFixtureServer && process.env.PAWIFY_E2E_REAL_UPSTREAMS === 'true') {
-    console.log('[e2e] Dapr fixtures proxying musicbrainz+coverartarchive to live upstreams');
+  if (daprFixtureServer && process.env.PAWIFY_E2E_REAL_UPSTREAMS === "true") {
+    console.log(
+      "[e2e] Dapr fixtures proxying musicbrainz+coverartarchive to live upstreams",
+    );
   }
+  const e2eServerState = createE2EServerState(backendRoot);
   const e2eBackendEnv = {
     ...backendEnv,
+    MUSIC_DB_PATH: e2eServerState.musicDbPath,
+    LYRICS_DB_PATH: e2eServerState.lyricsDbPath,
     ...(daprFixtureServer ? { DAPR_HTTP_ENDPOINT: daprFixtureServer.url } : {}),
   };
 
@@ -325,34 +402,49 @@ async function runInsideEmulators() {
     console.log(`[e2e] Dapr fixtures=${daprFixtureServer.url}`);
   }
 
-  runSync('npm', ['run', getBackendBuildScript()], { cwd: backendRoot, env: e2eBackendEnv });
-  const backend = spawn(process.execPath, ['--enable-source-maps', 'lib/index.js'], {
+  runSync("npm", ["run", getBackendBuildScript()], {
     cwd: backendRoot,
     env: e2eBackendEnv,
-    stdio: 'inherit',
   });
+  const backend = spawn(
+    process.execPath,
+    ["--enable-source-maps", "lib/index.js"],
+    {
+      cwd: backendRoot,
+      env: e2eBackendEnv,
+      stdio: "inherit",
+    },
+  );
 
-  const stopBackend = () => stopChild(backend, 'Pawify backend');
+  const stopBackend = () => stopChild(backend, "Pawify backend");
   const stopAndExit = (exitCode) => {
     stopBackend().finally(() => process.exit(exitCode));
   };
   const onSigint = () => stopAndExit(130);
   const onSigterm = () => stopAndExit(143);
 
-  process.once('SIGINT', onSigint);
-  process.once('SIGTERM', onSigterm);
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
 
   try {
-    await waitForUrlOrChildExit(`http://127.0.0.1:${backendPort}/health`, backend, 'Pawify backend');
-    await runAsync('node', ['scripts/run-maestro.cjs', maestroTarget], { cwd: appRoot, env: e2eBackendEnv });
+    await waitForUrlOrChildExit(
+      `http://127.0.0.1:${backendPort}/health`,
+      backend,
+      "Pawify backend",
+    );
+    await runAsync("node", ["scripts/run-maestro.cjs", maestroTarget], {
+      cwd: appRoot,
+      env: e2eBackendEnv,
+    });
   } finally {
-    process.off('SIGINT', onSigint);
-    process.off('SIGTERM', onSigterm);
+    process.off("SIGINT", onSigint);
+    process.off("SIGTERM", onSigterm);
     await stopBackend();
     if (daprFixtureServer) {
-      console.log('[e2e] stopping Dapr fixtures');
+      console.log("[e2e] stopping Dapr fixtures");
       await daprFixtureServer.close();
     }
+    cleanE2EServerState(e2eServerState);
   }
 }
 
@@ -363,30 +455,34 @@ function reportAndExit(error) {
 
 if (!insideEmulators) {
   const emulatorConfig = createFirebaseEmulatorConfig();
-  const commandArgs = [process.execPath, __filename, '--inside-emulators'];
-  if (process.argv.includes('--smoke')) {
-    commandArgs.push('--smoke');
+  const commandArgs = [process.execPath, __filename, "--inside-emulators"];
+  if (process.argv.includes("--smoke")) {
+    commandArgs.push("--smoke");
   }
-  const explicitFlow = getArgValue('--flow');
+  const explicitFlow = getArgValue("--flow");
   if (explicitFlow) {
-    commandArgs.push('--flow', explicitFlow);
+    commandArgs.push("--flow", explicitFlow);
   }
-  const command = commandArgs.map(arg => JSON.stringify(arg)).join(' ');
+  const command = commandArgs.map((arg) => JSON.stringify(arg)).join(" ");
 
   try {
-    runSync('npx', [
-      'firebase',
-      '--config',
-      emulatorConfig.configPath,
-      'emulators:exec',
-      '--project',
-      firebaseProject,
-      '--only',
-      'auth,firestore,database',
-      command,
-    ], {
-      env: backendEnv,
-    });
+    runSync(
+      "npx",
+      [
+        "firebase",
+        "--config",
+        emulatorConfig.configPath,
+        "emulators:exec",
+        "--project",
+        firebaseProject,
+        "--only",
+        "auth,firestore,database",
+        command,
+      ],
+      {
+        env: backendEnv,
+      },
+    );
   } catch (error) {
     reportAndExit(error);
   } finally {

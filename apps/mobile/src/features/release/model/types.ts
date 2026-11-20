@@ -1,74 +1,83 @@
-import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
-import type { Release, ReleaseGroupReleaseListItem, Track } from '@pawify/shared';
+import type { NewReleaseListItem } from "../state/NewReleaseFeedContext";
+import type {
+  Release,
+  ReleaseGroupReleaseListItem,
+  Track,
+} from "@pawify/shared";
 
 export interface ReleasesPageState {
-    page: number;
+  page: number;
 }
 
 export interface ReleasesPageUiState {
-    displayedReleases: NewReleaseListItem[];
-    allReleases: NewReleaseListItem[];
-    hasMore: boolean;
-    pendingReleaseCoverIds: string[];
-    isLoading: boolean;
-    hasLoadedOnce: boolean;
-    showBanner: boolean;
+  displayedReleases: NewReleaseListItem[];
+  allReleases: NewReleaseListItem[];
+  hasMore: boolean;
+  pendingReleaseCoverIds: string[];
+  isLoading: boolean;
+  hasLoadedOnce: boolean;
+  showBanner: boolean;
 }
 
 export interface ReleasePageState {
-    release: Release | null;
-    selectedSong: Track | null;
-    trackLyrics: Record<string, string | null | undefined>;
-    artistProfileImages: Record<string, string | null | undefined>;
-    pendingLyricTrackIds: string[];
-    pendingArtistImageIds: string[];
-    loadingLyrics: boolean;
-    releaseExists: boolean | null;
-    checkingExistence: boolean;
-    loadFailed: boolean;
+  release: Release | null;
+  selectedSong: Track | null;
+  trackLyrics: Record<string, string | null | undefined>;
+  artistProfileImages: Record<string, string | null | undefined>;
+  pendingLyricTrackIds: string[];
+  pendingArtistImageIds: string[];
+  loadingLyrics: boolean;
+  releaseExists: boolean | null;
+  checkingExistence: boolean;
+  loadFailed: boolean;
 }
 
 export interface ReleasePageUiState {
-    release: Release | null;
-    selectedSong: Track | null;
-    trackLyrics: Record<string, string | null | undefined>;
-    artistProfileImages: Record<string, string | null | undefined>;
-    pendingLyricTrackIds: string[];
-    pendingArtistImageIds: string[];
-    loadingLyrics: boolean;
-    releaseExists: boolean | null;
-    checkingExistence: boolean;
-    loadFailed: boolean;
+  release: Release | null;
+  selectedSong: Track | null;
+  trackLyrics: Record<string, string | null | undefined>;
+  artistProfileImages: Record<string, string | null | undefined>;
+  pendingLyricTrackIds: string[];
+  pendingArtistImageIds: string[];
+  loadingLyrics: boolean;
+  releaseExists: boolean | null;
+  checkingExistence: boolean;
+  loadFailed: boolean;
 }
 
 export interface ReleaseGroupPageUiState {
-    releaseGroupTitle: string | null;
-    releases: ReleaseGroupReleaseListItem[];
-    releaseCount: number;
-    releaseGroupReleaseCovers: Record<string, string | null | undefined>;
-    pendingReleaseCoverIds: string[];
-    isLoadingReleases: boolean;
-    releaseLoadFailed: boolean;
-    releaseGroupNotFound: boolean;
-    releaseGroupId: string | null;
+  releaseGroupTitle: string | null;
+  groupArtistCredit: import("@pawify/shared").ArtistCredit[];
+  releases: ReleaseGroupReleaseListItem[];
+  releaseCount: number;
+  releaseGroupReleaseCovers: Record<string, string | null | undefined>;
+  pendingReleaseCoverIds: string[];
+  isLoadingReleases: boolean;
+  releaseLoadFailed: boolean;
+  releaseGroupNotFound: boolean;
+  releaseGroupId: string | null;
 }
 
 export interface ReleasesPageController {
-    state: ReleasesPageUiState;
-    onLoadMore: () => void;
-    onRemoveSelected: (releaseIds: string[]) => void;
-    onReleasePressed: (release: NewReleaseListItem, isInSelectionMode: boolean, onSelect: () => void) => void;
-    onBannerVisibilityChanged: (visible: boolean) => void;
+  state: ReleasesPageUiState;
+  onLoadMore: () => void;
+  onRemoveSelected: (releaseIds: string[]) => void;
+  onReleasePressed: (
+    release: NewReleaseListItem,
+    isInSelectionMode: boolean,
+    onSelect: () => void,
+  ) => void;
+  onBannerVisibilityChanged: (visible: boolean) => void;
 }
 
 export interface ReleasePageController {
-    state: ReleasePageUiState;
-    onSongPressed: (track: Track) => void;
-    onLyricsOpened: (track: Track) => void;
+  state: ReleasePageUiState;
+  onSongPressed: (track: Track) => void;
+  onLyricsOpened: (track: Track) => void;
 }
 
 export interface ReleaseGroupPageController {
-    state: ReleaseGroupPageUiState;
-    onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
-    onRetryLoadReleases: () => void;
+  state: ReleaseGroupPageUiState;
+  onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
+  onRetryLoadReleases: () => void;
 }

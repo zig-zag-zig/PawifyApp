@@ -27,7 +27,7 @@ appId: vip.chi_chi.pawify
 - hideKeyboard
 - tapOn: "Sign Up"
 - extendedWaitUntil:
-    visible: "Search artists"
+    visible: "Search artists, releases, tracks"
     timeout: 30000
 
 # --- Deep link into a release group (warm) ---
@@ -42,7 +42,7 @@ appId: vip.chi_chi.pawify
 # Lands back on a tab, not a dead screen
 - extendedWaitUntil:
     visible:
-        text: "Search artists|No new releases|No favorite artists|Sign Out"
+        text: "Search artists, releases, tracks|No new releases|No favorite artists|Sign Out"
     timeout: 15000
 
 # --- Cold start: kill the app, then open the same deep link ---

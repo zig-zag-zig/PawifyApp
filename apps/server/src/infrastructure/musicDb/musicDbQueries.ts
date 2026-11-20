@@ -865,6 +865,43 @@ export const readReleaseArtists = (db: MusicDb, releaseId: string): ArtistCredit
         joinphrase: row.join_phrase.length > 0 ? row.join_phrase : null,
     }));
 
+/** Release artist credits for a batch of release ids. */
+export const readReleaseArtistsForReleases = (
+    db: MusicDb,
+    releaseIds: readonly string[],
+): Map<string, ArtistCredit[]> => {
+    const result = new Map<string, ArtistCredit[]>();
+    const unique = Array.from(new Set(releaseIds)).filter(Boolean);
+    if (unique.length === 0) return result;
+
+    const statement = db.prepare(
+        `SELECT r.mbid AS release_mbid, a.mbid AS artist_mbid, ra.artist_name, ra.join_phrase
+         FROM release_artists ra
+         JOIN artists a ON a.id = ra.artist_id
+         JOIN releases r ON r.id = ra.release_id
+         WHERE r.mbid = ?
+         ORDER BY ra.position`,
+    );
+    for (const releaseId of unique) {
+        const rows = statement.all(releaseId) as {
+            release_mbid: string;
+            artist_mbid: string;
+            artist_name: string;
+            join_phrase: string;
+        }[];
+        if (rows.length === 0) continue;
+        result.set(
+            releaseId,
+            rows.map((row) => ({
+                id: row.artist_mbid,
+                name: row.artist_name,
+                joinphrase: row.join_phrase.length > 0 ? row.join_phrase : null,
+            })),
+        );
+    }
+    return result;
+};
+
 export const readReleaseGroupArtists = (db: MusicDb, releaseGroupId: string): ArtistCredit[] =>
     (
         db

@@ -64,6 +64,8 @@ interface ReleaseBase {
 
 export interface ReleaseGroup extends ReleaseBase {
   "primary-type": string | null;
+  /** Main artist credits; present in v3 release-group payloads. */
+  "artist-credit"?: ArtistCredit[];
 }
 
 export interface NewRelease {
@@ -249,4 +251,6 @@ export type ReleaseGroupReleaseListItem = {
   country: string | null;
   /** MusicBrainz release status; Official is intentionally never displayed as a chip. */
   status: string | null;
+  /** Main artist credits when they differ from the group; optional for older payloads. */
+  artistCredit?: ArtistCredit[];
 };

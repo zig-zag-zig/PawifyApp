@@ -646,6 +646,9 @@ describe('musicDb repositories', () => {
                     formats: ['CD', 'DVD'],
                     country: 'US',
                     status: 'Official',
+                    artistCredit: [
+                        { id: ARTIST_ID, name: 'Lloyd Banks', joinphrase: null },
+                    ],
                 },
                 {
                     id: RELEASE_NEWER,
@@ -655,6 +658,9 @@ describe('musicDb repositories', () => {
                     formats: ['Digital Media'],
                     country: 'GB',
                     status: 'Official',
+                    artistCredit: [
+                        { id: ARTIST_ID, name: 'Lloyd Banks', joinphrase: null },
+                    ],
                 },
             ]);
         });
@@ -671,6 +677,9 @@ describe('musicDb repositories', () => {
                     formats: [],
                     country: 'US',
                     status: 'Bootleg',
+                    artistCredit: [
+                        { id: ARTIST_ID, name: 'Lloyd Banks', joinphrase: 'feat.' },
+                    ],
                 },
             ]);
         });

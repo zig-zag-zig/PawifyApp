@@ -40,6 +40,10 @@ vi.mock('../../../services/searchHistoryStorage', () => ({
     addSearchHistoryEntry: vi.fn(async () => {}),
 }));
 
+vi.mock('../../release/hooks/useReleaseGroupNavigation', () => ({
+    useReleaseGroupNavigation: () => ({ openReleaseGroup: vi.fn(async () => {}) }),
+}));
+
 
 const TOTAL_ARTISTS = 296;
 const TOTAL_GROUPS = 240;

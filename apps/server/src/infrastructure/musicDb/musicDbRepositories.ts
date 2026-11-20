@@ -58,6 +58,7 @@ import {
     readRecordingLyricsForRecordings,
     readProviderUrlsForReleases,
     readReleaseExists,
+    readReleaseArtistsForReleases,
     readReleaseGroupArtists,
     readReleaseGroupExists,
     readReleaseGroupReleases,
@@ -92,19 +93,24 @@ const linksFromRows = (rows: ExternalLinkRow[]) =>
  */
 export const buildReleaseGroupReleaseListItems = (
     rows: readonly ReleaseGroupReleaseRow[],
+    artistsByRelease: Map<string, ArtistCredit[]> = new Map(),
 ): ReleaseGroupReleaseListItem[] =>
-    rows.map((row) => ({
-        id: row.mbid,
-        title: nameWithDisambiguation(row.disambiguation, row.title),
-        date: row.date,
-        trackCount: row.track_count,
-        formats: (row.formats ?? '')
-            .split(RELEASE_GROUP_FORMAT_SEPARATOR)
-            .map((format) => format.trim())
-            .filter((format, index, all) => format.length > 0 && all.indexOf(format) === index),
-        country: nullIfEmpty(row.country),
-        status: nullIfEmpty(row.status),
-    }));
+    rows.map((row) => {
+        const artistCredit = artistsByRelease.get(row.mbid) ?? [];
+        return {
+            id: row.mbid,
+            title: nameWithDisambiguation(row.disambiguation, row.title),
+            date: row.date,
+            trackCount: row.track_count,
+            formats: (row.formats ?? '')
+                .split(RELEASE_GROUP_FORMAT_SEPARATOR)
+                .map((format) => format.trim())
+                .filter((format, index, all) => format.length > 0 && all.indexOf(format) === index),
+            country: nullIfEmpty(row.country),
+            status: nullIfEmpty(row.status),
+            ...(artistCredit.length > 0 ? { artistCredit } : {}),
+        };
+    });
 
 /**
  * Folds one row-per-release-medium result into notification candidates.
@@ -460,7 +466,10 @@ export const getReleaseGroupReleasesFromMirror = (
         return readReleaseGroupExists(db, releaseGroupId) ? [] : null;
     }
 
-    return buildReleaseGroupReleaseListItems(rows);
+    return buildReleaseGroupReleaseListItems(
+        rows,
+        readReleaseArtistsForReleases(db, rows.map((row) => row.mbid)),
+    );
 };
 
 /**
@@ -704,9 +713,17 @@ export const getReleaseGroupFromMirror = (
         if (!groupRow) return null;
 
         const rows = readReleaseGroupReleases(db, releaseGroupId);
+        const groupArtists = readReleaseGroupArtists(db, releaseGroupId);
+        const releaseArtists = readReleaseArtistsForReleases(
+            db,
+            rows.map((row) => row.mbid),
+        );
         return {
-            releaseGroup: buildReleaseGroup(groupRow),
-            releases: buildReleaseGroupReleaseListItems(rows),
+            releaseGroup: {
+                ...buildReleaseGroup(groupRow),
+                ...(groupArtists.length > 0 ? { 'artist-credit': groupArtists } : {}),
+            },
+            releases: buildReleaseGroupReleaseListItems(rows, releaseArtists),
             releaseCount: rows.length,
         };
     })();
