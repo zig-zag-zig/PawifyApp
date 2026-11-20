@@ -25,7 +25,8 @@ appId: vip.chi_chi.pawify
 - extendedWaitUntil:
     visible: "Search artists, releases, tracks"
     timeout: 30000
-- tapOn: "Search artists, releases, tracks"
+- tapOn:
+    point: "50%,9%"        # focus the shared search field
 - inputText: "Aurora"
 - pressKey: Enter
 - extendedWaitUntil:
@@ -61,4 +62,9 @@ appId: vip.chi_chi.pawify
 - extendedWaitUntil:
     visible: "Signal Drift"
     timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Skyline Loop"
+    direction: DOWN
+    timeout: 15000
 - assertVisible: "Skyline Loop"

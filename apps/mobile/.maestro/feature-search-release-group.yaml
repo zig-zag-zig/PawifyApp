@@ -35,7 +35,8 @@ appId: vip.chi_chi.pawify
 - assertVisible: "Artists"
 - assertVisible: "Releases"
 - tapOn: "Releases"
-- tapOn: "Search releases"        # placeholder follows the active tab
+- tapOn:
+    point: "50%,9%"        # focus the shared search field
 - inputText: "midnight"
 - pressKey: Enter
 - extendedWaitUntil:
@@ -55,5 +56,5 @@ appId: vip.chi_chi.pawify
 - pressKey: Back
 # Back returns to the Releases tab, whose placeholder names that tab.
 - extendedWaitUntil:
-    visible: "Search releases"
+    visible: "Search artists, releases, tracks"
     timeout: 15000
