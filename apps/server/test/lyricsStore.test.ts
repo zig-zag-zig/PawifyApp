@@ -123,6 +123,85 @@ describe('persistent lyrics lookup state', () => {
         assert.deepEqual(calls, []);
     });
 
+    it('stores only host and path for a lyrics URL and expands it on read', async () => {
+        const { repo } = await loadModules();
+        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
+        const sourceUrl = 'https://genius.com/Artist-One-song-one-lyrics?utm_source=test#fragment';
+
+        repo.recordLyricsFound(request, sourceUrl, 'genius', {
+            geniusAttempted: true,
+            musicbrainzAttempted: false,
+        });
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        const db = openLyricsDb(lyricsPath);
+        const row = db
+            .prepare('SELECT resolved_url FROM lyrics_lookup_state WHERE lookup_key = ?')
+            .get(lookupKey) as { resolved_url: string };
+        db.close();
+
+        assert.equal(row.resolved_url, 'genius.com/Artist-One-song-one-lyrics');
+        assert.equal(
+            repo.readLyricsStates([request]).get(lookupKey)?.resolvedUrl,
+            'https://genius.com/Artist-One-song-one-lyrics',
+        );
+    });
+
+    it('applies the same compact storage to non-Genius fallback URLs', async () => {
+        const { repo } = await loadModules();
+        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
+        const fallbackRequest = { ...request, recordingId: 'recording-azlyrics' };
+        const sourceUrl = 'https://www.azlyrics.com/lyrics/artist/song.html?ref=1#top';
+
+        repo.recordLyricsFound(fallbackRequest, sourceUrl, 'musicbrainz', {
+            geniusAttempted: true,
+            musicbrainzAttempted: true,
+        });
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(fallbackRequest).lookupKey;
+        const db = openLyricsDb(lyricsPath);
+        const row = db
+            .prepare('SELECT resolved_url FROM lyrics_lookup_state WHERE lookup_key = ?')
+            .get(lookupKey) as { resolved_url: string };
+        db.close();
+
+        assert.equal(row.resolved_url, 'www.azlyrics.com/lyrics/artist/song.html');
+        assert.equal(
+            repo.readLyricsStates([fallbackRequest]).get(lookupKey)?.resolvedUrl,
+            'https://www.azlyrics.com/lyrics/artist/song.html',
+        );
+    });
+
+    it('keeps legacy full URLs readable without a migration', async () => {
+        const { repo } = await loadModules();
+        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
+        const legacyUrl = 'https://legacy.example/lyrics/song';
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        const db = openLyricsDb(lyricsPath);
+        db.prepare(
+            `INSERT INTO lyrics_lookup_state (
+                 lookup_key, recording_mbid, query_fingerprint, resolved_url, provider,
+                 outcome, checked_at, next_attempt_at, genius_attempted_at,
+                 musicbrainz_attempted_at
+             ) VALUES (?, ?, ?, ?, 'genius', 'found', ?, ?, ?, ?)`,
+        ).run(
+            lookupKey,
+            request.recordingId,
+            'legacy-fingerprint',
+            legacyUrl,
+            Date.now(),
+            Date.now() + 60_000,
+            Date.now(),
+            null,
+        );
+        db.close();
+
+        assert.equal(
+            repo.readLyricsStates([request]).get(lookupKey)?.resolvedUrl,
+            legacyUrl,
+        );
+    });
+
     it('returns a stored confirmed miss without provider calls', async () => {
         const { repo, resolver } = await loadModules();
         repo.recordLyricsConfirmedMiss(request, {
