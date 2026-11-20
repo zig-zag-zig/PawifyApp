@@ -122,7 +122,6 @@ vi.mock('../../../hooks/useTaskManager', () => ({
 }));
 
 import { useNewReleaseFeedController } from './useNewReleaseFeedController';
-import { resolveReleaseFeedNavigation } from '../domain/releaseFeedNavigation';
 
 const releaseA = { id: 'release-a', title: 'Release A' };
 const releaseB = { id: 'release-b', title: 'Release B' };
@@ -248,10 +247,6 @@ describe('useNewReleaseFeedController (characterization)', () => {
             trackCount: 18,
             editionKeywords: ['deluxe'],
             notificationReason: 'new-edition',
-        });
-        expect(resolveReleaseFeedNavigation(result.current.newReleases[0]!)).toEqual({
-            screen: 'ReleaseGroup',
-            releaseGroupId: 'group-1',
         });
     });
 

@@ -33,7 +33,7 @@ appId: vip.chi_chi.pawify
 - hideKeyboard
 - tapOn: "Sign Up"
 - extendedWaitUntil:
-    visible: "Search artists"
+    visible: "Search artists, releases, tracks"
     timeout: 30000
 
 # --- Foreground: tap a new-release notification -> release page -> back -> releases tab ---

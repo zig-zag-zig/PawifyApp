@@ -27,9 +27,10 @@ appId: vip.chi_chi.pawify
 - hideKeyboard
 - tapOn: "Sign Up"
 - extendedWaitUntil:
-    visible: "Search artists"
+    visible: "Search artists, releases, tracks"
     timeout: 30000
-- tapOn: "Search artists"
+- tapOn:
+    point: "50%,9%"        # focus the shared search field
 - inputText: "aurora"
 - pressKey: Enter
 - extendedWaitUntil:

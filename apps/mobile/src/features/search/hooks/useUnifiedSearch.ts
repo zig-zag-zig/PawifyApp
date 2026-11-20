@@ -1,296 +1,328 @@
-import { useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { useCache } from '../../../contexts/CacheContext';
-import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
+import { useNavigation } from "@react-navigation/native";
+import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCache } from "../../../contexts/CacheContext";
+import { resolveNullableTaskMap } from "../../../shared/taskResults/resolveNullableTaskMap";
 import {
-    extractArtistProfileImages,
-    extractReleaseGroupCovers,
-    extractReleaseGroupReleaseCovers,
-} from '../../../utils/taskResultMaps';
-import type { ArtistNavigationProp } from '../../../types/navigation';
-import { useSearchApi } from '../api/searchApi';
-import { addSearchHistoryEntry } from '../../../services/searchHistoryStorage';
-import type { UnifiedSearchResponse } from '../../../types/apiTypes';
-import { createInitialUnifiedSearchState, type UnifiedSearchState } from '../model/unifiedTypes';
+  extractArtistProfileImages,
+  extractReleaseGroupCovers,
+  extractReleaseGroupReleaseCovers,
+} from "../../../utils/taskResultMaps";
+import type { ArtistNavigationProp } from "../../../types/navigation";
+import { useSearchApi } from "../api/searchApi";
+import { useReleaseGroupNavigation } from "../../release/hooks/useReleaseGroupNavigation";
+import { addSearchHistoryEntry } from "../../../services/searchHistoryStorage";
+import type { UnifiedSearchResponse } from "../../../types/apiTypes";
 import {
-    LOCAL_PAGE_SIZE,
-    SERVER_PAGE_SIZE,
-    unifiedSearchReducer,
-    type SearchCategoryKind,
-} from '../state/unifiedSearchReducer';
+  createInitialUnifiedSearchState,
+  type UnifiedSearchState,
+} from "../model/unifiedTypes";
+import {
+  LOCAL_PAGE_SIZE,
+  SERVER_PAGE_SIZE,
+  unifiedSearchReducer,
+  type SearchCategoryKind,
+} from "../state/unifiedSearchReducer";
 
 const INITIAL_CATEGORY_ORDER: readonly SearchCategoryKind[] = [
-    'artists',
-    'releaseGroups',
-    'tracks',
+  "artists",
+  "releaseGroups",
+  "tracks",
 ];
 
 export type UnifiedSearchController = {
-    state: UnifiedSearchState;
-    searchSequence: number;
-    onQueryChanged: (query: string) => void;
-    onSubmitSearch: (query?: string) => Promise<void>;
-    onLoadMoreArtists: () => Promise<void>;
-    onLoadMoreReleaseGroups: () => Promise<void>;
-    onLoadMoreTracks: () => Promise<void>;
-    onArtistPressed: (id: string) => void;
-    onReleaseGroupPressed: (id: string) => void;
-    onTrackPressed: (releaseId: string) => void;
+  state: UnifiedSearchState;
+  searchSequence: number;
+  onQueryChanged: (query: string) => void;
+  onSubmitSearch: (query?: string) => Promise<void>;
+  onLoadMoreArtists: () => Promise<void>;
+  onLoadMoreReleaseGroups: () => Promise<void>;
+  onLoadMoreTracks: () => Promise<void>;
+  onArtistPressed: (id: string) => void;
+  onReleaseGroupPressed: (id: string) => void;
+  onTrackPressed: (releaseId: string) => void;
 };
 
 export const useUnifiedSearch = (): UnifiedSearchController => {
-    const navigation = useNavigation<ArtistNavigationProp>();
-    const { searchAll, waitForTaskResultById } = useSearchApi();
-    const {
-        artistProfileImages,
-        setArtistProfileImages,
-        releaseGroupCovers,
-        setReleaseGroupCovers,
-    } = useCache();
-    const [state, dispatch] = useReducer(
-        unifiedSearchReducer,
-        undefined,
-        createInitialUnifiedSearchState,
-    );
-    const inFlightByKind = useRef<Record<SearchCategoryKind, boolean>>({
-        artists: false,
-        releaseGroups: false,
-        tracks: false,
-    });
-    const controllers = useRef<Record<SearchCategoryKind, AbortController | null>>({
-        artists: null,
-        releaseGroups: null,
-        tracks: null,
-    });
-    const searchSeqRef = useRef(0);
+  const navigation = useNavigation<ArtistNavigationProp>();
+  const { searchAll, waitForTaskResultById } = useSearchApi();
+  const { openReleaseGroup } = useReleaseGroupNavigation();
+  const {
+    artistProfileImages,
+    setArtistProfileImages,
+    releaseGroupCovers,
+    setReleaseGroupCovers,
+  } = useCache();
+  const [state, dispatch] = useReducer(
+    unifiedSearchReducer,
+    undefined,
+    createInitialUnifiedSearchState,
+  );
+  const inFlightByKind = useRef<Record<SearchCategoryKind, boolean>>({
+    artists: false,
+    releaseGroups: false,
+    tracks: false,
+  });
+  const controllers = useRef<
+    Record<SearchCategoryKind, AbortController | null>
+  >({
+    artists: null,
+    releaseGroups: null,
+    tracks: null,
+  });
+  const searchSeqRef = useRef(0);
 
-    const abortAll = useCallback(() => {
-        for (const kind of INITIAL_CATEGORY_ORDER) {
-            controllers.current[kind]?.abort();
-            controllers.current[kind] = null;
+  const abortAll = useCallback(() => {
+    for (const kind of INITIAL_CATEGORY_ORDER) {
+      controllers.current[kind]?.abort();
+      controllers.current[kind] = null;
+    }
+  }, []);
+
+  useEffect(() => abortAll, [abortAll]);
+
+  const resolveTasks = useCallback(
+    async (
+      result: UnifiedSearchResponse,
+      kind: SearchCategoryKind,
+      expectedSeq: number,
+    ) => {
+      if (kind === "artists" && result.artistProfileImageTaskId) {
+        void resolveNullableTaskMap({
+          taskId: result.artistProfileImageTaskId,
+          expectedIds: result.artists.map((artist) => artist.id),
+          waitForTaskResult: waitForTaskResultById,
+          extractMap: extractArtistProfileImages,
+          onResolvedValues: (values) => {
+            if (searchSeqRef.current !== expectedSeq) return;
+            setArtistProfileImages((previous) => ({ ...previous, ...values }));
+          },
+          onError: (error) =>
+            console.warn("unified-search: artist images failed", error),
+        });
+      }
+
+      if (kind === "releaseGroups" && result.releaseGroupCoverTaskId) {
+        void resolveNullableTaskMap({
+          taskId: result.releaseGroupCoverTaskId,
+          expectedIds: result.releaseGroups.map((group) => group.id),
+          waitForTaskResult: waitForTaskResultById,
+          extractMap: extractReleaseGroupCovers,
+          onResolvedValues: (values) => {
+            if (searchSeqRef.current !== expectedSeq) return;
+            setReleaseGroupCovers((previous) => ({ ...previous, ...values }));
+          },
+          onError: (error) =>
+            console.warn("unified-search: release covers failed", error),
+        });
+      }
+
+      if (kind === "tracks" && result.releaseCoverTaskId) {
+        void resolveNullableTaskMap({
+          taskId: result.releaseCoverTaskId,
+          expectedIds: result.recordings.flatMap((recording) =>
+            recording.release ? [recording.release.id] : [],
+          ),
+          waitForTaskResult: waitForTaskResultById,
+          extractMap: extractReleaseGroupReleaseCovers,
+          onResolvedValues: (values) => {
+            if (searchSeqRef.current !== expectedSeq) return;
+            dispatch({ type: "trackCoversResolved", covers: values });
+          },
+          onError: (error) =>
+            console.warn("unified-search: track covers failed", error),
+        });
+      }
+    },
+    [setArtistProfileImages, setReleaseGroupCovers, waitForTaskResultById],
+  );
+
+  const runCategory = useCallback(
+    async (
+      query: string,
+      kind: SearchCategoryKind,
+      offset: number,
+      expectedSeq: number,
+    ): Promise<void> => {
+      inFlightByKind.current[kind] = true;
+      controllers.current[kind]?.abort();
+      const controller = new AbortController();
+      controllers.current[kind] = controller;
+
+      try {
+        // Direct local request, not a persistent/replayable generic task.
+        // Cancellation plus the query generation make stale responses
+        // discardable without leaking busy state into the new query.
+        const result = await searchAll(
+          query,
+          SERVER_PAGE_SIZE,
+          offset,
+          kind,
+          controller.signal,
+        );
+        if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
+          return;
         }
-    }, []);
+        dispatch({ type: "succeeded", result, kind, offset });
+        void resolveTasks(result, kind, expectedSeq);
+      } catch (error) {
+        if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
+          return;
+        }
+        console.warn(`unified-search failed (${kind})`, error);
+        dispatch({ type: "failed", kind });
+      } finally {
+        if (controllers.current[kind] === controller) {
+          controllers.current[kind] = null;
+        }
+        if (searchSeqRef.current === expectedSeq) {
+          inFlightByKind.current[kind] = false;
+        }
+      }
+    },
+    [resolveTasks, searchAll],
+  );
 
-    useEffect(() => abortAll, [abortAll]);
+  const submitSearch = useCallback(
+    async (raw: string): Promise<void> => {
+      const query = raw.trim();
+      if (query.length < 2) {
+        return;
+      }
 
-    const resolveTasks = useCallback(
-        async (result: UnifiedSearchResponse, kind: SearchCategoryKind, expectedSeq: number) => {
-            if (kind === 'artists' && result.artistProfileImageTaskId) {
-                void resolveNullableTaskMap({
-                    taskId: result.artistProfileImageTaskId,
-                    expectedIds: result.artists.map((artist) => artist.id),
-                    waitForTaskResult: waitForTaskResultById,
-                    extractMap: extractArtistProfileImages,
-                    onResolvedValues: (values) => {
-                        if (searchSeqRef.current !== expectedSeq) return;
-                        setArtistProfileImages((previous) => ({ ...previous, ...values }));
-                    },
-                    onError: (error) =>
-                        console.warn('unified-search: artist images failed', error),
-                });
-            }
+      abortAll();
+      searchSeqRef.current += 1;
+      const seq = searchSeqRef.current;
+      inFlightByKind.current = {
+        artists: true,
+        releaseGroups: true,
+        tracks: true,
+      };
+      dispatch({ type: "started", query, kind: "initial", offset: 0 });
+      void addSearchHistoryEntry(query, "artists");
 
-            if (kind === 'releaseGroups' && result.releaseGroupCoverTaskId) {
-                void resolveNullableTaskMap({
-                    taskId: result.releaseGroupCoverTaskId,
-                    expectedIds: result.releaseGroups.map((group) => group.id),
-                    waitForTaskResult: waitForTaskResultById,
-                    extractMap: extractReleaseGroupCovers,
-                    onResolvedValues: (values) => {
-                        if (searchSeqRef.current !== expectedSeq) return;
-                        setReleaseGroupCovers((previous) => ({ ...previous, ...values }));
-                    },
-                    onError: (error) =>
-                        console.warn('unified-search: release covers failed', error),
-                });
-            }
+      // Launch in tie-break priority order (artists -> releaseGroups -> tracks).
+      // Each category dispatches independently as soon as its response arrives,
+      // so fast local SQLite categories render immediately without waiting on
+      // MusicBrainz track search.
+      await Promise.all(
+        INITIAL_CATEGORY_ORDER.map(
+          async (kind) => await runCategory(query, kind, 0, seq),
+        ),
+      );
+    },
+    [abortAll, runCategory],
+  );
 
-            if (kind === 'tracks' && result.releaseCoverTaskId) {
-                void resolveNullableTaskMap({
-                    taskId: result.releaseCoverTaskId,
-                    expectedIds: result.recordings.flatMap((recording) =>
-                        recording.release ? [recording.release.id] : [],
-                    ),
-                    waitForTaskResult: waitForTaskResultById,
-                    extractMap: extractReleaseGroupReleaseCovers,
-                    onResolvedValues: (values) => {
-                        if (searchSeqRef.current !== expectedSeq) return;
-                        dispatch({ type: 'trackCoversResolved', covers: values });
-                    },
-                    onError: (error) =>
-                        console.warn('unified-search: track covers failed', error),
-                });
-            }
-        },
-        [setArtistProfileImages, setReleaseGroupCovers, waitForTaskResultById],
-    );
+  const loadMoreCategory = useCallback(
+    async (kind: SearchCategoryKind): Promise<void> => {
+      const query = state.submittedQuery.trim();
+      if (query.length < 2 || inFlightByKind.current[kind]) {
+        return;
+      }
 
-    const runCategory = useCallback(
-        async (
-            query: string,
-            kind: SearchCategoryKind,
-            offset: number,
-            expectedSeq: number,
-        ): Promise<void> => {
-            inFlightByKind.current[kind] = true;
-            controllers.current[kind]?.abort();
-            const controller = new AbortController();
-            controllers.current[kind] = controller;
+      const offset =
+        kind === "artists"
+          ? state.artistOffset
+          : kind === "releaseGroups"
+            ? state.releaseGroupOffset
+            : state.trackOffset;
+      const seq = searchSeqRef.current;
+      dispatch({ type: "started", query, kind, offset });
+      await runCategory(query, kind, offset, seq);
+    },
+    [
+      runCategory,
+      state.artistOffset,
+      state.releaseGroupOffset,
+      state.submittedQuery,
+      state.trackOffset,
+    ],
+  );
 
-            try {
-                // Direct local request, not a persistent/replayable generic task.
-                // Cancellation plus the query generation make stale responses
-                // discardable without leaking busy state into the new query.
-                const result = await searchAll(
-                    query,
-                    SERVER_PAGE_SIZE,
-                    offset,
-                    kind,
-                    controller.signal,
-                );
-                if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
-                    return;
-                }
-                dispatch({ type: 'succeeded', result, kind, offset });
-                void resolveTasks(result, kind, expectedSeq);
-            } catch (error) {
-                if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
-                    return;
-                }
-                console.warn(`unified-search failed (${kind})`, error);
-                dispatch({ type: 'failed', kind });
-            } finally {
-                if (controllers.current[kind] === controller) {
-                    controllers.current[kind] = null;
-                }
-                if (searchSeqRef.current === expectedSeq) {
-                    inFlightByKind.current[kind] = false;
-                }
-            }
-        },
-        [resolveTasks, searchAll],
-    );
+  // Merge in the app-wide caches (background tasks write there) and recompute what is
+  // *still* pending from that merged view.
+  const mergedArtistImages = {
+    ...artistProfileImages,
+    ...state.artistProfileImages,
+  };
+  const mergedGroupCovers = {
+    ...releaseGroupCovers,
+    ...state.releaseGroupCovers,
+  };
 
-    const submitSearch = useCallback(
-        async (raw: string): Promise<void> => {
-            const query = raw.trim();
-            if (query.length < 2) {
-                return;
-            }
+  const stillPending = (
+    ids: string[],
+    values: Record<string, string | null | undefined>,
+  ) => ids.filter((id) => values[id] === undefined);
 
-            abortAll();
-            searchSeqRef.current += 1;
-            const seq = searchSeqRef.current;
-            inFlightByKind.current = {
-                artists: true,
-                releaseGroups: true,
-                tracks: true,
-            };
-            dispatch({ type: 'started', query, kind: 'initial', offset: 0 });
-            void addSearchHistoryEntry(query, 'artists');
-
-            // Launch in tie-break priority order (artists -> releaseGroups -> tracks).
-            // Each category dispatches independently as soon as its response arrives,
-            // so fast local SQLite categories render immediately without waiting on
-            // MusicBrainz track search.
-            await Promise.all(
-                INITIAL_CATEGORY_ORDER.map(
-                    async (kind) => await runCategory(query, kind, 0, seq),
-                ),
-            );
-        },
-        [abortAll, runCategory],
-    );
-
-    const loadMoreCategory = useCallback(
-        async (kind: SearchCategoryKind): Promise<void> => {
-            const query = state.submittedQuery.trim();
-            if (query.length < 2 || inFlightByKind.current[kind]) {
-                return;
-            }
-
-            const offset =
-                kind === 'artists'
-                    ? state.artistOffset
-                    : kind === 'releaseGroups'
-                      ? state.releaseGroupOffset
-                      : state.trackOffset;
-            const seq = searchSeqRef.current;
-            dispatch({ type: 'started', query, kind, offset });
-            await runCategory(query, kind, offset, seq);
-        },
-        [
-            runCategory,
-            state.artistOffset,
-            state.releaseGroupOffset,
-            state.submittedQuery,
-            state.trackOffset,
-        ],
-    );
-
-    // Merge in the app-wide caches (background tasks write there) and recompute what is
-    // *still* pending from that merged view.
-    const mergedArtistImages = { ...artistProfileImages, ...state.artistProfileImages };
-    const mergedGroupCovers = { ...releaseGroupCovers, ...state.releaseGroupCovers };
-
-    const stillPending = (ids: string[], values: Record<string, string | null | undefined>) =>
-        ids.filter((id) => values[id] === undefined);
-
-    return {
-        state: {
-            ...state,
-            artistProfileImages: mergedArtistImages,
-            releaseGroupCovers: mergedGroupCovers,
-            pendingArtistImageIds: stillPending(state.pendingArtistImageIds, mergedArtistImages),
-            pendingReleaseGroupCoverIds: stillPending(
-                state.pendingReleaseGroupCoverIds,
-                mergedGroupCovers,
-            ),
-            pendingTrackCoverIds: stillPending(state.pendingTrackCoverIds, state.trackCovers),
-        },
-        searchSequence: searchSeqRef.current,
-        onQueryChanged: (query) => {
-            if (query.trim() !== state.submittedQuery) {
-                abortAll();
-                searchSeqRef.current += 1;
-                inFlightByKind.current = {
-                    artists: false,
-                    releaseGroups: false,
-                    tracks: false,
-                };
-            }
-            dispatch({ type: 'queryChanged', query });
-        },
-        onSubmitSearch: async (query) => await submitSearch(query ?? state.query),
-        onLoadMoreArtists: async () => {
-            if (state.artistVisible < state.artists.length) {
-                dispatch({ type: 'revealed', kind: 'artists', count: LOCAL_PAGE_SIZE });
-                return;
-            }
-            if (!state.artistsAllFetched) {
-                await loadMoreCategory('artists');
-            }
-        },
-        onLoadMoreReleaseGroups: async () => {
-            if (state.releaseGroupVisible < state.releaseGroups.length) {
-                dispatch({ type: 'revealed', kind: 'releaseGroups', count: LOCAL_PAGE_SIZE });
-                return;
-            }
-            if (!state.releaseGroupsAllFetched) {
-                await loadMoreCategory('releaseGroups');
-            }
-        },
-        onLoadMoreTracks: async () => {
-            if (state.trackVisible < state.tracks.length) {
-                dispatch({ type: 'revealed', kind: 'tracks', count: LOCAL_PAGE_SIZE });
-                return;
-            }
-            if (!state.tracksAllFetched) {
-                await loadMoreCategory('tracks');
-            }
-        },
-        onArtistPressed: (id) => navigation.navigate('Artist', { artistId: id }),
-        onReleaseGroupPressed: (id) => navigation.navigate('ReleaseGroup', { releaseGroupId: id }),
-        onTrackPressed: (releaseId) => navigation.navigate('Release', { releaseId }),
-    };
+  return {
+    state: {
+      ...state,
+      artistProfileImages: mergedArtistImages,
+      releaseGroupCovers: mergedGroupCovers,
+      pendingArtistImageIds: stillPending(
+        state.pendingArtistImageIds,
+        mergedArtistImages,
+      ),
+      pendingReleaseGroupCoverIds: stillPending(
+        state.pendingReleaseGroupCoverIds,
+        mergedGroupCovers,
+      ),
+      pendingTrackCoverIds: stillPending(
+        state.pendingTrackCoverIds,
+        state.trackCovers,
+      ),
+    },
+    searchSequence: searchSeqRef.current,
+    onQueryChanged: (query) => {
+      if (query.trim() !== state.submittedQuery) {
+        abortAll();
+        searchSeqRef.current += 1;
+        inFlightByKind.current = {
+          artists: false,
+          releaseGroups: false,
+          tracks: false,
+        };
+      }
+      dispatch({ type: "queryChanged", query });
+    },
+    onSubmitSearch: async (query) => await submitSearch(query ?? state.query),
+    onLoadMoreArtists: async () => {
+      if (state.artistVisible < state.artists.length) {
+        dispatch({ type: "revealed", kind: "artists", count: LOCAL_PAGE_SIZE });
+        return;
+      }
+      if (!state.artistsAllFetched) {
+        await loadMoreCategory("artists");
+      }
+    },
+    onLoadMoreReleaseGroups: async () => {
+      if (state.releaseGroupVisible < state.releaseGroups.length) {
+        dispatch({
+          type: "revealed",
+          kind: "releaseGroups",
+          count: LOCAL_PAGE_SIZE,
+        });
+        return;
+      }
+      if (!state.releaseGroupsAllFetched) {
+        await loadMoreCategory("releaseGroups");
+      }
+    },
+    onLoadMoreTracks: async () => {
+      if (state.trackVisible < state.tracks.length) {
+        dispatch({ type: "revealed", kind: "tracks", count: LOCAL_PAGE_SIZE });
+        return;
+      }
+      if (!state.tracksAllFetched) {
+        await loadMoreCategory("tracks");
+      }
+    },
+    onArtistPressed: (id) => navigation.navigate("Artist", { artistId: id }),
+    onReleaseGroupPressed: (id) => {
+      void openReleaseGroup({ releaseGroupId: id });
+    },
+    onTrackPressed: (releaseId) =>
+      navigation.navigate("Release", { releaseId }),
+  };
 };
