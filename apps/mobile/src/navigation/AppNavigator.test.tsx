@@ -65,6 +65,7 @@ vi.mock('expo-linking', () => ({
 
 import { AppNavigator } from './AppNavigator';
 import {
+  finishReleaseNotificationNavigation,
   navigateToReleaseFromNotification,
   prepareReleaseNotificationNavigation,
 } from '../services/notifications/notificationNavigation';
@@ -98,13 +99,17 @@ describe('AppNavigator notification navigation spinner', () => {
     expect(latestSpinnerState()).toBe(false);
   });
 
-  it('does not activate the spinner for a digest notification', () => {
+  it('keeps the spinner active for a digest notification until the list is ready', () => {
     render(React.createElement(AppNavigator));
 
     act(() => {
       prepareReleaseNotificationNavigation('releases', undefined);
     });
+    expect(latestSpinnerState()).toBe(true);
 
+    act(() => {
+      finishReleaseNotificationNavigation();
+    });
     expect(latestSpinnerState()).toBe(false);
   });
 });

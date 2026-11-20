@@ -4,10 +4,19 @@ import type { NewReleaseListItem } from '../state/NewReleaseFeedContext';
 import { useScrollAnchorList } from '../../../hooks/useScrollAnchorList';
 import ReleasesView from '../components/ReleasesView';
 import { useReleasesPage } from '../hooks/useReleasesPage';
+import { useReleaseNotificationNavigationPending } from '../../../hooks/useReleaseNotificationNavigationPending';
+import { finishReleaseNotificationNavigation } from '../../../services/notifications/notificationNavigation';
 
 const ReleasesPage = () => {
     const releasesPage = useReleasesPage();
+    const isNotificationNavigationPending = useReleaseNotificationNavigationPending();
     const { flatListRef, selectionManagerRef } = useScrollAnchorList<NewReleaseListItem>();
+
+    React.useEffect(() => {
+        if (isNotificationNavigationPending && releasesPage.state.hasLoadedOnce) {
+            finishReleaseNotificationNavigation();
+        }
+    }, [isNotificationNavigationPending, releasesPage.state.hasLoadedOnce]);
 
     useFocusEffect(
         React.useCallback(() => {

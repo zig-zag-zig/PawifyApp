@@ -23,6 +23,15 @@ const setPendingReleaseNavigation = (isPending: boolean): void => {
 
 export const getPendingReleaseNavigation = (): boolean => pendingReleaseNavigation;
 
+/**
+ * Clears the notification-navigation spinner once the destination screen has
+ * content. Digest notifications land on the Releases tab, whose list may still
+ * be loading after the tab mounts.
+ */
+export const finishReleaseNotificationNavigation = (): void => {
+  setPendingReleaseNavigation(false);
+};
+
 export const subscribeToPendingReleaseNavigation = (
   listener: PendingNavigationListener,
 ): (() => void) => {
@@ -40,9 +49,12 @@ export const subscribeToPendingReleaseNavigation = (
  */
 export const prepareReleaseNotificationNavigation = (
   eventName: string,
-  payload: EventPayload | undefined,
+  _payload: EventPayload | undefined,
 ): void => {
-  if (eventName === 'releases' && extractReleaseIdFromEventPayload(payload)) {
+  // Single-release and digest notifications both start on the Releases tab.
+  // Keep the startup spinner up until that destination has content so the
+  // default Search tab never paints for a frame.
+  if (eventName === 'releases') {
     setPendingReleaseNavigation(true);
   }
 };
@@ -95,10 +107,21 @@ export const openNotificationNavigation = async (
       navigateToReleaseFromNotification(releaseId);
       return;
     }
+
+    // Digest: keep the spinner up while the Releases tab mounts and loads its
+    // list. ReleasesPage clears it once the feed has loaded.
+    setPendingReleaseNavigation(true);
   }
 
   const path = getDeepLinkPathForEvent(eventName);
   if (path) {
     await openDeepLink(path);
+    if (eventName === 'releases') {
+      // Safety net for a failed/slow deep link; the Releases page normally
+      // clears this as soon as its list is ready.
+      setTimeout(() => {
+        finishReleaseNotificationNavigation();
+      }, 8000);
+    }
   }
 };
