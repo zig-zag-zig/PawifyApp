@@ -19,13 +19,26 @@ const sourceFiles = (): string[] => {
 };
 
 describe('MusicBrainz runtime boundary', () => {
-    it('allows the MusicBrainz transport only behind the lyrics fallback adapter', () => {
-        const importers = sourceFiles()
-            .filter((file) => !file.endsWith('musicBrainzClient.ts'))
-            .filter((file) => fs.readFileSync(file, 'utf-8').includes('musicBrainzClient.js'))
-            .map((file) => path.relative(SRC, file).split(path.sep).join('/'));
+    it('has no MusicBrainz transport at all: the mirror is the only catalogue', () => {
+        const names = sourceFiles().map((file) =>
+            path.relative(SRC, file).split(path.sep).join('/'),
+        );
 
-        assert.deepEqual(importers, ['services/musicApi/musicBrainzLyricsFallback.ts']);
+        assert.equal(
+            names.includes('services/musicApi/musicBrainzClient.ts'),
+            false,
+            'musicBrainzClient.ts must stay removed',
+        );
+        assert.equal(
+            names.includes('services/musicApi/musicBrainzLyricsFallback.ts'),
+            false,
+            'musicBrainzLyricsFallback.ts must stay removed',
+        );
+
+        const importers = names.filter((name) =>
+            fs.readFileSync(path.join(SRC, name), 'utf-8').includes('musicBrainzClient.js'),
+        );
+        assert.deepEqual(importers, []);
     });
 
     it('does not keep a catalogue MusicBrainz fallback reader', () => {

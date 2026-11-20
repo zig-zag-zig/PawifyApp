@@ -12,15 +12,22 @@ describe('Dapr provider HTTP migration', () => {
             return new Response(JSON.stringify({ artist: 'Pawify' }), { status: 200 });
         });
 
-        const { fetchMusicBrainzWithStatus } =
-            await import('../../../src/services/musicApi/musicBrainzClient.js');
-        const result = await fetchMusicBrainzWithStatus('/artist?query=test&fmt=json');
+        const { fetchDaprProvider } =
+            await import('../../../src/services/musicApi/httpClient.js');
+        const result = await fetchDaprProvider(
+            'discogs',
+            '/artists/1?query=test',
+            { method: 'GET', headers: {} },
+            true,
+            false,
+            'status',
+        );
 
         assert.deepEqual(result, { artist: 'Pawify' });
         assert.equal(calls.length, 1);
         assert.equal(
             calls[0].url,
-            'http://dapr.test/v1.0/invoke/musicbrainz/method/ws/2/artist?query=test&fmt=json',
+            'http://dapr.test/v1.0/invoke/discogs/method/artists/1?query=test',
         );
         assert.equal(
             new Headers(calls[0].init.headers).get('User-Agent'),

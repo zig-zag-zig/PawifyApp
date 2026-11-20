@@ -11,7 +11,6 @@ import {
     type LyricsLookupRequest,
 } from '../../infrastructure/lyricsDb/lyricsStateRepository.js';
 import { fetchGeniusLyrics } from '../musicApi/geniusClient.js';
-import { fetchMusicBrainzLyricsFallback } from '../musicApi/musicBrainzLyricsFallback.js';
 import { isAbortError } from '../musicApi/httpClient.js';
 
 const logger = createLogger('services.lyrics.resolver');
@@ -86,110 +85,52 @@ const preservedFound = (
 const resolveFresh = async (
     request: LyricsLookupRequest,
     signal: AbortSignal,
-    canUseMusicBrainzFallback?: () => boolean,
     existingFoundUrl?: string | null,
 ): Promise<LyricsResolution> => {
-    let geniusAttempted = false;
-    let musicbrainzAttempted = false;
-    let sawTransientFailure = false;
+    const attempts = { geniusAttempted: false, musicbrainzAttempted: false };
 
     const genius = await fetchGeniusLyrics(request.artistName, request.trackName, signal);
-    geniusAttempted = true;
+    attempts.geniusAttempted = true;
     if (genius.status === 'found') {
-        recordLyricsFound(request, genius.url, 'genius', {
-            geniusAttempted,
-            musicbrainzAttempted,
-        });
+        recordLyricsFound(request, genius.url, 'genius', attempts);
         return { url: genius.url, outcome: 'found', provider: 'genius' };
     }
 
-    // Navigation/abort cancellation is not a provider miss: do not ask another
-    // provider after an abort and do not persist a confirmed miss.
+    // Navigation/abort cancellation is not a provider miss: do not persist
+    // anything derived from an incomplete request.
     if (signal.aborted) {
         return { url: undefined, outcome: 'failure', provider: null };
     }
+
     if (genius.status === 'failure') {
-        sawTransientFailure = true;
-    }
-
-    const recordingId = request.recordingId?.trim();
-    if (!recordingId) {
-        // No trustworthy recording identity: the MusicBrainz fallback would have
-        // to search the catalogue, which is explicitly not allowed.
+        // Missing credential/rate limit/network: retryable, never a miss.
         if (existingFoundUrl) {
-            return preservedFound(request, existingFoundUrl, {
-                geniusAttempted,
-                musicbrainzAttempted,
-            });
+            return preservedFound(request, existingFoundUrl, attempts);
         }
-        // MusicBrainz was never consulted, so a Genius miss is not a confirmed
-        // dual-provider absence. Keep it retryable.
-        recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
+        recordLyricsTransientFailure(request, attempts);
         return { url: undefined, outcome: 'failure', provider: null };
     }
 
-    if (!(canUseMusicBrainzFallback?.() ?? true)) {
-        // Per-job budget exhausted: this is not a confirmed absence from a
-        // successful provider, so keep retryable state (and any prior found URL).
-        if (existingFoundUrl) {
-            return preservedFound(request, existingFoundUrl, {
-                geniusAttempted,
-                musicbrainzAttempted,
-            });
-        }
-        recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
-        return { url: undefined, outcome: 'failure', provider: null };
-    }
-
-    const fallback = await fetchMusicBrainzLyricsFallback(recordingId, signal);
-    musicbrainzAttempted = true;
-    if (signal.aborted) {
-        return { url: undefined, outcome: 'failure', provider: null };
-    }
-
-    if (fallback.status === 'found') {
-        recordLyricsFound(request, fallback.url, 'musicbrainz', {
-            geniusAttempted,
-            musicbrainzAttempted,
-        });
-        return { url: fallback.url, outcome: 'found', provider: 'musicbrainz' };
-    }
-
-    if (fallback.status === 'failure' || sawTransientFailure) {
-        if (existingFoundUrl) {
-            return preservedFound(request, existingFoundUrl, {
-                geniusAttempted,
-                musicbrainzAttempted,
-            });
-        }
-        recordLyricsTransientFailure(request, { geniusAttempted, musicbrainzAttempted });
-        return { url: undefined, outcome: 'failure', provider: null };
-    }
-
-    // Both successful providers reported absence. If this was a refresh of an
-    // already-found URL, keep serving it rather than treating an upstream miss as
-    // deletion of known-good state.
+    // Genius answered "no lyrics" for this exact query variant. It is the only
+    // live provider: the catalogue mirror and the durable lyrics DB carry every
+    // other answer, so a successful miss is a confirmed absence.
     if (existingFoundUrl) {
-        return preservedFound(request, existingFoundUrl, {
-            geniusAttempted,
-            musicbrainzAttempted,
-        });
+        return preservedFound(request, existingFoundUrl, attempts);
     }
-    recordLyricsConfirmedMiss(request, { geniusAttempted, musicbrainzAttempted });
+    recordLyricsConfirmedMiss(request, attempts);
     return { url: null, outcome: 'confirmed-miss', provider: null };
 };
 
 /**
- * Resolves one durable lyrics lookup.
+ * Resolves one durable lyrics lookup against Genius only.
  *
- * Stored state first, then Genius, then the narrow MusicBrainz lyrics fallback.
- * Concurrent callers sharing the same durable lookup key wait on one provider
- * request.
+ * No live MusicBrainz calls exist on this path: the catalogue mirror and the
+ * durable lyrics DB answer everything else, and the MB web service rate budget
+ * belongs to the hourly sync, not to per-track user requests.
  */
 export const resolveLyrics = async (
     request: LyricsLookupRequest,
     signal?: AbortSignal,
-    options?: { canUseMusicBrainzFallback?: () => boolean },
 ): Promise<LyricsResolution> => {
     const identity = buildDurableLyricsLookupIdentity(request);
     const stored = readLyricsStates([request]).get(identity.lookupKey);
@@ -222,12 +163,7 @@ export const resolveLyrics = async (
             provider: null,
         }),
     };
-    entry.promise = resolveFresh(
-        request,
-        controller.signal,
-        options?.canUseMusicBrainzFallback,
-        existingFoundUrl,
-    )
+    entry.promise = resolveFresh(request, controller.signal, existingFoundUrl)
         .catch((error) => {
             if (isAbortError(error)) {
                 return { url: undefined, outcome: 'failure', provider: null } as const;

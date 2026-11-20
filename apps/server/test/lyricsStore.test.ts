@@ -22,9 +22,6 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 type StubState = {
     geniusHits?: unknown[];
     geniusStatus?: number;
-    recordingRelations?: unknown[];
-    recordingStatus?: number;
-    workRelations?: unknown[];
 };
 
 const installProviderStub = (state: StubState) => {
@@ -40,15 +37,6 @@ const installProviderStub = (state: StubState) => {
             }
             return jsonResponse({ response: { hits: state.geniusHits ?? [] } });
         }
-        if (url.includes('/v1.0/invoke/musicbrainz/method/ws/2/recording/')) {
-            return jsonResponse(
-                { relations: state.recordingRelations ?? [] },
-                state.recordingStatus ?? 200,
-            );
-        }
-        if (url.includes('/v1.0/invoke/musicbrainz/method/ws/2/work/')) {
-            return jsonResponse({ relations: state.workRelations ?? [] });
-        }
         throw new Error(`unexpected provider call ${url}`);
     });
     return calls;
@@ -61,11 +49,6 @@ const geniusHit = {
         lyrics_state: 'complete',
         url: 'https://genius.com/artist-one-song-one-lyrics',
     },
-};
-
-const mbLyricsRelation = {
-    type: 'lyrics',
-    url: { resource: 'https://www.genius.com/artist-one-song-one-lyrics' },
 };
 
 const request = {
@@ -260,7 +243,7 @@ describe('persistent lyrics lookup state', () => {
         const db = openLyricsDb(lyricsPath);
         db.prepare('UPDATE lyrics_lookup_state SET next_attempt_at = 0').run();
         db.close();
-        installProviderStub({ geniusStatus: 503, recordingStatus: 503 });
+        installProviderStub({ geniusStatus: 503 });
 
         const result = await resolver.resolveLyrics(request);
 
@@ -277,18 +260,24 @@ describe('persistent lyrics lookup state', () => {
         );
     });
 
-    it('records a Genius-only miss as retryable when no recording identity exists', async () => {
+    it('records a Genius miss as a confirmed absence without any other provider call', async () => {
         const { repo, resolver } = await loadModules();
-        installProviderStub({ geniusHits: [] });
+        const calls = installProviderStub({ geniusHits: [] });
         const noRecording = { ...request, recordingId: null };
 
         const result = await resolver.resolveLyrics(noRecording);
 
-        assert.equal(result.outcome, 'failure');
+        assert.equal(result.outcome, 'confirmed-miss');
+        assert.equal(result.url, null);
+        assert.equal(
+            calls.filter((url) => url.includes('/invoke/musicbrainz/')).length,
+            0,
+            'the lyrics path must never touch MusicBrainz',
+        );
         const state = repo
             .readLyricsStates([noRecording])
             .get(repo.buildDurableLyricsLookupIdentity(noRecording).lookupKey);
-        assert.equal(state?.outcome, 'transient-failure');
+        assert.equal(state?.outcome, 'confirmed-miss');
     });
 
     it('persists a Genius hit and skips MusicBrainz', async () => {
@@ -306,58 +295,28 @@ describe('persistent lyrics lookup state', () => {
         assert.deepEqual(callsAfterHit, []);
     });
 
-    it('falls back to MusicBrainz lyrics relations after a Genius miss', async () => {
+    it('confirms a miss when Genius answers absence, without MusicBrainz', async () => {
         const { repo, resolver } = await loadModules();
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
-        const calls = installProviderStub({
-            geniusHits: [],
-            recordingRelations: [mbLyricsRelation],
-        });
+        const calls = installProviderStub({ geniusHits: [] });
 
         const result = await resolver.resolveLyrics(request);
 
-        assert.equal(result.outcome, 'found');
-        assert.equal(result.provider, 'musicbrainz');
-        assert.equal(result.url, mbLyricsRelation.url.resource);
-        assert.equal(
-            calls.filter((url) => url.includes('/invoke/musicbrainz/method/ws/2/recording/'))
-                .length,
-            1,
-        );
-
-        const lookupKey = repo.buildLyricsLookupIdentity(request).lookupKey;
-        const state = repo.readLyricsStates([request]).get(lookupKey);
-        assert.equal(state?.provider, 'musicbrainz');
-        assert.equal(state?.recordingMbid, 'recording-1');
-        assert.equal(state?.resolvedUrl, 'https://genius.com/artist-one-song-one-lyrics');
-
-        // A Genius URL arriving via MusicBrainz relations must use the same
-        // path-only storage form as a direct Genius search hit.
-        const db = openLyricsDb(lyricsPath);
-        const row = db
-            .prepare('SELECT resolved_url FROM lyrics_lookup_state WHERE lookup_key = ?')
-            .get(lookupKey) as { resolved_url: string };
-        db.close();
-        assert.equal(row.resolved_url, '/artist-one-song-one-lyrics');
-    });
-
-    it('persists a dual confirmed miss only when both providers answered', async () => {
-        const { repo, resolver } = await loadModules();
-        installProviderStub({ geniusHits: [], recordingRelations: [] });
-
-        const result = await resolver.resolveLyrics(request);
         assert.equal(result.outcome, 'confirmed-miss');
-
+        assert.equal(result.url, null);
+        assert.deepEqual(
+            calls.filter((url) => !url.includes('/invoke/genius/') && !url.includes('/secrets/')),
+            [],
+            'no provider transport other than Genius may be invoked',
+        );
         const state = repo
             .readLyricsStates([request])
             .get(repo.buildLyricsLookupIdentity(request).lookupKey);
         assert.equal(state?.outcome, 'confirmed-miss');
-        assert.equal(state?.resolvedUrl, null);
     });
 
-    it('keeps retryable state when a provider fails', async () => {
+    it('keeps retryable state when Genius fails', async () => {
         const { repo, resolver } = await loadModules();
-        installProviderStub({ geniusStatus: 503, recordingStatus: 200, recordingRelations: [] });
+        installProviderStub({ geniusStatus: 503 });
 
         const result = await resolver.resolveLyrics(request);
         assert.equal(result.outcome, 'failure');
