@@ -104,6 +104,37 @@ after(async () => {
     fs.rmSync(directory, { recursive: true, force: true });
 });
 
+describe('lyrics URL storage', () => {
+    it('reduces Genius and Genius-hosted fallback URLs to a path', async () => {
+        const { compactLyricsUrlForStorage, expandStoredLyricsUrl } = await import(
+            '../src/infrastructure/lyricsDb/lyricsUrlStorage.js'
+        );
+        const source = 'https://www.genius.com/Artist-song-lyrics?utm_source=x#frag';
+
+        assert.equal(compactLyricsUrlForStorage(source), '/Artist-song-lyrics');
+        assert.equal(
+            expandStoredLyricsUrl('/Artist-song-lyrics'),
+            'https://genius.com/Artist-song-lyrics',
+        );
+    });
+
+    it('keeps the host for non-Genius fallback URLs', async () => {
+        const { compactLyricsUrlForStorage, expandStoredLyricsUrl } = await import(
+            '../src/infrastructure/lyricsDb/lyricsUrlStorage.js'
+        );
+        const source = 'https://www.azlyrics.com/lyrics/artist/song.html?ref=1#top';
+
+        assert.equal(
+            compactLyricsUrlForStorage(source),
+            'www.azlyrics.com/lyrics/artist/song.html',
+        );
+        assert.equal(
+            expandStoredLyricsUrl('www.azlyrics.com/lyrics/artist/song.html'),
+            'https://www.azlyrics.com/lyrics/artist/song.html',
+        );
+    });
+});
+
 describe('persistent lyrics lookup state', () => {
     it('reuses a stored hit without any provider call', async () => {
         const { repo, resolver } = await loadModules();
@@ -140,7 +171,7 @@ describe('persistent lyrics lookup state', () => {
             .get(lookupKey) as { resolved_url: string };
         db.close();
 
-        assert.equal(row.resolved_url, 'genius.com/Artist-One-song-one-lyrics');
+        assert.equal(row.resolved_url, '/Artist-One-song-one-lyrics');
         assert.equal(
             repo.readLyricsStates([request]).get(lookupKey)?.resolvedUrl,
             'https://genius.com/Artist-One-song-one-lyrics',
