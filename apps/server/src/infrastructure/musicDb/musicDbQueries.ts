@@ -691,7 +691,7 @@ export const readReleaseTracks = (db: MusicDb, releaseId: string) =>
                t.medium_position,
                t.position,
                t.number,
-               COALESCE(t.title, rec.title) AS title,
+               COALESCE(NULLIF(TRIM(t.title), ''), rec.title) AS title,
                t.length,
                rec.mbid AS recording_mbid
         FROM tracks t LEFT JOIN recordings rec ON rec.id = t.recording_id
