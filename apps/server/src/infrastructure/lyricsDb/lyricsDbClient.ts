@@ -121,9 +121,10 @@ export const openLyricsDb = (databasePath: string): LyricsDb => {
     const db = new Database(databasePath, { fileMustExist: true });
     try {
         db.pragma('busy_timeout = 5000');
+        assertSchema(db);
+        assertColumns(db);
         db.pragma('journal_mode = WAL');
         db.pragma('synchronous = NORMAL');
-        assertSchema(db);
         return db;
     } catch (error) {
         db.close();
@@ -138,9 +139,7 @@ const OPEN_FAILURE_LOG_INTERVAL_MS = 60_000;
 
 export const initializeLyricsDb = (): LyricsDb | null => {
     if (!lyricsDbConfig.path) {
-        logger.error(
-            'LYRICS_DB_PATH is not set; persistent lyrics state is unavailable. Run the lyrics DB migration and configure the mount.',
-        );
+        logger.error('LYRICS_DB_PATH is not set; configure the durable lyrics mount.');
         return null;
     }
 

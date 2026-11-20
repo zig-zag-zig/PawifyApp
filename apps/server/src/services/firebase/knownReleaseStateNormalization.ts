@@ -8,7 +8,7 @@ export type KnownReleaseGroupStateMap = {
 };
 
 const normalizeLastNotifiedDate = (value: unknown): string | null =>
-    typeof value === 'string' ? value.trim() : null;
+    (typeof value === 'string' && value.trim()) || null;
 
 const normalizeMaxOfficialTrackCount = (value: unknown): number | null =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
@@ -52,7 +52,8 @@ export const buildKnownReleaseGroupStatePayload = (
 
         assertRtdbKey('groupId', trimmed);
         payload[trimmed] = {
-            lastNotifiedDate: value.lastNotifiedDate,
+            // RTDB drops nulls and empty arrays. Keep even an empty baseline.
+            lastNotifiedDate: value.lastNotifiedDate ?? '',
             maxOfficialTrackCount: value.maxOfficialTrackCount,
             editionKeywords: normalizeEditionKeywords(value.editionKeywords),
             ...(value.contentBaselined === false ? { contentBaselined: false } : {}),
@@ -67,20 +68,18 @@ const normalizeStateValue = (stored: unknown): KnownReleaseGroupStateValue | nul
         return null;
     }
 
-    // Runtime state is canonical only when all fields are present. Partial objects
-    // are migration input, not a safe baseline: accepting them as a complete state
-    // can turn a missing max-track count into a false content notification.
+    // Missing nullable fields are normal RTDB encoding, not a second wire shape.
     if (
-        !Object.prototype.hasOwnProperty.call(stored, 'lastNotifiedDate') ||
-        !Object.prototype.hasOwnProperty.call(stored, 'maxOfficialTrackCount') ||
-        !Object.prototype.hasOwnProperty.call(stored, 'editionKeywords') ||
+        !Object.keys(stored).some((key) =>
+            ['lastNotifiedDate', 'maxOfficialTrackCount', 'editionKeywords', 'contentBaselined'].includes(key),
+        ) ||
         !(stored.contentBaselined === undefined || stored.contentBaselined === false) ||
-        (stored.lastNotifiedDate !== null && typeof stored.lastNotifiedDate !== 'string') ||
-        (stored.maxOfficialTrackCount !== null &&
+        (stored.lastNotifiedDate != null && typeof stored.lastNotifiedDate !== 'string') ||
+        (stored.maxOfficialTrackCount != null &&
             (typeof stored.maxOfficialTrackCount !== 'number' ||
                 !Number.isFinite(stored.maxOfficialTrackCount) ||
                 stored.maxOfficialTrackCount < 0)) ||
-        !Array.isArray(stored.editionKeywords)
+        (stored.editionKeywords !== undefined && !Array.isArray(stored.editionKeywords))
     ) {
         return null;
     }
@@ -96,7 +95,7 @@ const normalizeStateValue = (stored: unknown): KnownReleaseGroupStateValue | nul
 /**
  * Reads the canonical stored per-group state (object shape only).
  *
- * Legacy scalar/date shapes are migrated once by `state:migrate:canonical`; the
+ * Legacy scalar/date shapes must be converted before rollout; the
  * supported runtime does not keep dual-format parsing.
  */
 export type NormalizedKnownReleaseGroupState = {

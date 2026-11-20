@@ -13,7 +13,7 @@ export type ReleaseGroupCoverTaskResult = {
 };
 
 export type ReleaseGroupReleaseCoverTaskResult = {
-    releaseGroupId: string;
+    releaseGroupId: string | null;
     covers: { [releaseId: string]: RemoteValueState };
 };
 
@@ -49,12 +49,8 @@ export type ArtistProfileImageLookup = {
     tidalUrls?: string[];
 };
 
-/**
- * Current API contract namespace. Only v3 exists; the prefix keeps task dedupe
- * keys from colliding with pre-cutover inflight tasks, which are expired rather
- * than replayed into the new contract.
- */
-export type ContractNamespace = 'v3';
+/** Separate full-result v1 jobs from cache-first v3 jobs. */
+export type ContractNamespace = 'v1' | 'v3';
 
 export type ArtistProfileImageQueueOptions = {
     /** Full artist id set used for dedupe when only a pending subset is queued. */

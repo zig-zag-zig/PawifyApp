@@ -397,19 +397,16 @@ Common authenticated routes:
 
 ### API versions
 
-There is exactly one supported runtime contract: **`/v3`**.
+New builds use **`/v3`**. Existing app builds continue to use **`/v1`** or **`/v2`**.
 
 - Every route family — auth, following, settings, notifications, catalogue,
   task results and artwork — is mounted under `/v3`.
-- `getRelease` returns metadata, all media/tracks and the persisted enrichment
-  state in one request. There is no `getReleaseTracks` endpoint.
-- `/v1`, `/v2` and unversioned legacy API paths are rejected (v1/v2 with
-  `410 API_VERSION_UNSUPPORTED`). They are not aliases or emulation layers.
+- In v3, `getRelease` returns metadata, all media/tracks and persisted enrichment
+  in one response. The split `getReleaseTracks` endpoint remains available in v1/v2.
+- Versioned endpoints share the SQLite catalogue and provider workers. Unversioned
+  application paths are not aliases.
 - `GET /health` is liveness only; `GET /ready` reports required catalogue
   readiness. Both stay unversioned for orchestration probes.
-
-An old app build must be upgraded; it will not silently continue on a retired
-contract.
 
 ## Search concurrency and work bounds
 
@@ -434,14 +431,8 @@ VPS if it becomes necessary.
   startup/readiness with an actionable reason. Catalogue requests then return a
   retriable `503`, never empty results or a MusicBrainz Web Service fallback.
 - `LYRICS_DB_PATH` points at the application-owned lyrics SQLite file, mounted
-  outside disposable container layers and outside mirror replacement. Create it
-  explicitly:
-
-```bash
-npm run lyrics:db:migrate -- --preview
-npm run lyrics:db:migrate -- --apply
-npm run lyrics:db:housekeeping   # preview retention candidates
-```
+  outside disposable container layers and outside mirror replacement. See
+  [Deployment](DEPLOYMENT.md#lyrics-state-required-separate-file) for one-time setup.
 
 - The MusicBrainz Web Service is used at runtime only by the narrow lyrics
   fallback adapter (Genius first). Artwork providers (Deezer/Tidal/Discogs/Cover

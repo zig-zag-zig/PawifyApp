@@ -37,9 +37,9 @@ const logger = createLogger('services.backgroundTasks');
  * old payloads into the unified release/enrichment contract.
  */
 export const withTaskKeyNamespace = (
-    _contractNamespace: ContractNamespace | undefined,
+    contractNamespace: ContractNamespace | undefined,
     key: string,
-): string => `v3:${key}`;
+): string => `${contractNamespace ?? 'v3'}:${key}`;
 
 type QueueChunkedTaskOptions<T extends BackgroundTaskResultPayload, TChunk> = {
     userId: string;
@@ -177,11 +177,6 @@ const submitReleaseGroupReleaseCoversPage = (
     ttl: number | undefined,
 ): void => {
     const releaseGroupId = pageEntry.releaseGroupId;
-    if (!releaseGroupId) {
-        // Only the new-release feed carries group-less entries, and it goes through
-        // `submitNewReleaseCoversPage`; the group release list always has an id.
-        throw new Error('release group release covers require a release group id');
-    }
 
     session.submitPage(
         async (signal) =>
@@ -302,15 +297,13 @@ export const queueTrackLyricsTask = (
     tracks: TrackLyricsRequest[],
     ttl: number | undefined,
     contractNamespace?: ContractNamespace,
+    knownLyrics: Record<string, string | null> = {},
 ): string => {
     return queueChunkedTask<TrackLyricsTaskResult, TrackLyricsRequest[]>({
         userId,
         type: 'release_tracks_lyrics',
         dedupeKey: withTaskKeyNamespace(contractNamespace, `release_tracks_lyrics:${releaseId}`),
-        initialResult: {
-            releaseId,
-            tracks: {},
-        },
+        initialResult: { releaseId, tracks: knownLyrics },
         chunks: chunkArray(tracks, SUBTASK_ITEM_LIMIT),
         submitChunk: (session, chunk) => {
             submitTrackLyricsPage(session, releaseId, chunk, ttl);

@@ -17,7 +17,7 @@ const logger = createLogger('services.backgroundTasks.coverArt');
 const COVER_ART_REQUEST_CONCURRENCY = backgroundTaskWorkerConfig.coverArtRequestConcurrency;
 
 export const fetchAndUpsertReleaseGroupReleaseCovers = async (
-    releaseGroupId: string,
+    releaseGroupId: string | null,
     releaseIds: string[],
     ttl: number | undefined,
     signal?: AbortSignal,

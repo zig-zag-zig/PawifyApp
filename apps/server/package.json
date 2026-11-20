@@ -1,6 +1,6 @@
 {
     "name": "pawify-api",
-    "version": "1.10.10",
+    "version": "1.11.0",
     "_comment": "Overrides: (1) gaxios/teeny-request still declare uuid ^9 (vulnerable per GHSA-w5hq-g745-h8pq, fixed in >=11.1.1); scoped to them instead of global because universal-analytics needs uuid ^14 and a global override breaks the tree (npm ls ELSPROBLEMS). uuid is only used for request ids via uuid.v4(), API-stable across majors. (2) @opentelemetry/core ^2.8.0 fixes GHSA-8988-4f7v-96qf for @google-cloud/pubsub (via firebase-tools); validated: npm ls exits 0 and npm run verify passes.",
     "dependencies": {
         "@sentry/node": "^10.72.0",
@@ -62,9 +62,6 @@
         "pretest:integration": "npm run build:shared",
         "docker:up": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait",
         "docker:down": "docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down",
-        "lyrics:db:migrate": "tsx scripts/lyricsDbAdmin.ts",
-        "lyrics:db:housekeeping": "tsx scripts/lyricsDbAdmin.ts --housekeeping-preview",
-        "state:migrate:canonical": "tsx scripts/migrateCanonicalState.ts",
         "lyrics:db:estimate": "tsx scripts/lyricsStorageEstimate.ts",
         "benchmark:search": "tsx scripts/benchmarkSearch.ts"
     }

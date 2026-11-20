@@ -236,13 +236,22 @@ LYRICS_DB_PATH=/var/pawify/lyrics/lyrics.db
 PAWIFY_LYRICS_DB_DIR=/home/deploy/pawify-lyrics
 ```
 
-Create/migrate explicitly with preview first:
+Initialize the empty file once before starting the API. Confirm the mount targets a separate, writable host directory and select the new image in `.env.prod` first.
 
 ```bash
 cd /srv/pawify-prod/apps/server
-npm run lyrics:db:migrate -- --preview
-npm run lyrics:db:migrate -- --apply
+docker compose --env-file .env.prod run --rm --no-deps pawify node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const {createLyricsDatabase, openLyricsDb} = require("./lib/infrastructure/lyricsDb/lyricsDbClient.js");
+const target = process.env.LYRICS_DB_PATH;
+if (!target || path.dirname(path.resolve(target)) !== "/var/pawify/lyrics" || !process.env.MUSIC_DB_PATH) throw new Error("Check the separate lyrics and mirror mounts");
+if (!fs.existsSync(target)) createLyricsDatabase(target);
+openLyricsDb(target).close();
+'
 ```
+
+This one-off command installs no migration CLI or API role and copies no lyrics data.
 
 This file is application-owned: mirror sync/prune/replacement must not touch it.
 Legacy `asset:lyrics:*` Redis values are cache-only results; after the cutover

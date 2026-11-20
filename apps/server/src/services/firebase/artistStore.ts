@@ -31,7 +31,7 @@ const removeUnfollowedArtistNewReleases = async (
         // feed entries now could remove a release another followed artist still
         // knows about, so leave cleanup to a post-migration unfollow.
         logger.warn(
-            'skipping unfollow feed cleanup because known-release state is not migrated. Run `npm run state:migrate:canonical -- --apply`.',
+            'skipping unfollow feed cleanup because known-release state is not canonical. See the v3 rollout runbook.',
             { userId, artistId },
         );
         return;

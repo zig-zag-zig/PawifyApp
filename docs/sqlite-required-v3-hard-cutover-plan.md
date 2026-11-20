@@ -1,5 +1,7 @@
 # SQLite-required catalogue, unified release loading and persistent lyrics — v3 hard cutover
 
+> Rollout update: `/v1` and `/v2` remain available to their existing clients. The instructions below to retire those versions are superseded by the [rollout runbook](sqlite-required-v3-cutover-runbook.md). The v3 wire contract stays independent of the compatibility adapters.
+
 ## Purpose and authority
 
 Implement the user's explicit hard-cutover decision now that Pawify has a full local MusicBrainz mirror:

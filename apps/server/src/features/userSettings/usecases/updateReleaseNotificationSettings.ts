@@ -37,7 +37,7 @@ const rebuildKnownReleasesForSettings = async (
         // rewrite it; otherwise known groups outside the catalogue would be lost.
         if (await knownReleaseRepository.hasUnmigratedArtistReleaseGroupState(userId, artistId)) {
             logger.warn(
-                'skipping known-release rebuild for an unmigrated artist. Run `npm run state:migrate:canonical -- --apply`.',
+                'skipping known-release rebuild for an artist with noncanonical state. See the v3 rollout runbook.',
                 { userId, artistId },
             );
             return;

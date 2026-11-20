@@ -53,7 +53,7 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
         const unmigratedArtistIds = new Set(unmigratedArtistIdsArray);
         if (unmigratedArtistIds.size > 0) {
             logger.warn(
-                'known-release state is not migrated; skipping notification detection for affected artists. Run `npm run state:migrate:canonical -- --apply`.',
+                'known-release state is not canonical; skipping notification detection for affected artists. See the v3 rollout runbook.',
                 {
                     userId,
                     artistCount: unmigratedArtistIds.size,

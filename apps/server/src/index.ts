@@ -13,7 +13,7 @@ initializeMusicDb();
 
 if (!initializeLyricsDb()) {
     throw new Error(
-        'Persistent lyrics database is required at startup. Create it with `npm run lyrics:db:migrate -- --apply` and set LYRICS_DB_PATH.',
+        'Persistent lyrics database is required at startup. Initialize the separate store explicitly and set LYRICS_DB_PATH.',
     );
 }
 

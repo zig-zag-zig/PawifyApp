@@ -7,13 +7,12 @@ jobs from this document without explicit operator authorization.
 
 ## What changes
 
-- The supported API contract is `/v3` only. `/v1` and `/v2` answer
-  `410 API_VERSION_UNSUPPORTED`; unversioned legacy API paths are unsupported.
+- New mobile builds use `/v3`. Existing builds keep `/v1` and `/v2` and their original wire shapes. All versions use the same SQLite catalogue.
 - Catalogue/search/tracks come only from the required local MusicBrainz SQLite
   mirror. Missing/unready mirror data fails readiness and returns `503`; there is
   no MusicBrainz Web Service catalogue fallback.
 - `getRelease` returns metadata plus every media/track and persisted enrichment
-  state in one request. `getReleaseTracks` is removed.
+  state in one request on `/v3`. `getReleaseTracks` stays available on `/v1` and `/v2`.
 - The release-group screen loads one local snapshot with edition metadata; the
   artist page no longer prefetches editions or passes a route-carried payload.
 - Persistent lyrics state lives in a separate application-owned SQLite file
@@ -25,40 +24,15 @@ jobs from this document without explicit operator authorization.
 
 ## Pre-flight (operator)
 
-1. Recheck `apps/server/package.json`, `apps/mobile/package.json` and `HEAD`; choose
-   release versions then. API namespace `v3` is independent of package semver.
+1. Server `1.11.0`, mobile `3.0.0` (Android versionCode 28), new API namespace `/v3`.
 2. Confirm the mirror is healthy and ready:
    - `MUSIC_DB_PATH` points at the current mirror.
    - `_meta.track_data_state=ready`.
    - artist/release-group/recording FTS tables and `image_services`/`entity_images`
      exist.
    - `/ready` will answer `200` after the new server starts.
-3. Create the lyrics store explicitly (preview first):
-
-   ```bash
-   cd /srv/pawify-prod/apps/server
-   npm run lyrics:db:migrate -- --preview
-   npm run lyrics:db:migrate -- --apply
-   npm run lyrics:db:housekeeping   # optional retention preview
-   ```
-
-   Ensure `PAWIFY_LYRICS_DB_DIR` is a durable host directory writable by the
-   container app uid and **not** inside the mirror replacement path.
-
-4. Run the one-time canonical-state migration (preview first):
-
-   ```bash
-   cd /srv/pawify-prod/apps/server
-   npm run state:migrate:canonical -- --preview
-   npm run state:migrate:canonical -- --apply
-   ```
-
-   It rewrites legacy known-release scalar values to the canonical object
-   baseline, resolves release-id keys through the mirror, and normalizes feed
-   dates/group ids. A JSON backup is written before any write. Resolve reported
-   unresolved/invalid records rather than passing `--force`, which must remain an
-   explicit operator decision. After this migration the runtime no longer parses
-   legacy scalar/date shapes.
+3. Initialize the empty lyrics sidecar once with the explicit command in [Deployment](../apps/server/DEPLOYMENT.md#lyrics-state-required-separate-file). Startup does not create it; the mirror `recording_lyrics` table is untouched.
+4. Check Firebase for legacy known-release values. If present, back up the data, preview an out-of-repository conversion, and apply only after verifying the mappings. Pause concurrent writers during apply. Do not guess group IDs or discard unresolved entries. The server skips notification scans for affected artists until their state is canonical.
 
 5. Back up, as operational safety:
    - Firebase/RTDB state (following, known releases, feed, settings, tokens);
@@ -78,12 +52,10 @@ jobs from this document without explicit operator authorization.
    - the existing secret/notification configuration.
 2. Watch startup for the mirror and lyrics DB open lines. The background-task
    registry is process-local, so the deployment restart expires pre-cutover
-   in-flight tasks; all new dedupe keys are `v3:`-prefixed so old keys cannot be
-   reused.
+   in-flight tasks. Full-result v1 tasks use their own dedupe namespace.
 3. Build/install the mobile release configured for `EXPO_PUBLIC_API_VERSION=v3`
    (the client now refuses non-v3 values).
-4. Coordinate the mobile install with the backend switch. Downtime is acceptable;
-   there is deliberately no v2 compatibility layer.
+4. Verify the backend before publishing the mobile build. Older apps can continue using `/v1` and `/v2` during rollout.
 
 ## Verify
 
@@ -104,7 +76,7 @@ In the installed app verify:
 - artwork appears from persisted mirror state; unresolved artwork fills in
   progressively without restarting catalogue loading;
 - notification navigation and task-result polling/completion;
-- old app builds receive the upgrade rejection rather than a broken half-contract.
+- older builds still load release metadata and tracks on their existing API versions.
 
 Measurement commands (run on the serving host; they do not mutate production):
 

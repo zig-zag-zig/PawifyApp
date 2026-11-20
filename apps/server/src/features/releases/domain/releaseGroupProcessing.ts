@@ -176,18 +176,6 @@ const collectEditionKeywords = (
     editions: readonly ReleaseEditionCandidate[],
 ): string[] => normalizeEditionKeywords(editions.flatMap((edition) => edition.editionKeywords));
 
-/** Current Official content baseline for a known group, used by state migration. */
-export const computeReleaseGroupContentBaseline = (
-    group: ReleaseGroupCandidate,
-    now = new Date(),
-): { maxOfficialTrackCount: number | null; editionKeywords: string[] } => {
-    const officialEditions = officialEditionsOf(group, now);
-    return {
-        maxOfficialTrackCount: maxOfficialTrackCount(officialEditions),
-        editionKeywords: collectEditionKeywords(officialEditions),
-    };
-};
-
 const newerEdition = (
     left: ReleaseEditionCandidate,
     right: ReleaseEditionCandidate,

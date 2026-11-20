@@ -28,17 +28,6 @@ describe('MusicBrainz runtime boundary', () => {
         assert.deepEqual(importers, ['services/musicApi/musicBrainzLyricsFallback.ts']);
     });
 
-    it('has no v1/v2 route modules or contract variant selectors', () => {
-        const names = sourceFiles().map((file) =>
-            path.relative(SRC, file).split(path.sep).join('/'),
-        );
-
-        assert.equal(names.includes('api/v1Routes.ts'), false);
-        assert.equal(names.includes('api/v2Routes.ts'), false);
-        assert.equal(names.includes('api/useCaseVariants.ts'), false);
-        assert.equal(names.includes('services/backgroundAssets/legacyAssetPlanner.ts'), false);
-    });
-
     it('does not keep a catalogue MusicBrainz fallback reader', () => {
         const names = sourceFiles().map((file) =>
             path.relative(SRC, file).split(path.sep).join('/'),

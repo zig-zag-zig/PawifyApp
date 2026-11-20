@@ -12,22 +12,27 @@ import { artistPresentersV3 } from '../features/artists/handlers/artistHandlers.
 import { releasePresentersV3 } from '../features/releases/handlers/releaseHandlers.js';
 import { artistUseCasesV3 } from './artistUseCasesV3.js';
 import { releaseUseCasesV3 } from './releaseUseCasesV3.js';
+import { createCompatibilityRoutes } from './compatibilityRoutes.js';
 
 /**
- * The one supported API contract.
+ * Shared service routes plus the catalogue contract for this version.
  *
  * Every route family (auth, following, settings, notifications, catalogue tasks,
  * artwork) is mounted under the same version: migrating only release routes would
  * strand login or push handling.
  */
-export const createApiRoutes = (prefix: string): Router => {
+export const createApiRoutes = (prefix: '/v1' | '/v2' | '/v3'): Router => {
     const router = express.Router();
 
     router.use(prefix, healthRoutes);
     router.use(prefix, authRoutes);
     router.use(prefix, pushTokenRoutes);
-    router.use(prefix, createArtistRoutes(artistUseCasesV3, artistPresentersV3));
-    router.use(prefix, createReleaseRoutes(releaseUseCasesV3, releasePresentersV3));
+    if (prefix === '/v3') {
+        router.use(prefix, createArtistRoutes(artistUseCasesV3, artistPresentersV3));
+        router.use(prefix, createReleaseRoutes(releaseUseCasesV3, releasePresentersV3));
+    } else {
+        router.use(prefix, createCompatibilityRoutes(prefix === '/v1' ? 'v1' : 'v2'));
+    }
     router.use(prefix, userSettingsRoutes);
     router.use(prefix, notificationRoutes);
     router.use(prefix, taskRoutes);
