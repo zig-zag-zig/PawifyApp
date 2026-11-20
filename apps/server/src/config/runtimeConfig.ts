@@ -302,11 +302,6 @@ export const lyricsDbConfig = {
         process.env.LYRICS_TRANSIENT_RETRY_MS,
         5 * 60 * 1000,
     ),
-    /** Bounds one release's MusicBrainz fallback flood (giant releases exist). */
-    maxFallbackRequestsPerJob: parsePositiveIntEnv(
-        process.env.LYRICS_MAX_FALLBACK_REQUESTS_PER_JOB,
-        40,
-    ),
     housekeepingBatchSize: parsePositiveIntEnv(
         process.env.LYRICS_HOUSEKEEPING_BATCH_SIZE,
         500,
