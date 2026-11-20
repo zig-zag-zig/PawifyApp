@@ -126,11 +126,11 @@ describe('lyrics URL storage', () => {
 
         assert.equal(
             compactLyricsUrlForStorage(source),
-            'www.azlyrics.com/lyrics/artist/song.html',
+            'azlyrics.com/lyrics/artist/song.html',
         );
         assert.equal(
-            expandStoredLyricsUrl('www.azlyrics.com/lyrics/artist/song.html'),
-            'https://www.azlyrics.com/lyrics/artist/song.html',
+            expandStoredLyricsUrl('azlyrics.com/lyrics/artist/song.html'),
+            'https://azlyrics.com/lyrics/artist/song.html',
         );
     });
 });
@@ -196,10 +196,10 @@ describe('persistent lyrics lookup state', () => {
             .get(lookupKey) as { resolved_url: string };
         db.close();
 
-        assert.equal(row.resolved_url, 'www.azlyrics.com/lyrics/artist/song.html');
+        assert.equal(row.resolved_url, 'azlyrics.com/lyrics/artist/song.html');
         assert.equal(
             repo.readLyricsStates([fallbackRequest]).get(lookupKey)?.resolvedUrl,
-            'https://www.azlyrics.com/lyrics/artist/song.html',
+            'https://azlyrics.com/lyrics/artist/song.html',
         );
     });
 
@@ -308,6 +308,7 @@ describe('persistent lyrics lookup state', () => {
 
     it('falls back to MusicBrainz lyrics relations after a Genius miss', async () => {
         const { repo, resolver } = await loadModules();
+        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
         const calls = installProviderStub({
             geniusHits: [],
             recordingRelations: [mbLyricsRelation],
@@ -324,11 +325,20 @@ describe('persistent lyrics lookup state', () => {
             1,
         );
 
-        const state = repo
-            .readLyricsStates([request])
-            .get(repo.buildLyricsLookupIdentity(request).lookupKey);
+        const lookupKey = repo.buildLyricsLookupIdentity(request).lookupKey;
+        const state = repo.readLyricsStates([request]).get(lookupKey);
         assert.equal(state?.provider, 'musicbrainz');
         assert.equal(state?.recordingMbid, 'recording-1');
+        assert.equal(state?.resolvedUrl, 'https://genius.com/artist-one-song-one-lyrics');
+
+        // A Genius URL arriving via MusicBrainz relations must use the same
+        // path-only storage form as a direct Genius search hit.
+        const db = openLyricsDb(lyricsPath);
+        const row = db
+            .prepare('SELECT resolved_url FROM lyrics_lookup_state WHERE lookup_key = ?')
+            .get(lookupKey) as { resolved_url: string };
+        db.close();
+        assert.equal(row.resolved_url, '/artist-one-song-one-lyrics');
     });
 
     it('persists a dual confirmed miss only when both providers answered', async () => {
