@@ -173,7 +173,7 @@ const ArtistHeader = ({
                 {birthDate && (
                     <SelectableText>
                         {isGroup ? "Founded" : "Born"} {formatDate(birthDate)}
-                        {!deathDate && age !== null && ` (${age} years)`}
+                        {!deathDate && age !== null && ` (${formatYearCount(age)} ago)`}
                     </SelectableText>
                 )}
 
@@ -186,7 +186,9 @@ const ArtistHeader = ({
                 {deathDate && (
                     <SelectableText>
                         {isGroup ? "Disbanded" : "Died"} {formatDate(deathDate)}
-                        {age !== null && ` (${age} years)`}
+                        {age !== null && (isGroup
+                            ? ` (after ${formatYearCount(age)})`
+                            : ` (aged ${formatYearCount(age)})`)}
                     </SelectableText>
                 )}
 
@@ -213,6 +215,9 @@ const ArtistHeader = ({
         </View>
     );
 };
+
+const formatYearCount = (years: number): string =>
+    `${years} ${years === 1 ? 'year' : 'years'}`;
 
 const localStyles = StyleSheet.create({
     actionRow: {

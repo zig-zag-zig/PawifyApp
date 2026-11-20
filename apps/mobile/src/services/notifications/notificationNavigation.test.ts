@@ -22,6 +22,7 @@ vi.mock('expo-linking', () => ({
 }));
 
 import {
+  finishReleaseNotificationNavigation,
   getPendingReleaseNavigation,
   navigateToReleaseFromNotification,
   openNotificationNavigation,
@@ -96,10 +97,12 @@ describe('navigateToReleaseFromNotification', () => {
     expect(getPendingReleaseNavigation()).toBe(false);
   });
 
-  it('does not pre-mark digest or non-release notifications', () => {
+  it('pre-marks digest notifications but not other events', () => {
     prepareReleaseNotificationNavigation('releases', undefined);
-    prepareReleaseNotificationNavigation('following', { releaseId: 'release-42' });
+    expect(getPendingReleaseNavigation()).toBe(true);
 
+    finishReleaseNotificationNavigation();
+    prepareReleaseNotificationNavigation('following', { releaseId: 'release-42' });
     expect(getPendingReleaseNavigation()).toBe(false);
   });
 
@@ -124,6 +127,7 @@ describe('openNotificationNavigation', () => {
     navigationRefMock.navigate.mockClear();
     openURLMock.mockClear();
     createURLMock.mockClear();
+    finishReleaseNotificationNavigation();
   });
 
   it('opens the release page when a releases event carries a releaseId', async () => {
@@ -136,11 +140,15 @@ describe('openNotificationNavigation', () => {
     expect(openURLMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to the releases tab when the payload has no releaseId', async () => {
+  it('keeps the spinner pending for a digest until the releases screen is ready', async () => {
     await openNotificationNavigation('releases', undefined);
 
     expect(navigationRefMock.navigate).not.toHaveBeenCalled();
     expect(openURLMock).toHaveBeenCalledWith('pawify:///releases');
+    expect(getPendingReleaseNavigation()).toBe(true);
+
+    finishReleaseNotificationNavigation();
+    expect(getPendingReleaseNavigation()).toBe(false);
   });
 
   it('falls back to the tab deep link for other data events', async () => {
