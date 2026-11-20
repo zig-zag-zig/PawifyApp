@@ -20,10 +20,11 @@ export const compactLyricsUrlForStorage = (value: string): string => {
         const url = new URL(trimmed);
         if (url.protocol !== 'https:' || !url.hostname) return trimmed;
         const path = url.pathname && url.pathname.length > 0 ? url.pathname : '/';
-        if (isGeniusHost(url.hostname.toLowerCase())) {
+        const host = url.hostname.toLowerCase().replace(/^www\./, '');
+        if (isGeniusHost(host)) {
             return path;
         }
-        return `${url.host.toLowerCase()}${path}`;
+        return `${host}${path}`;
     } catch {
         return trimmed;
     }
