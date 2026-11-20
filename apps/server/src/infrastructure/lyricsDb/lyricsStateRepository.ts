@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { createLogger } from '../../common/logging/logger.js';
 import { lyricsDbConfig } from '../../config/runtimeConfig.js';
 import { getLyricsDb, type LyricsDb } from './lyricsDbClient.js';
+import { compactLyricsUrlForStorage, expandStoredLyricsUrl } from './lyricsUrlStorage.js';
 import { resolveRecordingRedirectMbid } from '../musicDb/recordingRedirects.js';
 
 const logger = createLogger('infrastructure.lyricsDb.state');
@@ -110,7 +111,7 @@ const rowToState = (row: {
     lookupKey: row.lookup_key,
     recordingMbid: row.recording_mbid,
     queryFingerprint: row.query_fingerprint,
-    resolvedUrl: row.resolved_url,
+    resolvedUrl: row.resolved_url ? expandStoredLyricsUrl(row.resolved_url) : null,
     provider: row.provider === 'genius' || row.provider === 'musicbrainz' ? row.provider : null,
     outcome: row.outcome as LyricsOutcome,
     checkedAt: row.checked_at,
@@ -233,7 +234,9 @@ const upsertState = (
                 lookupKey: identity.lookupKey,
                 recordingMbid: durableRequest.recordingId?.trim() || null,
                 queryFingerprint: identity.queryFingerprint,
-                resolvedUrl: state.resolvedUrl,
+                resolvedUrl: state.resolvedUrl
+                    ? compactLyricsUrlForStorage(state.resolvedUrl)
+                    : null,
                 provider: state.provider,
                 outcome: state.outcome,
                 checkedAt: now,
