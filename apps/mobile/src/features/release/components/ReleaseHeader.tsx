@@ -9,6 +9,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SelectableText } from "../../../components/ui";
 import { ArtistChips } from "../../../components/ArtistChips";
@@ -37,6 +38,8 @@ import { ArtistNavigationProp } from "../../../types/navigation";
 
 interface ReleaseHeaderProps {
   release: Release;
+  /** Increments when the release screen scrolls; closes the country bubble. */
+  enrichmentDismissSignal?: number;
 }
 
 function dedupeArtistCredits(artistCredits: ArtistCredit[]): ArtistCredit[] {
@@ -46,7 +49,10 @@ function dedupeArtistCredits(artistCredits: ArtistCredit[]): ArtistCredit[] {
   );
 }
 
-const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
+const ReleaseHeader = ({
+  release,
+  enrichmentDismissSignal,
+}: ReleaseHeaderProps) => {
   const styles = getStyles();
   const navigation = useNavigation<ArtistNavigationProp>();
   const artistCredits = React.useMemo(
@@ -56,6 +62,50 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
   const [preferredService, setPreferredService] =
     React.useState<ExternalLinkService | null>(null);
   const [copiedBarcode, setCopiedBarcode] = React.useState<string | null>(null);
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const headerRef = React.useRef<View>(null);
+  const [countryBubble, setCountryBubble] = React.useState<{
+    country: CountryDisplay;
+    top: number;
+    rightInset: number;
+    chipWidth: number;
+    placeAbove: boolean;
+  } | null>(null);
+  const countryBubbleOpenRef = React.useRef(false);
+  const lastCountryDismissRef = React.useRef(0);
+  countryBubbleOpenRef.current = countryBubble !== null;
+  const dismissCountryBubble = React.useCallback(() => {
+    if (!countryBubbleOpenRef.current) {
+      return;
+    }
+    countryBubbleOpenRef.current = false;
+    lastCountryDismissRef.current = Date.now();
+    setCountryBubble(null);
+  }, []);
+  React.useEffect(() => {
+    dismissCountryBubble();
+  }, [dismissCountryBubble, enrichmentDismissSignal]);
+  const openCountryBubble = React.useCallback(
+    (country: CountryDisplay, chipRef: React.RefObject<View | null>) => {
+      if (Date.now() - lastCountryDismissRef.current < 300) {
+        return;
+      }
+      chipRef.current?.measureInWindow((x, y, width, height) => {
+        headerRef.current?.measureInWindow((rootX, rootY, rootWidth) => {
+          const belowTop = y - rootY + height + 8;
+          const placeAbove = y + height + 8 + 34 > windowHeight - 16;
+          setCountryBubble({
+            country,
+            top: placeAbove ? y - rootY - 34 - 8 : belowTop,
+            rightInset: Math.max(12, rootWidth - (x - rootX + width)),
+            chipWidth: width,
+            placeAbove,
+          });
+        });
+      });
+    },
+    [windowHeight],
+  );
 
   React.useEffect(() => {
     if (!copiedBarcode) return;
@@ -152,7 +202,11 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
   }, [editionMetadata, release.barcode, release.country, release.status]);
 
   return (
-    <View style={{ backgroundColor: styles.container.backgroundColor }}>
+    <View
+      ref={headerRef}
+      collapsable={false}
+      style={{ backgroundColor: styles.container.backgroundColor }}
+    >
       <ResponsiveHeaderImage
         imageUrl={release.cover_url}
         type="release"
@@ -178,12 +232,16 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
           </TouchableOpacity>
         </View>
 
-        <ArtistChips
-          artists={artistCredits}
-          onArtistPress={(artistId) =>
-            navigation.navigate("Artist", { artistId })
-          }
-        />
+        {artistCredits.length > 0 && (
+          <View style={chipStyles.chipsRow}>
+            <ArtistChips
+              artists={artistCredits}
+              onArtistPress={(artistId) =>
+                navigation.navigate("Artist", { artistId })
+              }
+            />
+          </View>
+        )}
 
         <View style={tagStyles.tagsRow}>
           {releaseType ? (
@@ -226,7 +284,11 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
               <View key={detail.label} style={editionStyles.row}>
                 <Text style={editionStyles.label}>{detail.label}</Text>
                 {detail.country ? (
-                  <CountryDetailValue country={detail.country} />
+                  <CountryDetailValue
+                    country={detail.country}
+                    isOpen={countryBubble?.country.code === detail.country.code}
+                    onOpen={openCountryBubble}
+                  />
                 ) : detail.copyable ? (
                   <TouchableOpacity
                     onPress={() => {
@@ -264,39 +326,92 @@ const ReleaseHeader = ({ release }: ReleaseHeaderProps) => {
           onPreferredServiceChange={onPreferredServiceChange}
         />
       </View>
-    </View>
-  );
-};
-
-const CountryDetailValue = ({ country }: { country: CountryDisplay }) => {
-  const [expanded, setExpanded] = React.useState(false);
-  return (
-    <View style={editionStyles.countryWrap}>
-      <TouchableOpacity
-        onPress={() => setExpanded((value) => !value)}
-        activeOpacity={0.72}
-        accessibilityRole="button"
-        accessibilityLabel={`${country.name}${country.code ? ` (${country.code})` : ""}. ${expanded ? "Hide" : "Show"} country name.`}
-        style={editionStyles.countryChip}
-      >
-        <Text style={editionStyles.countryFlag}>{country.flag}</Text>
-        <Text style={editionStyles.countryCode}>{country.code}</Text>
-        <MaterialIcons
-          name={expanded ? "expand-less" : "expand-more"}
-          size={16}
-          color="#94A3B8"
-        />
-      </TouchableOpacity>
-      {expanded && (
-        <View style={editionStyles.countryNameCard}>
-          <Text style={editionStyles.countryName}>{country.name}</Text>
+      {countryBubble && (
+        <View
+          pointerEvents="none"
+          style={[headerStyles.countryOverlay, { top: countryBubble.top }]}
+        >
+          <View
+            style={[
+              headerStyles.countryOverlayRow,
+              { paddingRight: countryBubble.rightInset },
+            ]}
+          >
+            <View
+              style={[
+                editionStyles.countryBubble,
+                { maxWidth: Math.min(320, windowWidth - 24) },
+              ]}
+            >
+              <View
+                style={[
+                  editionStyles.countryCaret,
+                  countryBubble.placeAbove
+                    ? editionStyles.countryCaretBottom
+                    : editionStyles.countryCaretTop,
+                  { right: Math.max(8, countryBubble.chipWidth - 20) },
+                ]}
+              />
+              <Text numberOfLines={1} style={editionStyles.countryBubbleText}>
+                {countryBubble.country.name}
+              </Text>
+            </View>
+          </View>
         </View>
       )}
     </View>
   );
 };
 
+/**
+ * Country chip with an anchored name bubble.
+ *
+ * The bubble is an in-tree absolute overlay (not a Modal) so it never steals the
+ * scroll gesture, and it is hidden as soon as the screen starts scrolling.
+ * The caret is aligned with the flag by measuring the chip's own width.
+ */
+const CountryDetailValue = ({
+  country,
+  isOpen,
+  onOpen,
+}: {
+  country: CountryDisplay;
+  isOpen: boolean;
+  onOpen: (
+    country: CountryDisplay,
+    chipRef: React.RefObject<View | null>,
+  ) => void;
+}) => {
+  const chipRef = React.useRef<View>(null);
+
+  return (
+    <TouchableOpacity
+      ref={chipRef}
+      onPress={isOpen ? undefined : () => onOpen(country, chipRef)}
+      activeOpacity={0.72}
+      accessibilityRole="button"
+      accessibilityLabel={`${country.name} (${country.code})`}
+      style={editionStyles.countryChip}
+    >
+      <Text style={editionStyles.countryFlag}>{country.flag}</Text>
+      <Text style={editionStyles.countryCode} numberOfLines={1}>
+        {country.code}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
 const headerStyles = StyleSheet.create({
+  countryOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    elevation: 24,
+  },
+  countryOverlayRow: {
+    alignItems: "flex-end",
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -434,10 +549,42 @@ const editionStyles = StyleSheet.create({
     flexShrink: 1,
     alignItems: "flex-end",
   },
-  countryWrap: {
-    alignItems: "flex-end",
-    gap: 6,
-    maxWidth: "72%",
+  countryBubble: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(148, 163, 184, 0.30)",
+    backgroundColor: "#0F172A",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  countryCaret: {
+    position: "absolute",
+    width: 9,
+    height: 9,
+    backgroundColor: "#0F172A",
+    borderColor: "rgba(148, 163, 184, 0.30)",
+    transform: [{ rotate: "45deg" }],
+  },
+  countryCaretTop: {
+    top: -5,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+  },
+  countryCaretBottom: {
+    bottom: -5,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+  },
+  countryBubbleText: {
+    color: "#E2E8F0",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   countryChip: {
     flexDirection: "row",
@@ -447,8 +594,7 @@ const editionStyles = StyleSheet.create({
     borderColor: "rgba(148, 163, 184, 0.28)",
     backgroundColor: "rgba(15, 23, 42, 0.42)",
     borderRadius: 999,
-    paddingLeft: 8,
-    paddingRight: 6,
+    paddingHorizontal: 8,
     paddingVertical: 4,
   },
   countryFlag: {
@@ -460,19 +606,7 @@ const editionStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.4,
-  },
-  countryNameCard: {
-    borderWidth: 1,
-    borderColor: "rgba(92, 225, 230, 0.32)",
-    backgroundColor: "rgba(92, 225, 230, 0.10)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  countryName: {
-    color: "#E2F8FA",
-    fontSize: 12,
-    fontWeight: "600",
+    flexShrink: 1,
   },
 });
 

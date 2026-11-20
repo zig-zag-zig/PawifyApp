@@ -27,7 +27,7 @@ describe("getCountryDisplay", () => {
     expect(getCountryDisplay("ZZ")).toEqual({
       code: "ZZ",
       name: "ZZ",
-      flag: "🇿🇿",
+      flag: "🏳️",
     });
     expect(getCountryDisplay(null)).toBeNull();
   });

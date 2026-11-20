@@ -1,63 +1,324 @@
+/**
+ * Static country metadata for release countries.
+ *
+ * Hermes does not consistently implement Intl.DisplayNames, so display names are
+ * carried locally. ISO names come from iso-codes; MusicBrainz pseudo-countries
+ * get explicit names. Keeping this client-side costs no mirror space.
+ */
 export type CountryDisplay = {
   code: string;
   name: string;
   flag: string;
 };
 
-const SPECIAL_COUNTRIES: Record<string, { name: string; flag: string }> = {
-  XW: { name: "Worldwide", flag: "🌐" },
-  XE: { name: "Europe", flag: "🇪🇺" },
-  XK: { name: "Kosovo", flag: "🇽🇰" },
+const COUNTRIES: Record<string, { name: string; flag: string }> = {
+  AD: { name: "Andorra", flag: "\ud83c\udde6\ud83c\udde9" },
+  AE: { name: "United Arab Emirates", flag: "\ud83c\udde6\ud83c\uddea" },
+  AF: { name: "Afghanistan", flag: "\ud83c\udde6\ud83c\uddeb" },
+  AG: { name: "Antigua and Barbuda", flag: "\ud83c\udde6\ud83c\uddec" },
+  AI: { name: "Anguilla", flag: "\ud83c\udde6\ud83c\uddee" },
+  AL: { name: "Albania", flag: "\ud83c\udde6\ud83c\uddf1" },
+  AM: { name: "Armenia", flag: "\ud83c\udde6\ud83c\uddf2" },
+  AO: { name: "Angola", flag: "\ud83c\udde6\ud83c\uddf4" },
+  AQ: { name: "Antarctica", flag: "\ud83c\udde6\ud83c\uddf6" },
+  AR: { name: "Argentina", flag: "\ud83c\udde6\ud83c\uddf7" },
+  AS: { name: "American Samoa", flag: "\ud83c\udde6\ud83c\uddf8" },
+  AT: { name: "Austria", flag: "\ud83c\udde6\ud83c\uddf9" },
+  AU: { name: "Australia", flag: "\ud83c\udde6\ud83c\uddfa" },
+  AW: { name: "Aruba", flag: "\ud83c\udde6\ud83c\uddfc" },
+  AX: { name: "\u00c5land Islands", flag: "\ud83c\udde6\ud83c\uddfd" },
+  AZ: { name: "Azerbaijan", flag: "\ud83c\udde6\ud83c\uddff" },
+  BA: { name: "Bosnia and Herzegovina", flag: "\ud83c\udde7\ud83c\udde6" },
+  BB: { name: "Barbados", flag: "\ud83c\udde7\ud83c\udde7" },
+  BD: { name: "Bangladesh", flag: "\ud83c\udde7\ud83c\udde9" },
+  BE: { name: "Belgium", flag: "\ud83c\udde7\ud83c\uddea" },
+  BF: { name: "Burkina Faso", flag: "\ud83c\udde7\ud83c\uddeb" },
+  BG: { name: "Bulgaria", flag: "\ud83c\udde7\ud83c\uddec" },
+  BH: { name: "Bahrain", flag: "\ud83c\udde7\ud83c\udded" },
+  BI: { name: "Burundi", flag: "\ud83c\udde7\ud83c\uddee" },
+  BJ: { name: "Benin", flag: "\ud83c\udde7\ud83c\uddef" },
+  BL: { name: "Saint Barth\u00e9lemy", flag: "\ud83c\udde7\ud83c\uddf1" },
+  BM: { name: "Bermuda", flag: "\ud83c\udde7\ud83c\uddf2" },
+  BN: { name: "Brunei Darussalam", flag: "\ud83c\udde7\ud83c\uddf3" },
+  BO: {
+    name: "Bolivia, Plurinational State of",
+    flag: "\ud83c\udde7\ud83c\uddf4",
+  },
+  BQ: {
+    name: "Bonaire, Sint Eustatius and Saba",
+    flag: "\ud83c\udde7\ud83c\uddf6",
+  },
+  BR: { name: "Brazil", flag: "\ud83c\udde7\ud83c\uddf7" },
+  BS: { name: "Bahamas", flag: "\ud83c\udde7\ud83c\uddf8" },
+  BT: { name: "Bhutan", flag: "\ud83c\udde7\ud83c\uddf9" },
+  BV: { name: "Bouvet Island", flag: "\ud83c\udde7\ud83c\uddfb" },
+  BW: { name: "Botswana", flag: "\ud83c\udde7\ud83c\uddfc" },
+  BY: { name: "Belarus", flag: "\ud83c\udde7\ud83c\uddfe" },
+  BZ: { name: "Belize", flag: "\ud83c\udde7\ud83c\uddff" },
+  CA: { name: "Canada", flag: "\ud83c\udde8\ud83c\udde6" },
+  CC: { name: "Cocos (Keeling) Islands", flag: "\ud83c\udde8\ud83c\udde8" },
+  CD: {
+    name: "Congo, The Democratic Republic of the",
+    flag: "\ud83c\udde8\ud83c\udde9",
+  },
+  CF: { name: "Central African Republic", flag: "\ud83c\udde8\ud83c\uddeb" },
+  CG: { name: "Congo", flag: "\ud83c\udde8\ud83c\uddec" },
+  CH: { name: "Switzerland", flag: "\ud83c\udde8\ud83c\udded" },
+  CI: { name: "C\u00f4te d'Ivoire", flag: "\ud83c\udde8\ud83c\uddee" },
+  CK: { name: "Cook Islands", flag: "\ud83c\udde8\ud83c\uddf0" },
+  CL: { name: "Chile", flag: "\ud83c\udde8\ud83c\uddf1" },
+  CM: { name: "Cameroon", flag: "\ud83c\udde8\ud83c\uddf2" },
+  CN: { name: "China", flag: "\ud83c\udde8\ud83c\uddf3" },
+  CO: { name: "Colombia", flag: "\ud83c\udde8\ud83c\uddf4" },
+  CR: { name: "Costa Rica", flag: "\ud83c\udde8\ud83c\uddf7" },
+  CU: { name: "Cuba", flag: "\ud83c\udde8\ud83c\uddfa" },
+  CV: { name: "Cabo Verde", flag: "\ud83c\udde8\ud83c\uddfb" },
+  CW: { name: "Cura\u00e7ao", flag: "\ud83c\udde8\ud83c\uddfc" },
+  CX: { name: "Christmas Island", flag: "\ud83c\udde8\ud83c\uddfd" },
+  CY: { name: "Cyprus", flag: "\ud83c\udde8\ud83c\uddfe" },
+  CZ: { name: "Czechia", flag: "\ud83c\udde8\ud83c\uddff" },
+  DE: { name: "Germany", flag: "\ud83c\udde9\ud83c\uddea" },
+  DJ: { name: "Djibouti", flag: "\ud83c\udde9\ud83c\uddef" },
+  DK: { name: "Denmark", flag: "\ud83c\udde9\ud83c\uddf0" },
+  DM: { name: "Dominica", flag: "\ud83c\udde9\ud83c\uddf2" },
+  DO: { name: "Dominican Republic", flag: "\ud83c\udde9\ud83c\uddf4" },
+  DZ: { name: "Algeria", flag: "\ud83c\udde9\ud83c\uddff" },
+  EC: { name: "Ecuador", flag: "\ud83c\uddea\ud83c\udde8" },
+  EE: { name: "Estonia", flag: "\ud83c\uddea\ud83c\uddea" },
+  EG: { name: "Egypt", flag: "\ud83c\uddea\ud83c\uddec" },
+  EH: { name: "Western Sahara", flag: "\ud83c\uddea\ud83c\udded" },
+  ER: { name: "Eritrea", flag: "\ud83c\uddea\ud83c\uddf7" },
+  ES: { name: "Spain", flag: "\ud83c\uddea\ud83c\uddf8" },
+  ET: { name: "Ethiopia", flag: "\ud83c\uddea\ud83c\uddf9" },
+  FI: { name: "Finland", flag: "\ud83c\uddeb\ud83c\uddee" },
+  FJ: { name: "Fiji", flag: "\ud83c\uddeb\ud83c\uddef" },
+  FK: { name: "Falkland Islands (Malvinas)", flag: "\ud83c\uddeb\ud83c\uddf0" },
+  FM: {
+    name: "Micronesia, Federated States of",
+    flag: "\ud83c\uddeb\ud83c\uddf2",
+  },
+  FO: { name: "Faroe Islands", flag: "\ud83c\uddeb\ud83c\uddf4" },
+  FR: { name: "France", flag: "\ud83c\uddeb\ud83c\uddf7" },
+  GA: { name: "Gabon", flag: "\ud83c\uddec\ud83c\udde6" },
+  GB: { name: "United Kingdom", flag: "\ud83c\uddec\ud83c\udde7" },
+  GD: { name: "Grenada", flag: "\ud83c\uddec\ud83c\udde9" },
+  GE: { name: "Georgia", flag: "\ud83c\uddec\ud83c\uddea" },
+  GF: { name: "French Guiana", flag: "\ud83c\uddec\ud83c\uddeb" },
+  GG: { name: "Guernsey", flag: "\ud83c\uddec\ud83c\uddec" },
+  GH: { name: "Ghana", flag: "\ud83c\uddec\ud83c\udded" },
+  GI: { name: "Gibraltar", flag: "\ud83c\uddec\ud83c\uddee" },
+  GL: { name: "Greenland", flag: "\ud83c\uddec\ud83c\uddf1" },
+  GM: { name: "Gambia", flag: "\ud83c\uddec\ud83c\uddf2" },
+  GN: { name: "Guinea", flag: "\ud83c\uddec\ud83c\uddf3" },
+  GP: { name: "Guadeloupe", flag: "\ud83c\uddec\ud83c\uddf5" },
+  GQ: { name: "Equatorial Guinea", flag: "\ud83c\uddec\ud83c\uddf6" },
+  GR: { name: "Greece", flag: "\ud83c\uddec\ud83c\uddf7" },
+  GS: {
+    name: "South Georgia and the South Sandwich Islands",
+    flag: "\ud83c\uddec\ud83c\uddf8",
+  },
+  GT: { name: "Guatemala", flag: "\ud83c\uddec\ud83c\uddf9" },
+  GU: { name: "Guam", flag: "\ud83c\uddec\ud83c\uddfa" },
+  GW: { name: "Guinea-Bissau", flag: "\ud83c\uddec\ud83c\uddfc" },
+  GY: { name: "Guyana", flag: "\ud83c\uddec\ud83c\uddfe" },
+  HK: { name: "Hong Kong", flag: "\ud83c\udded\ud83c\uddf0" },
+  HM: {
+    name: "Heard Island and McDonald Islands",
+    flag: "\ud83c\udded\ud83c\uddf2",
+  },
+  HN: { name: "Honduras", flag: "\ud83c\udded\ud83c\uddf3" },
+  HR: { name: "Croatia", flag: "\ud83c\udded\ud83c\uddf7" },
+  HT: { name: "Haiti", flag: "\ud83c\udded\ud83c\uddf9" },
+  HU: { name: "Hungary", flag: "\ud83c\udded\ud83c\uddfa" },
+  ID: { name: "Indonesia", flag: "\ud83c\uddee\ud83c\udde9" },
+  IE: { name: "Ireland", flag: "\ud83c\uddee\ud83c\uddea" },
+  IL: { name: "Israel", flag: "\ud83c\uddee\ud83c\uddf1" },
+  IM: { name: "Isle of Man", flag: "\ud83c\uddee\ud83c\uddf2" },
+  IN: { name: "India", flag: "\ud83c\uddee\ud83c\uddf3" },
+  IO: {
+    name: "British Indian Ocean Territory",
+    flag: "\ud83c\uddee\ud83c\uddf4",
+  },
+  IQ: { name: "Iraq", flag: "\ud83c\uddee\ud83c\uddf6" },
+  IR: { name: "Iran, Islamic Republic of", flag: "\ud83c\uddee\ud83c\uddf7" },
+  IS: { name: "Iceland", flag: "\ud83c\uddee\ud83c\uddf8" },
+  IT: { name: "Italy", flag: "\ud83c\uddee\ud83c\uddf9" },
+  JE: { name: "Jersey", flag: "\ud83c\uddef\ud83c\uddea" },
+  JM: { name: "Jamaica", flag: "\ud83c\uddef\ud83c\uddf2" },
+  JO: { name: "Jordan", flag: "\ud83c\uddef\ud83c\uddf4" },
+  JP: { name: "Japan", flag: "\ud83c\uddef\ud83c\uddf5" },
+  KE: { name: "Kenya", flag: "\ud83c\uddf0\ud83c\uddea" },
+  KG: { name: "Kyrgyzstan", flag: "\ud83c\uddf0\ud83c\uddec" },
+  KH: { name: "Cambodia", flag: "\ud83c\uddf0\ud83c\udded" },
+  KI: { name: "Kiribati", flag: "\ud83c\uddf0\ud83c\uddee" },
+  KM: { name: "Comoros", flag: "\ud83c\uddf0\ud83c\uddf2" },
+  KN: { name: "Saint Kitts and Nevis", flag: "\ud83c\uddf0\ud83c\uddf3" },
+  KP: {
+    name: "Korea, Democratic People's Republic of",
+    flag: "\ud83c\uddf0\ud83c\uddf5",
+  },
+  KR: { name: "Korea, Republic of", flag: "\ud83c\uddf0\ud83c\uddf7" },
+  KW: { name: "Kuwait", flag: "\ud83c\uddf0\ud83c\uddfc" },
+  KY: { name: "Cayman Islands", flag: "\ud83c\uddf0\ud83c\uddfe" },
+  KZ: { name: "Kazakhstan", flag: "\ud83c\uddf0\ud83c\uddff" },
+  LA: {
+    name: "Lao People's Democratic Republic",
+    flag: "\ud83c\uddf1\ud83c\udde6",
+  },
+  LB: { name: "Lebanon", flag: "\ud83c\uddf1\ud83c\udde7" },
+  LC: { name: "Saint Lucia", flag: "\ud83c\uddf1\ud83c\udde8" },
+  LI: { name: "Liechtenstein", flag: "\ud83c\uddf1\ud83c\uddee" },
+  LK: { name: "Sri Lanka", flag: "\ud83c\uddf1\ud83c\uddf0" },
+  LR: { name: "Liberia", flag: "\ud83c\uddf1\ud83c\uddf7" },
+  LS: { name: "Lesotho", flag: "\ud83c\uddf1\ud83c\uddf8" },
+  LT: { name: "Lithuania", flag: "\ud83c\uddf1\ud83c\uddf9" },
+  LU: { name: "Luxembourg", flag: "\ud83c\uddf1\ud83c\uddfa" },
+  LV: { name: "Latvia", flag: "\ud83c\uddf1\ud83c\uddfb" },
+  LY: { name: "Libya", flag: "\ud83c\uddf1\ud83c\uddfe" },
+  MA: { name: "Morocco", flag: "\ud83c\uddf2\ud83c\udde6" },
+  MC: { name: "Monaco", flag: "\ud83c\uddf2\ud83c\udde8" },
+  MD: { name: "Moldova, Republic of", flag: "\ud83c\uddf2\ud83c\udde9" },
+  ME: { name: "Montenegro", flag: "\ud83c\uddf2\ud83c\uddea" },
+  MF: { name: "Saint Martin (French part)", flag: "\ud83c\uddf2\ud83c\uddeb" },
+  MG: { name: "Madagascar", flag: "\ud83c\uddf2\ud83c\uddec" },
+  MH: { name: "Marshall Islands", flag: "\ud83c\uddf2\ud83c\udded" },
+  MK: { name: "North Macedonia", flag: "\ud83c\uddf2\ud83c\uddf0" },
+  ML: { name: "Mali", flag: "\ud83c\uddf2\ud83c\uddf1" },
+  MM: { name: "Myanmar", flag: "\ud83c\uddf2\ud83c\uddf2" },
+  MN: { name: "Mongolia", flag: "\ud83c\uddf2\ud83c\uddf3" },
+  MO: { name: "Macao", flag: "\ud83c\uddf2\ud83c\uddf4" },
+  MP: { name: "Northern Mariana Islands", flag: "\ud83c\uddf2\ud83c\uddf5" },
+  MQ: { name: "Martinique", flag: "\ud83c\uddf2\ud83c\uddf6" },
+  MR: { name: "Mauritania", flag: "\ud83c\uddf2\ud83c\uddf7" },
+  MS: { name: "Montserrat", flag: "\ud83c\uddf2\ud83c\uddf8" },
+  MT: { name: "Malta", flag: "\ud83c\uddf2\ud83c\uddf9" },
+  MU: { name: "Mauritius", flag: "\ud83c\uddf2\ud83c\uddfa" },
+  MV: { name: "Maldives", flag: "\ud83c\uddf2\ud83c\uddfb" },
+  MW: { name: "Malawi", flag: "\ud83c\uddf2\ud83c\uddfc" },
+  MX: { name: "Mexico", flag: "\ud83c\uddf2\ud83c\uddfd" },
+  MY: { name: "Malaysia", flag: "\ud83c\uddf2\ud83c\uddfe" },
+  MZ: { name: "Mozambique", flag: "\ud83c\uddf2\ud83c\uddff" },
+  NA: { name: "Namibia", flag: "\ud83c\uddf3\ud83c\udde6" },
+  NC: { name: "New Caledonia", flag: "\ud83c\uddf3\ud83c\udde8" },
+  NE: { name: "Niger", flag: "\ud83c\uddf3\ud83c\uddea" },
+  NF: { name: "Norfolk Island", flag: "\ud83c\uddf3\ud83c\uddeb" },
+  NG: { name: "Nigeria", flag: "\ud83c\uddf3\ud83c\uddec" },
+  NI: { name: "Nicaragua", flag: "\ud83c\uddf3\ud83c\uddee" },
+  NL: { name: "Netherlands", flag: "\ud83c\uddf3\ud83c\uddf1" },
+  NO: { name: "Norway", flag: "\ud83c\uddf3\ud83c\uddf4" },
+  NP: { name: "Nepal", flag: "\ud83c\uddf3\ud83c\uddf5" },
+  NR: { name: "Nauru", flag: "\ud83c\uddf3\ud83c\uddf7" },
+  NU: { name: "Niue", flag: "\ud83c\uddf3\ud83c\uddfa" },
+  NZ: { name: "New Zealand", flag: "\ud83c\uddf3\ud83c\uddff" },
+  OM: { name: "Oman", flag: "\ud83c\uddf4\ud83c\uddf2" },
+  PA: { name: "Panama", flag: "\ud83c\uddf5\ud83c\udde6" },
+  PE: { name: "Peru", flag: "\ud83c\uddf5\ud83c\uddea" },
+  PF: { name: "French Polynesia", flag: "\ud83c\uddf5\ud83c\uddeb" },
+  PG: { name: "Papua New Guinea", flag: "\ud83c\uddf5\ud83c\uddec" },
+  PH: { name: "Philippines", flag: "\ud83c\uddf5\ud83c\udded" },
+  PK: { name: "Pakistan", flag: "\ud83c\uddf5\ud83c\uddf0" },
+  PL: { name: "Poland", flag: "\ud83c\uddf5\ud83c\uddf1" },
+  PM: { name: "Saint Pierre and Miquelon", flag: "\ud83c\uddf5\ud83c\uddf2" },
+  PN: { name: "Pitcairn", flag: "\ud83c\uddf5\ud83c\uddf3" },
+  PR: { name: "Puerto Rico", flag: "\ud83c\uddf5\ud83c\uddf7" },
+  PS: { name: "Palestine, State of", flag: "\ud83c\uddf5\ud83c\uddf8" },
+  PT: { name: "Portugal", flag: "\ud83c\uddf5\ud83c\uddf9" },
+  PW: { name: "Palau", flag: "\ud83c\uddf5\ud83c\uddfc" },
+  PY: { name: "Paraguay", flag: "\ud83c\uddf5\ud83c\uddfe" },
+  QA: { name: "Qatar", flag: "\ud83c\uddf6\ud83c\udde6" },
+  RE: { name: "R\u00e9union", flag: "\ud83c\uddf7\ud83c\uddea" },
+  RO: { name: "Romania", flag: "\ud83c\uddf7\ud83c\uddf4" },
+  RS: { name: "Serbia", flag: "\ud83c\uddf7\ud83c\uddf8" },
+  RU: { name: "Russian Federation", flag: "\ud83c\uddf7\ud83c\uddfa" },
+  RW: { name: "Rwanda", flag: "\ud83c\uddf7\ud83c\uddfc" },
+  SA: { name: "Saudi Arabia", flag: "\ud83c\uddf8\ud83c\udde6" },
+  SB: { name: "Solomon Islands", flag: "\ud83c\uddf8\ud83c\udde7" },
+  SC: { name: "Seychelles", flag: "\ud83c\uddf8\ud83c\udde8" },
+  SD: { name: "Sudan", flag: "\ud83c\uddf8\ud83c\udde9" },
+  SE: { name: "Sweden", flag: "\ud83c\uddf8\ud83c\uddea" },
+  SG: { name: "Singapore", flag: "\ud83c\uddf8\ud83c\uddec" },
+  SH: {
+    name: "Saint Helena, Ascension and Tristan da Cunha",
+    flag: "\ud83c\uddf8\ud83c\udded",
+  },
+  SI: { name: "Slovenia", flag: "\ud83c\uddf8\ud83c\uddee" },
+  SJ: { name: "Svalbard and Jan Mayen", flag: "\ud83c\uddf8\ud83c\uddef" },
+  SK: { name: "Slovakia", flag: "\ud83c\uddf8\ud83c\uddf0" },
+  SL: { name: "Sierra Leone", flag: "\ud83c\uddf8\ud83c\uddf1" },
+  SM: { name: "San Marino", flag: "\ud83c\uddf8\ud83c\uddf2" },
+  SN: { name: "Senegal", flag: "\ud83c\uddf8\ud83c\uddf3" },
+  SO: { name: "Somalia", flag: "\ud83c\uddf8\ud83c\uddf4" },
+  SR: { name: "Suriname", flag: "\ud83c\uddf8\ud83c\uddf7" },
+  SS: { name: "South Sudan", flag: "\ud83c\uddf8\ud83c\uddf8" },
+  ST: { name: "Sao Tome and Principe", flag: "\ud83c\uddf8\ud83c\uddf9" },
+  SV: { name: "El Salvador", flag: "\ud83c\uddf8\ud83c\uddfb" },
+  SX: { name: "Sint Maarten (Dutch part)", flag: "\ud83c\uddf8\ud83c\uddfd" },
+  SY: { name: "Syrian Arab Republic", flag: "\ud83c\uddf8\ud83c\uddfe" },
+  SZ: { name: "Eswatini", flag: "\ud83c\uddf8\ud83c\uddff" },
+  TC: { name: "Turks and Caicos Islands", flag: "\ud83c\uddf9\ud83c\udde8" },
+  TD: { name: "Chad", flag: "\ud83c\uddf9\ud83c\udde9" },
+  TF: { name: "French Southern Territories", flag: "\ud83c\uddf9\ud83c\uddeb" },
+  TG: { name: "Togo", flag: "\ud83c\uddf9\ud83c\uddec" },
+  TH: { name: "Thailand", flag: "\ud83c\uddf9\ud83c\udded" },
+  TJ: { name: "Tajikistan", flag: "\ud83c\uddf9\ud83c\uddef" },
+  TK: { name: "Tokelau", flag: "\ud83c\uddf9\ud83c\uddf0" },
+  TL: { name: "Timor-Leste", flag: "\ud83c\uddf9\ud83c\uddf1" },
+  TM: { name: "Turkmenistan", flag: "\ud83c\uddf9\ud83c\uddf2" },
+  TN: { name: "Tunisia", flag: "\ud83c\uddf9\ud83c\uddf3" },
+  TO: { name: "Tonga", flag: "\ud83c\uddf9\ud83c\uddf4" },
+  TR: { name: "T\u00fcrkiye", flag: "\ud83c\uddf9\ud83c\uddf7" },
+  TT: { name: "Trinidad and Tobago", flag: "\ud83c\uddf9\ud83c\uddf9" },
+  TV: { name: "Tuvalu", flag: "\ud83c\uddf9\ud83c\uddfb" },
+  TW: { name: "Taiwan, Province of China", flag: "\ud83c\uddf9\ud83c\uddfc" },
+  TZ: {
+    name: "Tanzania, United Republic of",
+    flag: "\ud83c\uddf9\ud83c\uddff",
+  },
+  UA: { name: "Ukraine", flag: "\ud83c\uddfa\ud83c\udde6" },
+  UG: { name: "Uganda", flag: "\ud83c\uddfa\ud83c\uddec" },
+  UM: {
+    name: "United States Minor Outlying Islands",
+    flag: "\ud83c\uddfa\ud83c\uddf2",
+  },
+  US: { name: "United States", flag: "\ud83c\uddfa\ud83c\uddf8" },
+  UY: { name: "Uruguay", flag: "\ud83c\uddfa\ud83c\uddfe" },
+  UZ: { name: "Uzbekistan", flag: "\ud83c\uddfa\ud83c\uddff" },
+  VA: {
+    name: "Holy See (Vatican City State)",
+    flag: "\ud83c\uddfb\ud83c\udde6",
+  },
+  VC: {
+    name: "Saint Vincent and the Grenadines",
+    flag: "\ud83c\uddfb\ud83c\udde8",
+  },
+  VE: {
+    name: "Venezuela, Bolivarian Republic of",
+    flag: "\ud83c\uddfb\ud83c\uddea",
+  },
+  VG: { name: "Virgin Islands, British", flag: "\ud83c\uddfb\ud83c\uddec" },
+  VI: { name: "Virgin Islands, U.S.", flag: "\ud83c\uddfb\ud83c\uddee" },
+  VN: { name: "Viet Nam", flag: "\ud83c\uddfb\ud83c\uddf3" },
+  VU: { name: "Vanuatu", flag: "\ud83c\uddfb\ud83c\uddfa" },
+  WF: { name: "Wallis and Futuna", flag: "\ud83c\uddfc\ud83c\uddeb" },
+  WS: { name: "Samoa", flag: "\ud83c\uddfc\ud83c\uddf8" },
+  XE: { name: "Europe", flag: "\ud83c\uddea\ud83c\uddfa" },
+  XK: { name: "Kosovo", flag: "\ud83c\uddfd\ud83c\uddf0" },
+  XW: { name: "Worldwide", flag: "\ud83c\udf10" },
+  YE: { name: "Yemen", flag: "\ud83c\uddfe\ud83c\uddea" },
+  YT: { name: "Mayotte", flag: "\ud83c\uddfe\ud83c\uddf9" },
+  ZA: { name: "South Africa", flag: "\ud83c\uddff\ud83c\udde6" },
+  ZM: { name: "Zambia", flag: "\ud83c\uddff\ud83c\uddf2" },
+  ZW: { name: "Zimbabwe", flag: "\ud83c\uddff\ud83c\uddfc" },
 };
 
-const regionNames = (() => {
-  try {
-    return new Intl.DisplayNames(["en"], { type: "region" });
-  } catch {
-    return null;
-  }
-})();
-
-const flagForCode = (code: string): string => {
-  const special = SPECIAL_COUNTRIES[code];
-  if (special) return special.flag;
-  if (!/^[A-Z]{2}$/.test(code)) return "🏳️";
-  return String.fromCodePoint(
-    ...code.split("").map((char) => 0x1f1e6 + char.charCodeAt(0) - 65),
-  );
-};
-
-/**
- * Display metadata for a MusicBrainz release country.
- *
- * ISO alpha-2 codes get the regional-indicator flag; MusicBrainz pseudo-countries
- * (XW worldwide, XE Europe) get an explicit name and symbol instead of a broken
- * letter flag. Unknown codes fall back to the code itself.
- */
 export const getCountryDisplay = (
   rawCode: string | null | undefined,
 ): CountryDisplay | null => {
   const code = rawCode?.trim().toUpperCase();
   if (!code) return null;
 
-  const special = SPECIAL_COUNTRIES[code];
-  if (special) {
-    return { code, name: special.name, flag: special.flag };
-  }
+  const country = COUNTRIES[code];
+  if (country) return { code, ...country };
 
-  let name = code;
-  try {
-    const resolved = regionNames?.of(code);
-    if (
-      resolved &&
-      resolved !== code &&
-      !/^Unknown (Region|Country)$/i.test(resolved)
-    ) {
-      name = resolved;
-    }
-  } catch {
-    // Keep the code as the name.
-  }
-
-  return { code, name, flag: flagForCode(code) };
+  return { code, name: code, flag: "🏳️" };
 };
