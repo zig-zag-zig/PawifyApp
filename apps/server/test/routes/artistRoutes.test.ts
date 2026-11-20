@@ -15,10 +15,10 @@ let baseUrl: string;
 
 beforeEach(async () => {
     const { createArtistRoutes } = await import('../../src/features/artists/artistRoutes.js');
-    const { artistPresentersV1, artistUseCasesV1 } =
-        await import('../../src/api/useCaseVariants.js');
+    const { artistPresentersV3, artistUseCasesV3 } =
+        await import('../../src/api/artistUseCasesV3.js');
     baseUrl = await createIntegrationTestApp(
-        createArtistRoutes(artistUseCasesV1, artistPresentersV1),
+        createArtistRoutes(artistUseCasesV3, artistPresentersV3),
     );
 });
 
@@ -36,16 +36,16 @@ afterEach(async () => {
 describe('artist route integration', () => {
     const authHeader = { Authorization: 'Bearer valid-token' };
 
-    describe('GET /v1/getFollowing', () => {
+    describe('GET /v3/getFollowing', () => {
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getFollowing`);
+            const response = await fetch(`${baseUrl}/v3/getFollowing`);
             assert.equal(response.status, 401);
         });
     });
 
-    describe('POST /v1/getArtistDetails', () => {
+    describe('POST /v3/getArtistDetails', () => {
         it('returns 400 when artistId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/getArtistDetails`, {
+            const response = await fetch(`${baseUrl}/v3/getArtistDetails`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -54,7 +54,7 @@ describe('artist route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/getArtistDetails`, {
+            const response = await fetch(`${baseUrl}/v3/getArtistDetails`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ artistId: 'test' }),
@@ -63,9 +63,9 @@ describe('artist route integration', () => {
         });
     });
 
-    describe('POST /v1/searchArtists', () => {
+    describe('POST /v3/searchArtists', () => {
         it('returns 400 when query is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/searchArtists`, {
+            const response = await fetch(`${baseUrl}/v3/searchArtists`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -74,7 +74,7 @@ describe('artist route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/searchArtists`, {
+            const response = await fetch(`${baseUrl}/v3/searchArtists`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: 'test' }),
@@ -83,9 +83,9 @@ describe('artist route integration', () => {
         });
     });
 
-    describe('POST /v1/followArtist', () => {
+    describe('POST /v3/followArtist', () => {
         it('returns 400 when artistId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/followArtist`, {
+            const response = await fetch(`${baseUrl}/v3/followArtist`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -94,7 +94,7 @@ describe('artist route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/followArtist`, {
+            const response = await fetch(`${baseUrl}/v3/followArtist`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ artistId: 'test-artist' }),
@@ -103,9 +103,9 @@ describe('artist route integration', () => {
         });
     });
 
-    describe('POST /v1/unfollowArtist', () => {
+    describe('POST /v3/unfollowArtist', () => {
         it('returns 400 when artistId is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/unfollowArtist`, {
+            const response = await fetch(`${baseUrl}/v3/unfollowArtist`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -114,7 +114,7 @@ describe('artist route integration', () => {
         });
 
         it('returns 401 without authorization', async () => {
-            const response = await fetch(`${baseUrl}/v1/unfollowArtist`, {
+            const response = await fetch(`${baseUrl}/v3/unfollowArtist`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ artistId: 'test-artist' }),
@@ -123,9 +123,9 @@ describe('artist route integration', () => {
         });
     });
 
-    describe('POST /v1/unfollowArtists', () => {
+    describe('POST /v3/unfollowArtists', () => {
         it('returns 400 when artistIds is missing', async () => {
-            const response = await fetch(`${baseUrl}/v1/unfollowArtists`, {
+            const response = await fetch(`${baseUrl}/v3/unfollowArtists`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -134,7 +134,7 @@ describe('artist route integration', () => {
         });
 
         it('returns 400 when artistIds has empty string', async () => {
-            const response = await fetch(`${baseUrl}/v1/unfollowArtists`, {
+            const response = await fetch(`${baseUrl}/v3/unfollowArtists`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ artistIds: [' '] }),
@@ -143,7 +143,7 @@ describe('artist route integration', () => {
         });
 
         it('returns 400 when artistIds exceeds the 500-item cap', async () => {
-            const response = await fetch(`${baseUrl}/v1/unfollowArtists`, {
+            const response = await fetch(`${baseUrl}/v3/unfollowArtists`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -154,7 +154,7 @@ describe('artist route integration', () => {
         });
     });
 
-    describe('POST /v1/unfollowArtists (best-effort notifications)', () => {
+    describe('POST /v3/unfollowArtists (best-effort notifications)', () => {
         it('returns 200 even when the change notification fails', async () => {
             const publisherPath =
                 require.resolve('../../src/services/notifications/dataNotificationPublisher.js');
@@ -171,7 +171,7 @@ describe('artist route integration', () => {
             for (const modulePath of [
                 '../../src/features/artists/infrastructure/artistDependencies.js',
                 '../../src/features/artists/artistUseCases.js',
-                '../../src/api/useCaseVariants.js',
+                '../../src/api/artistUseCasesV3.js',
             ]) {
                 delete require.cache[require.resolve(modulePath)];
             }
@@ -179,13 +179,13 @@ describe('artist route integration', () => {
             try {
                 const { createArtistRoutes } =
                     require('../../src/features/artists/artistRoutes.js') as typeof import('../../src/features/artists/artistRoutes.js');
-                const { artistPresentersV1, artistUseCasesV1 } =
-                    require('../../src/api/useCaseVariants.js') as typeof import('../../src/api/useCaseVariants.js');
+                const { artistPresentersV3, artistUseCasesV3 } =
+                    require('../../src/api/artistUseCasesV3.js') as typeof import('../../src/api/artistUseCasesV3.js');
                 const testBaseUrl = await createIntegrationTestApp(
-                    createArtistRoutes(artistUseCasesV1, artistPresentersV1),
+                    createArtistRoutes(artistUseCasesV3, artistPresentersV3),
                 );
 
-                const response = await fetch(`${testBaseUrl}/v1/unfollowArtists`, {
+                const response = await fetch(`${testBaseUrl}/v3/unfollowArtists`, {
                     method: 'POST',
                     headers: { ...authHeader, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ artistIds: ['artist-1', 'artist-2'] }),

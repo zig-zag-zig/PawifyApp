@@ -5,6 +5,7 @@ import {
 } from '../../../services/firebase/userSettingsStore.js';
 import {
     getKnownArtistReleaseGroupStateFromDb,
+    hasUnmigratedArtistReleaseGroupStateInDb,
     replaceKnownArtistReleaseGroupStateInDb,
 } from '../../../services/firebase/knownReleasesStore.js';
 import {
@@ -27,6 +28,8 @@ export const userSettingsDependencies: UserSettingsUseCaseDependencies = {
     knownReleaseRepository: {
         getArtistReleaseGroupState: async (userId, artistId) =>
             await getKnownArtistReleaseGroupStateFromDb(userId, artistId),
+        hasUnmigratedArtistReleaseGroupState: async (userId, artistId) =>
+            await hasUnmigratedArtistReleaseGroupStateInDb(userId, artistId),
         replaceArtistReleaseGroupState: async (userId, artistId, groupState) => {
             await replaceKnownArtistReleaseGroupStateInDb(userId, artistId, groupState);
         },

@@ -13,7 +13,7 @@ export type ReleaseGroupCoverTaskResult = {
 };
 
 export type ReleaseGroupReleaseCoverTaskResult = {
-    releaseGroupId: string;
+    releaseGroupId: string | null;
     covers: { [releaseId: string]: RemoteValueState };
 };
 
@@ -33,7 +33,10 @@ export type BackgroundTaskStatus = 'pending' | 'completed' | 'failed';
 
 export type TrackLyricsRequest = {
     releaseId: string;
+    /** Release-scoped track row id, used as the client-facing result key. */
     trackId: string;
+    /** Real MusicBrainz recording id when known, used for durable lyric identity. */
+    recordingId?: string | null;
     artistName: string;
     trackName: string;
 };
@@ -46,16 +49,12 @@ export type ArtistProfileImageLookup = {
     tidalUrls?: string[];
 };
 
-/**
- * API contract namespace. v2 prefixes its task dedupe keys so v1 and v2
- * clients never collide on the same background task.
- */
-export type ContractNamespace = 'v1' | 'v2';
+/** Separate full-result v1 jobs from cache-first v3 jobs. */
+export type ContractNamespace = 'v1' | 'v3';
 
 export type ArtistProfileImageQueueOptions = {
     /** Full artist id set used for dedupe when only a pending subset is queued. */
     fullArtistIds?: string[];
-    /** v2 prefixes dedupe keys with 'v2:'. Defaults to v1 keys. */
     contractNamespace?: ContractNamespace;
 };
 

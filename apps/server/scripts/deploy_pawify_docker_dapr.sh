@@ -361,8 +361,9 @@ prepare_runtime_files() {
   local dapr_source="$SECRETS_SOURCE_DIR/dapr-secrets.json"
   local firebase_source="$SECRETS_SOURCE_DIR/firebase-service-account.json"
 
-  mkdir -p "$secrets_dir" "$COMPOSE_DIR/backups/redis"
+  mkdir -p "$secrets_dir" "$COMPOSE_DIR/backups/redis" /home/deploy/pawify-lyrics
   chown -R "$owner" "$COMPOSE_DIR/secrets" "$COMPOSE_DIR/backups"
+  chown 1000:1000 /home/deploy/pawify-lyrics 2>/dev/null || true
   chmod 755 "$COMPOSE_DIR/secrets" "$secrets_dir" || true
 
   if [[ ! -f "$env_source" && -f "$SECRETS_SOURCE_DIR/.env" ]]; then
@@ -385,15 +386,18 @@ prepare_runtime_files() {
   # these as deploy defaults so a stale/older secret env file cannot silently
   # switch the server back to the MusicBrainz API.
   replace_or_append_env "$env_path" "MUSIC_DB_PATH" "/var/pawify/music/mb.db"
+  replace_or_append_env "$env_path" "LYRICS_DB_PATH" "/var/pawify/lyrics/lyrics.db"
   replace_or_append_env "$env_path" "MUSIC_DB_MAX_ARTIST_RELEASE_GROUPS" "1000"
   # The mirror is maintained by the deploy SSH user under /home/deploy. The
   # application container runs as the separate pawify user, so this must not use
   # /home/$APP_USER: that directory exists but is empty on the production host.
   replace_or_append_env "$env_path" "PAWIFY_MUSIC_DB_DIR" "/home/deploy/pawify-mb"
+  # Application-owned lyrics DB. This directory must be writable by the app uid,
+  # must not be inside the mirror replacement path and must not live in a
+  # disposable container layer.
+  replace_or_append_env "$env_path" "PAWIFY_LYRICS_DB_DIR" "/home/deploy/pawify-lyrics"
   replace_or_append_env "$env_path" "PAWIFY_APP_UID" "1000"
   replace_or_append_env "$env_path" "PAWIFY_APP_GID" "1000"
-  replace_or_append_env "$env_path" "ASSET_CACHE_SUCCESS_TTL_HOURS" "720"
-  replace_or_append_env "$env_path" "ASSET_CACHE_MISS_TTL_HOURS" "168"
   replace_or_append_env "$env_path" "PAWIFY_HOST_BIND_ADDRESS" "127.0.0.1"
   replace_or_append_env "$env_path" "PAWIFY_HOST_PORT" "$HOST_PORT"
   replace_or_append_env "$env_path" "APP_ENV" "$APP_ENV_VALUE"
@@ -489,10 +493,10 @@ start_stack() {
 
   compose_cmd "ps"
 
-  log "Health check: http://127.0.0.1:$HOST_PORT/v1/health"
+  log "Health check: http://127.0.0.1:$HOST_PORT/health"
   sleep 3
   if command -v curl >/dev/null 2>&1; then
-    if curl -fsS "http://127.0.0.1:$HOST_PORT/v1/health" >/dev/null; then
+    if curl -fsS "http://127.0.0.1:$HOST_PORT/health" >/dev/null; then
       log "Pawify $ENVIRONMENT health check succeeded"
     else
       warn "Pawify health check failed. Check: cd $APP_DIR && docker compose --env-file $ENV_FILE logs -f --tail=100 pawify pawify-dapr redis"

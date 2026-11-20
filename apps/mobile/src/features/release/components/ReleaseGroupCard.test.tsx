@@ -33,6 +33,28 @@ vi.mock('react-native', () => ({
         ),
     ScrollView: ({ children }: { children?: React.ReactNode }) =>
         React.createElement('div', null, children),
+    FlatList: ({
+        data = [],
+        renderItem,
+        ListEmptyComponent,
+    }: {
+        data?: unknown[];
+        renderItem: (info: { item: unknown; index: number }) => React.ReactNode;
+        ListEmptyComponent?: React.ReactNode;
+    }) =>
+        React.createElement(
+            'div',
+            null,
+            data.length === 0
+                ? ListEmptyComponent
+                : data.map((item, index) =>
+                      React.createElement(
+                          React.Fragment,
+                          { key: index },
+                          renderItem({ item, index }),
+                      ),
+                  ),
+        ),
     Share: { share: shareMock },
 }));
 
@@ -93,11 +115,15 @@ const renderCard = (
 ) => {
     render(
         <ReleaseGroupCard
+            releaseGroupTitle="Group One"
             releases={releases}
+            releaseCount={releases.length}
             releaseCovers={{}}
             pendingReleaseCoverIds={[]}
             releaseGroupId="group-1"
+            isLoadingReleases={false}
             releaseLoadFailed={false}
+            releaseGroupNotFound={false}
             onPress={onPress}
             onRetryLoadReleases={() => {}}
             onContentReady={() => {}}
@@ -195,7 +221,7 @@ describe('ReleaseGroupCard', () => {
 
         expect(createURLMock).toHaveBeenCalledWith('release-group/group-1');
         expect(shareMock).toHaveBeenCalledWith({
-            message: 'Album Deluxe — pawify://release-group/group-1',
+            message: 'Group One — pawify://release-group/group-1',
             url: 'pawify://release-group/group-1',
         });
     });

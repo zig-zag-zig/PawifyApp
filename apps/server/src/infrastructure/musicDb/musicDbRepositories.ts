@@ -7,14 +7,19 @@ import type {
 } from '@pawify/shared';
 
 import type { CachedArtistReleases } from '../../utils/types/cacheTypes.js';
-import type { ReleaseGroupCandidate, ReleaseEditionCandidate } from '../../features/releases/domain/releaseGroupProcessing.js';
+import type {
+    ReleaseGroupCandidate,
+    ReleaseEditionCandidate,
+} from '../../features/releases/domain/releaseGroupProcessing.js';
 import {
     extractEditionKeywords,
     isOfficialReleaseStatus,
 } from '../../features/releases/domain/releaseEditionKeywords.js';
-import type { RecordingSearchResult } from '../../services/musicbrainz/recordingSearch.js';
-import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
-import type { ReleaseGroupSearchResult } from '../../services/musicbrainz/releaseGroupSearch.js';
+import type {
+    ArtistSearchResult,
+    RecordingSearchResult,
+    ReleaseGroupSearchResult,
+} from '../../features/artists/domain/searchResults.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import {
     dedupeExternalLinks,
@@ -22,13 +27,7 @@ import {
     mapUrlsToExternalLinks,
 } from '../../utils/helpers/externalLinks.js';
 import { formatDate, nameWithDisambiguation } from '@pawify/shared';
-import {
-    getMusicDb,
-    isMusicDbEnabled,
-    musicDbHasSearchIndex,
-    musicDbHasRecordingIndex,
-} from './musicDbClient.js';
-import { canServeEditionMetadata, mirrorHasTrackData } from './tracksReadiness.js';
+import { getMusicDb } from './musicDbClient.js';
 import { readRecordingSearch } from './recordingQueries.js';
 import { musicDbConfig } from '../../config/runtimeConfig.js';
 import { createLogger } from '../../common/logging/logger.js';
@@ -54,9 +53,9 @@ import {
     readReleaseArtists,
     readReleaseMedia,
     readReleaseTracks,
-    readTrackArtists,
-    readRecordingLyrics,
-    readRecordingArtists,
+    readTrackArtistsForRelease,
+    readRecordingArtistsForRecordings,
+    readRecordingLyricsForRecordings,
     readProviderUrlsForReleases,
     readReleaseExists,
     readReleaseGroupArtists,
@@ -78,9 +77,8 @@ import {
  * Builds external links from mirror rows.
  *
  * The same URL appears once per relation type in the mirror (a store page is both
- * "purchase for download" and "streaming"), while the API path returns one link
- * per URL. Mapping each row and then running the API's own dedupe keeps the two
- * sources identical instead of returning duplicate links.
+ * "purchase for download" and "streaming"). Mapping each row and then running the
+ * shared dedupe returns one link per URL.
  */
 const linksFromRows = (rows: ExternalLinkRow[]) =>
     dedupeExternalLinks(rows.flatMap((row) => mapUrlsToExternalLinks([row.url], row.rel_type)));
@@ -212,8 +210,7 @@ export const buildArtistReleaseGroupCandidates = (
             };
         })
         .sort((left, right) => {
-            const dateOrder =
-                dateToTimestamp(right.date) - dateToTimestamp(left.date);
+            const dateOrder = dateToTimestamp(right.date) - dateToTimestamp(left.date);
             return dateOrder !== 0 ? dateOrder : left.id.localeCompare(right.id);
         });
 };
@@ -232,7 +229,6 @@ export const getArtistReleasesFromMirror = (
     cursor?: { sortDate: string | null; releaseGroupId: string } | null,
 ): CachedArtistReleases | null => {
     const db = getMusicDb();
-    if (!db) return null;
 
     // Ask for one extra row than the page size: that is how truncation is detected
     // without a second (expensive) count query.
@@ -275,8 +271,8 @@ export const getArtistReleasesFromMirror = (
  *
  * Reads the single notification catalogue scan, never the browse query or its
  * pagination cap. `complete: false` means the caller must preserve state and emit
- * nothing: the result is capped, the mirror is not ready, or the artist is unknown
- * to an enabled mirror (in which case null asks the caller to use the API).
+ * nothing: the result is capped/unresolved. `null` means the artist is absent from
+ * the local snapshot (not proof of global deletion).
  */
 export type ArtistNotificationCatalog = {
     groups: ReleaseGroupCandidate[];
@@ -287,11 +283,6 @@ export const getArtistReleaseGroupCandidatesFromMirror = (
     artistId: string,
 ): ArtistNotificationCatalog | null => {
     const db = getMusicDb();
-    if (!db) return null;
-
-    if (!canServeEditionMetadata()) {
-        return { groups: [], complete: false };
-    }
 
     const limit = musicDbConfig.maxArtistNotificationReleases;
     const releaseCount = countArtistNotificationReleasesUpTo(db, artistId, limit);
@@ -345,28 +336,24 @@ export const buildArtistNotificationCatalogFromRows = (
 
 export const countArtistReleasesFromMirror = (artistId: string): number | null => {
     const db = getMusicDb();
-    if (!db) return null;
     if (!readArtistRow(db, artistId)) return null;
     return countArtistReleaseGroups(db, artistId);
 };
 
 export const getArtistReleaseIdsFromMirror = (artistId: string): string[] | null => {
     const db = getMusicDb();
-    if (!db) return null;
     if (!readArtistRow(db, artistId)) return null;
     return readArtistReleaseIds(db, artistId);
 };
 
 export const getArtistReleaseGroupIdsFromMirror = (artistId: string): string[] | null => {
     const db = getMusicDb();
-    if (!db) return null;
     if (!readArtistRow(db, artistId)) return null;
     return readArtistReleaseGroupIds(db, artistId);
 };
 
 export const getArtistDetailsFromMirror = (artistId: string): Artist | null => {
     const db = getMusicDb();
-    if (!db) return null;
 
     const row = readArtistRow(db, artistId);
     if (!row) return null;
@@ -384,7 +371,6 @@ export const getFollowedArtistSummaryFromMirror = (
     artistId: string,
 ): FollowedArtistSummary | null => {
     const db = getMusicDb();
-    if (!db) return null;
 
     const row = readArtistRow(db, artistId);
     if (!row) return null;
@@ -401,16 +387,12 @@ export const getFollowedArtistSummaryFromMirror = (
     };
 };
 
-const mirrorSearchReady = (): boolean => isMusicDbEnabled() && musicDbHasSearchIndex();
-
 export const searchArtistsFromMirror = (
     query: string,
     offset: number,
     limit: number,
-): ArtistSearchResult | null => {
-    if (!mirrorSearchReady()) return null;
+): ArtistSearchResult => {
     const db = getMusicDb();
-    if (!db) return null;
 
     const matchQuery = toFtsQuery(query);
     if (matchQuery.length === 0) {
@@ -436,10 +418,8 @@ export const searchReleaseGroupsFromMirror = (
     query: string,
     offset: number,
     limit: number,
-): ReleaseGroupSearchResult | null => {
-    if (!mirrorSearchReady()) return null;
+): ReleaseGroupSearchResult => {
     const db = getMusicDb();
-    if (!db) return null;
 
     const matchQuery = toFtsQuery(query);
     if (matchQuery.length === 0) {
@@ -472,14 +452,8 @@ export const searchReleaseGroupsFromMirror = (
 
 export const getReleaseGroupReleasesFromMirror = (
     releaseGroupId: string,
-    onReleaseIdsPage?: (
-        releaseGroupId: string,
-        releaseIds: string[],
-        isLastPage: boolean,
-    ) => Promise<void> | void,
 ): ReleaseGroupReleaseListItem[] | null => {
     const db = getMusicDb();
-    if (!db) return null;
 
     const rows = readReleaseGroupReleases(db, releaseGroupId);
     if (rows.length === 0) {
@@ -492,12 +466,10 @@ export const getReleaseGroupReleasesFromMirror = (
 /**
  * Release-group release IDs, for cover planning.
  *
- * The release-group screen already needs these ids; the API path passed them down
- * via a paginated callback, so this returns the same shape.
+ * Kept for cover planning and focused callers that only need ids.
  */
 export const getReleaseGroupReleaseIdsFromMirror = (releaseGroupId: string): string[] | null => {
     const db = getMusicDb();
-    if (!db) return null;
     const rows = readReleaseGroupReleases(db, releaseGroupId);
     if (rows.length === 0 && !readReleaseGroupExists(db, releaseGroupId)) return null;
     return Array.from(new Set(rows.map((row) => row.mbid)));
@@ -506,14 +478,13 @@ export const getReleaseGroupReleaseIdsFromMirror = (releaseGroupId: string): str
 /**
  * Release id -> release-group id, for migrating known-release state.
  *
- * Returns null when the mirror is unavailable so the caller can keep the ids as
- * they are instead of silently dropping a user's history.
+ * A mirror failure throws so the caller can keep the ids as they are instead of
+ * silently dropping a user's history.
  */
 export const getReleaseToGroupIdMapFromMirror = (
     releaseIds: readonly string[],
-): Map<string, string> | null => {
+): Map<string, string> => {
     const db = getMusicDb();
-    if (!db) return null;
     return readReleaseToGroupIds(db, releaseIds);
 };
 
@@ -523,7 +494,6 @@ export const getReleaseGroupCreditsFromMirror = (
 ): Map<string, ArtistCredit[]> => {
     const result = new Map<string, ArtistCredit[]>();
     const db = getMusicDb();
-    if (!db) return result;
 
     for (const groupId of releaseGroupIds) {
         result.set(groupId, readReleaseGroupArtists(db, groupId));
@@ -541,23 +511,20 @@ export const getProviderUrlsForReleasesFromMirror = (
     releaseIds: readonly string[],
 ): Map<string, { deezerUrls: string[]; tidalUrls: string[] }> => {
     const db = getMusicDb();
-    if (!db) return new Map();
     return readProviderUrlsForReleases(db, releaseIds);
 };
 
 /** Release ids of a group, used to derive the group's provider links. */
 export const getReleaseIdsForGroupFromMirror = (releaseGroupId: string): string[] => {
     const db = getMusicDb();
-    if (!db) return [];
     return readReleaseIdsForGroup(db, releaseGroupId);
 };
 
 /**
  * Artist name plus provider links, for the profile-image chain.
  *
- * The image worker used to fetch `/artist/{id}?inc=url-rels` from the MusicBrainz
- * API for every artist without a cached image; the mirror has the same relations
- * locally, so that round trip (and its 1 req/s budget) disappears.
+ * The image worker reads these relations locally; it never requests MusicBrainz
+ * Web Service metadata for an artist.
  */
 export type ArtistImageProviderLinks = {
     artistName: string | undefined;
@@ -570,7 +537,6 @@ export const getArtistImageProviderLinksFromMirror = (
     artistId: string,
 ): ArtistImageProviderLinks | null => {
     const db = getMusicDb();
-    if (!db) return null;
 
     const row = readArtistRow(db, artistId);
     if (!row) return null;
@@ -599,111 +565,149 @@ export const getArtistImageProviderLinksFromMirror = (
 /**
  * Whether the mirror has the release at all.
  *
- * Distinguishes "this release has no Deezer/Tidal links" (nothing to do) from "this
- * release is newer than the mirror snapshot" (the caller should ask the API), which
- * the provider-link query alone cannot tell because it only returns matching rows.
- * `null` means the mirror is unavailable, which is also a reason to ask the API.
+ * Distinguishes "this release has no Deezer/Tidal links" from "this release is not
+ * in the local snapshot". A miss is local only; it is not a remote probe and not an
+ * authoritative global deletion.
  */
-export const releaseExistsInMirror = (releaseId: string): boolean | null => {
+export const releaseExistsInMirror = (releaseId: string): boolean => {
     const db = getMusicDb();
-    if (!db) return null;
     return readReleaseExists(db, releaseId);
 };
 
-/**
- * Whether the mirror has the release group at all.
- *
- * The release-group counterpart of `releaseExistsInMirror`. A group can be present in
- * `release_groups` while its `releases` rows are not, so checking only the release ids
- * would treat a known group as new and spend a rate-limited MusicBrainz request on it.
- * `null` means the mirror is unavailable, which is also a reason to ask the API.
- */
-export const releaseGroupExistsInMirror = (releaseGroupId: string): boolean | null => {
+/** Release-group counterpart of `releaseExistsInMirror`. */
+export const releaseGroupExistsInMirror = (releaseGroupId: string): boolean => {
     const db = getMusicDb();
-    if (!db) return null;
     return readReleaseGroupExists(db, releaseGroupId);
-};
-
-/**
- * Release metadata from the mirror.
- *
- * Tracks are deliberately not stored in the mirror, so this returns everything
- * except `media`; the caller attaches the tracklist from the API. `null` means the
- * mirror does not know the release, not that it does not exist.
- */
-export const getReleaseMetadataFromMirror = (
-    releaseId: string,
-): Omit<Release, 'media' | 'cover_url'> | null => {
-    const db = getMusicDb();
-    if (!db) return null;
-
-    const row = readReleaseRow(db, releaseId);
-    if (!row) return null;
-
-    const group = row.release_group_mbid
-        ? readReleaseGroupRow(db, row.release_group_mbid)
-        : undefined;
-    const credits: ArtistCredit[] = readReleaseArtists(db, releaseId);
-    const releaseGroup: ReleaseGroup | null = group ? buildReleaseGroup(group) : null;
-    const links = readExternalLinks(db, 'release', releaseId);
-
-    return {
-        id: row.mbid,
-        title: row.title,
-        artistId: credits[0]?.id ?? '',
-        date: nullIfEmpty(row.date),
-        date_for_display: formatDate(nullIfEmpty(row.date)),
-        disambiguation: disambiguationValue(row.disambiguation),
-        releaseGroupId: row.release_group_mbid ?? null,
-        'release-group': releaseGroup,
-        'artist-credit': credits,
-        externalLinks: linksFromRows(links),
-        barcode: row.barcode,
-        status: row.status,
-        country: nullIfEmpty(row.country),
-    };
 };
 
 export const searchRecordingsFromMirror = (
     query: string,
     offset: number,
     limit: number,
-): RecordingSearchResult | null => {
+): RecordingSearchResult => {
     const db = getMusicDb();
-    if (!db || !musicDbHasRecordingIndex()) return null;
     return readRecordingSearch(db, query, offset, limit);
 };
 
-export const getReleaseTracksFromMirror = (releaseId: string): Release['media'] | null => {
-    const db = getMusicDb();
-    if (!db) return null;
-    if (!mirrorHasTrackData(releaseId)) return null;
+const buildReleaseMedia = (
+    db: ReturnType<typeof getMusicDb>,
+    releaseId: string,
+): Release['media'] => {
     const media = readReleaseMedia(db, releaseId);
     const tracks = readReleaseTracks(db, releaseId);
+    const trackCredits = readTrackArtistsForRelease(db, releaseId);
+    const recordingIds = Array.from(
+        new Set(
+            tracks
+                .map((track) => track.recording_mbid)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0),
+        ),
+    );
+    // Compacted mirrors omit track credits identical to the recording credit.
+    const recordingCredits = readRecordingArtistsForRecordings(db, recordingIds);
+    const recordingLyrics = readRecordingLyricsForRecordings(db, recordingIds);
+
     return media.map((medium) => ({
         'track-count': medium.track_count,
         format: medium.format,
         position: medium.position,
         tracks: tracks
             .filter((track) => track.medium_position === medium.position)
-            .map((track) => ({
-                id: track.mbid,
-                title: track.title,
-                // Compacted mirrors omit track credits identical to the
-                // recording credit; fall back so the payload is unchanged.
-                'artist-credit': (() => {
-                    const trackCredits = readTrackArtists(db, track.track_id);
-                    return trackCredits.length > 0
-                        ? trackCredits
-                        : track.recording_mbid
-                          ? readRecordingArtists(db, track.recording_mbid)
-                          : trackCredits;
-                })(),
-                length: track.length,
-                lyricsUrl: track.recording_mbid
-                    ? readRecordingLyrics(db, track.recording_mbid)
-                    : null,
-                number: track.number,
-            })),
+            .map((track) => {
+                // The public track id is release-scoped, never a recording MBID:
+                // the same recording may appear twice on one release.
+                const credits =
+                    (trackCredits.get(track.track_id)?.length ?? 0) > 0
+                        ? trackCredits.get(track.track_id)!
+                        : ((track.recording_mbid
+                              ? recordingCredits.get(track.recording_mbid)
+                              : undefined) ?? []);
+
+                return {
+                    id: track.mbid,
+                    recordingId: track.recording_mbid ?? null,
+                    title: track.title,
+                    'artist-credit': credits,
+                    length: track.length,
+                    lyricsUrl: track.recording_mbid
+                        ? (recordingLyrics.get(track.recording_mbid) ?? null)
+                        : null,
+                    number: track.number,
+                };
+            }),
     }));
+};
+
+/** Media/tracks only; used by the unified release read and focused tests. */
+export const getReleaseMediaFromMirror = (releaseId: string): Release['media'] | null => {
+    const db = getMusicDb();
+    if (!readReleaseExists(db, releaseId)) return null;
+    return buildReleaseMedia(db, releaseId);
+};
+
+/**
+ * Complete release snapshot: metadata, media, ordered tracks, credits and current
+ * recording identities from one SQLite read transaction.
+ *
+ * A read transaction is what makes "one request" mean one committed mirror
+ * version; separate statements could straddle an hourly sync commit.
+ */
+export const getReleaseFromMirror = (releaseId: string): Release | null => {
+    const db = getMusicDb();
+    return db.transaction((): Release | null => {
+        const row = readReleaseRow(db, releaseId);
+        if (!row) return null;
+
+        const group = row.release_group_mbid
+            ? readReleaseGroupRow(db, row.release_group_mbid)
+            : undefined;
+        const credits = readReleaseArtists(db, releaseId);
+
+        return {
+            id: row.mbid,
+            title: row.title,
+            artistId: credits[0]?.id ?? '',
+            date: nullIfEmpty(row.date),
+            date_for_display: formatDate(nullIfEmpty(row.date)),
+            disambiguation: disambiguationValue(row.disambiguation),
+            releaseGroupId: row.release_group_mbid ?? null,
+            'release-group': group ? buildReleaseGroup(group) : null,
+            'artist-credit': credits,
+            media: buildReleaseMedia(db, releaseId),
+            barcode: row.barcode,
+            status: row.status,
+            country: nullIfEmpty(row.country),
+            cover_url: null,
+            externalLinks: linksFromRows(readExternalLinks(db, 'release', releaseId)),
+        };
+    })();
+};
+
+/**
+ * Release-group identity plus its complete local edition list from one snapshot.
+ *
+ * No tracks are loaded: the list only needs media aggregates, and the individual
+ * release screen reads its own tracklist when opened.
+ */
+export type ReleaseGroupFromMirror = {
+    releaseGroup: ReleaseGroup;
+    releases: ReleaseGroupReleaseListItem[];
+    releaseCount: number;
+};
+
+export const getReleaseGroupFromMirror = (
+    releaseGroupId: string,
+): ReleaseGroupFromMirror | null => {
+    const db = getMusicDb();
+    return db.transaction((): ReleaseGroupFromMirror | null => {
+        const groupRow = readReleaseGroupRow(db, releaseGroupId);
+        if (!groupRow) return null;
+
+        const rows = readReleaseGroupReleases(db, releaseGroupId);
+        return {
+            releaseGroup: buildReleaseGroup(groupRow),
+            releases: buildReleaseGroupReleaseListItems(rows),
+            releaseCount: rows.length,
+        };
+    })();
 };

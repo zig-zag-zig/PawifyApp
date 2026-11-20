@@ -26,9 +26,10 @@ export const installFirebaseServiceFake = (): void => {
         getFollowingFromDb: unexpectedFirebaseCall('getFollowingFromDb'),
     });
     installModuleFake('../../src/services/firebase/knownReleasesStore.js', {
-        getKnownArtistReleaseIdsFromDb: unexpectedFirebaseCall('getKnownArtistReleaseIdsFromDb'),
-        getKnownReleasesFromDb: unexpectedFirebaseCall('getKnownReleasesFromDb'),
         getKnownReleaseGroupStateFromDb: unexpectedFirebaseCall('getKnownReleaseGroupStateFromDb'),
+        getKnownReleaseGroupStateWithStatusFromDb: unexpectedFirebaseCall(
+            'getKnownReleaseGroupStateWithStatusFromDb',
+        ),
     });
     installModuleFake('../../src/services/firebase/newReleasesStore.js', {
         getNewReleasesSnapshotFromDb: unexpectedFirebaseCall('getNewReleasesSnapshotFromDb'),
@@ -111,10 +112,12 @@ export const installFirebaseStoreFakes = (): void => {
         writeFollowingArtistsMap: async () => {},
     });
     installModuleFake('../../src/services/firebase/knownReleasesStore.js', {
-        getKnownArtistReleaseIdsFromDb: async () => [],
-        getKnownReleasesFromDb: async () => ({}),
         getKnownReleaseGroupStateFromDb: async () => ({}),
-        deleteKnownArtistReleasesFromDb: async () => {},
+        getKnownReleaseGroupStateWithStatusFromDb: async () => ({
+            state: {},
+            hasUnmigratedValues: false,
+            unmigratedArtistIds: [],
+        }),
         deleteKnownArtistReleaseGroupStateFromDb: async () => {},
     });
     installModuleFake('../../src/services/firebase/newReleasesStore.js', {

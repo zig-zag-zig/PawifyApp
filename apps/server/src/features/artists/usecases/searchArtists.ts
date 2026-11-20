@@ -1,4 +1,4 @@
-import type { ArtistSearchResult } from '../../../services/musicbrainz/artistSearch.js';
+import type { ArtistSearchResult } from '../domain/searchResults.js';
 import { transientArtistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 import type { ArtistReadUseCaseDependencies } from '../ports.js';
 

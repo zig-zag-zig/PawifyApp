@@ -31,13 +31,15 @@ import type {
 const logger = createLogger('services.backgroundTasks');
 
 /**
- * Namespaces task dedupe keys per API contract so v1 and v2 never share
- * background tasks for the same logical payload.
+ * Namespaces task dedupe keys to the current contract.
+ *
+ * The v3 prefix expires pre-cutover in-flight tasks instead of replaying their
+ * old payloads into the unified release/enrichment contract.
  */
 export const withTaskKeyNamespace = (
     contractNamespace: ContractNamespace | undefined,
     key: string,
-): string => (contractNamespace === 'v2' ? `v2:${key}` : key);
+): string => `${contractNamespace ?? 'v3'}:${key}`;
 
 type QueueChunkedTaskOptions<T extends BackgroundTaskResultPayload, TChunk> = {
     userId: string;
@@ -175,11 +177,6 @@ const submitReleaseGroupReleaseCoversPage = (
     ttl: number | undefined,
 ): void => {
     const releaseGroupId = pageEntry.releaseGroupId;
-    if (!releaseGroupId) {
-        // Only the new-release feed carries group-less entries, and it goes through
-        // `submitNewReleaseCoversPage`; the group release list always has an id.
-        throw new Error('release group release covers require a release group id');
-    }
 
     session.submitPage(
         async (signal) =>
@@ -300,15 +297,13 @@ export const queueTrackLyricsTask = (
     tracks: TrackLyricsRequest[],
     ttl: number | undefined,
     contractNamespace?: ContractNamespace,
+    knownLyrics: Record<string, string | null> = {},
 ): string => {
     return queueChunkedTask<TrackLyricsTaskResult, TrackLyricsRequest[]>({
         userId,
         type: 'release_tracks_lyrics',
         dedupeKey: withTaskKeyNamespace(contractNamespace, `release_tracks_lyrics:${releaseId}`),
-        initialResult: {
-            releaseId,
-            tracks: {},
-        },
+        initialResult: { releaseId, tracks: knownLyrics },
         chunks: chunkArray(tracks, SUBTASK_ITEM_LIMIT),
         submitChunk: (session, chunk) => {
             submitTrackLyricsPage(session, releaseId, chunk, ttl);

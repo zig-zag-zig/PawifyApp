@@ -8,12 +8,10 @@ export type KnownReleaseGroupStateMap = {
 };
 
 const normalizeLastNotifiedDate = (value: unknown): string | null =>
-    typeof value === 'string' ? value.trim() : null;
+    (typeof value === 'string' && value.trim()) || null;
 
 const normalizeMaxOfficialTrackCount = (value: unknown): number | null =>
-    typeof value === 'number' && Number.isFinite(value) && value >= 0
-        ? Math.floor(value)
-        : null;
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
 
 const normalizeStoredKeywords = (value: unknown): string[] =>
     Array.isArray(value)
@@ -22,21 +20,24 @@ const normalizeStoredKeywords = (value: unknown): string[] =>
           )
         : [];
 
-export type StoredKnownReleaseGroupStateValue =
-    | string
-    | {
-          lastNotifiedDate: string | null;
-          maxOfficialTrackCount: number | null;
-          editionKeywords: string[];
-      };
+export type StoredKnownReleaseGroupStateValue = {
+    lastNotifiedDate: string | null;
+    maxOfficialTrackCount: number | null;
+    editionKeywords: string[];
+    /**
+     * Canonical migration marker: the group is known but its content baseline has
+     * not been computed yet. The first complete scan baselines it silently and
+     * writes the object without the marker.
+     */
+    contentBaselined?: false;
+};
 
 /**
  * Serializes the in-memory state to the RTDB payload.
  *
- * Baselined groups are objects. Unbaselined groups (a settings rebuild or a newly
- * followed artist) keep the historical scalar form so the next read re-marks them
- * and the first scan can baseline silently. The migration-only marker never reaches
- * storage.
+ * Every value is an object. A group that still needs its content baseline persists
+ * `contentBaselined: false`, which is the one canonical marker the reader accepts;
+ * the first complete scan replaces it with the real baseline and removes the marker.
  */
 export const buildKnownReleaseGroupStatePayload = (
     state: ReadonlyMap<string, KnownReleaseGroupStateValue>,
@@ -50,43 +51,36 @@ export const buildKnownReleaseGroupStatePayload = (
         }
 
         assertRtdbKey('groupId', trimmed);
-        payload[trimmed] =
-            value.contentBaselined === false
-                ? (value.lastNotifiedDate ?? '')
-                : {
-                      lastNotifiedDate: value.lastNotifiedDate,
-                      maxOfficialTrackCount: value.maxOfficialTrackCount,
-                      editionKeywords: normalizeEditionKeywords(value.editionKeywords),
-                  };
+        payload[trimmed] = {
+            // RTDB drops nulls and empty arrays. Keep even an empty baseline.
+            lastNotifiedDate: value.lastNotifiedDate ?? '',
+            maxOfficialTrackCount: value.maxOfficialTrackCount,
+            editionKeywords: normalizeEditionKeywords(value.editionKeywords),
+            ...(value.contentBaselined === false ? { contentBaselined: false } : {}),
+        };
     }
 
     return payload;
 };
 
-/**
- * A legacy value means "known, but the content baseline was never stored".
- *
- * The `contentBaselined: false` marker is intentionally not persisted: the writer
- * strips it, so reading an object back means the baseline exists. Keeping the marker
- * in memory is what makes the first scan silent and the second scan a no-op.
- */
-const legacyState = (lastNotifiedDate: string): KnownReleaseGroupStateValue => ({
-    lastNotifiedDate,
-    maxOfficialTrackCount: null,
-    editionKeywords: [],
-    contentBaselined: false,
-});
-
 const normalizeStateValue = (stored: unknown): KnownReleaseGroupStateValue | null => {
-    if (stored === true) {
-        return legacyState('');
-    }
-
-    if (typeof stored === 'string') {
-        return legacyState(stored.trim());
-    }
-
     if (!isPlainObject(stored)) {
+        return null;
+    }
+
+    // Missing nullable fields are normal RTDB encoding, not a second wire shape.
+    if (
+        !Object.keys(stored).some((key) =>
+            ['lastNotifiedDate', 'maxOfficialTrackCount', 'editionKeywords', 'contentBaselined'].includes(key),
+        ) ||
+        !(stored.contentBaselined === undefined || stored.contentBaselined === false) ||
+        (stored.lastNotifiedDate != null && typeof stored.lastNotifiedDate !== 'string') ||
+        (stored.maxOfficialTrackCount != null &&
+            (typeof stored.maxOfficialTrackCount !== 'number' ||
+                !Number.isFinite(stored.maxOfficialTrackCount) ||
+                stored.maxOfficialTrackCount < 0)) ||
+        (stored.editionKeywords !== undefined && !Array.isArray(stored.editionKeywords))
+    ) {
         return null;
     }
 
@@ -99,29 +93,39 @@ const normalizeStateValue = (stored: unknown): KnownReleaseGroupStateValue | nul
 };
 
 /**
- * Reads the stored per-group state.
+ * Reads the canonical stored per-group state (object shape only).
  *
- * Accepts every historical shape:
- * - legacy `true` release-id entries and empty strings (known, no content baseline);
- * - legacy date strings (known, no content baseline);
- * - the current object with `lastNotifiedDate`, `maxOfficialTrackCount` and
- *   `editionKeywords`.
- *
- * Legacy shapes are surfaced with `contentBaselined: false` so the next scan records
- * the current content without notifying.
+ * Legacy scalar/date shapes must be converted before rollout; the
+ * supported runtime does not keep dual-format parsing.
  */
-export const normalizeKnownReleaseGroupState = (
+export type NormalizedKnownReleaseGroupState = {
+    state: KnownReleaseGroupStateMap;
+    /**
+     * Artists with at least one non-object value, meaning the one-time canonical
+     * migration has not run. Scans must treat those artists' catalogues as
+     * incomplete: emitting or pruning from a partially-read known set would
+     * re-notify history or delete it.
+     */
+    hasUnmigratedValues: boolean;
+    unmigratedArtistIds: string[];
+};
+
+export const normalizeKnownReleaseGroupStateWithStatus = (
     value: unknown,
-): KnownReleaseGroupStateMap => {
+): NormalizedKnownReleaseGroupState => {
     if (!isPlainObject(value)) {
-        return {};
+        return { state: {}, hasUnmigratedValues: false, unmigratedArtistIds: [] };
     }
 
     const stateByArtist: KnownReleaseGroupStateMap = {};
+    const unmigratedArtistIds: string[] = [];
 
     for (const [artistId, groupMap] of Object.entries(value)) {
         assertRtdbKey('artistId', artistId);
         if (!isPlainObject(groupMap)) {
+            if (groupMap !== null && groupMap !== undefined) {
+                unmigratedArtistIds.push(artistId);
+            }
             continue;
         }
 
@@ -131,11 +135,20 @@ export const normalizeKnownReleaseGroupState = (
             const normalized = normalizeStateValue(stored);
             if (normalized) {
                 state[groupId] = normalized;
+            } else if (!unmigratedArtistIds.includes(artistId)) {
+                unmigratedArtistIds.push(artistId);
             }
         }
 
         stateByArtist[artistId] = state;
     }
 
-    return stateByArtist;
+    return {
+        state: stateByArtist,
+        hasUnmigratedValues: unmigratedArtistIds.length > 0,
+        unmigratedArtistIds,
+    };
 };
+
+export const normalizeKnownReleaseGroupState = (value: unknown): KnownReleaseGroupStateMap =>
+    normalizeKnownReleaseGroupStateWithStatus(value).state;

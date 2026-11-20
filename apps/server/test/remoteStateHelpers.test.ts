@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import {
     shouldRefetchRemoteState,
     mapCoverState,
-    mapLyricsState,
 } from '../src/utils/helpers/remoteStateHelpers.js';
 
 describe('shouldRefetchRemoteState', () => {
@@ -53,32 +52,6 @@ describe('mapCoverState', () => {
     it('returns confirmed miss for null url', () => {
         const result = mapCoverState(null);
         assert.equal(result.url, null);
-        assert.equal(result.confirmedMiss, true);
-    });
-});
-
-describe('mapLyricsState', () => {
-    it('returns transient state for undefined url', () => {
-        const result = mapLyricsState(undefined);
-        assert.equal(result.url, undefined);
-        assert.ok(typeof result.nextRefetchAt === 'number');
-    });
-
-    it('returns persistent state for a valid URL', () => {
-        const result = mapLyricsState('https://example.com/lyrics');
-        assert.equal(result.url, 'https://example.com/lyrics');
-        assert.equal(result.nextRefetchAt, undefined);
-    });
-
-    it('returns confirmed miss for null url', () => {
-        const result = mapLyricsState(null);
-        assert.equal(result.url, null);
-        assert.equal(result.confirmedMiss, true);
-    });
-
-    it('returns confirmed miss for empty string', () => {
-        const result = mapLyricsState('');
-        assert.equal(result.url, '');
         assert.equal(result.confirmedMiss, true);
     });
 });

@@ -49,7 +49,7 @@ export function parseApiBaseUrl(value: string): string {
     return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }
 
-export function parseApiVersion(value: string | undefined, fallback = 'v1'): string {
+export function parseApiVersion(value: string | undefined, fallback = 'v3'): string {
     let normalized = value?.trim() || fallback;
     normalized = normalized.replace(/^\/+|\/+$/g, '').toLowerCase();
 

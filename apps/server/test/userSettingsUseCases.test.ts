@@ -189,6 +189,26 @@ describe('user settings use cases', () => {
         assert.deepEqual(state.replaceCalls, []);
     });
 
+    it('does not rewrite known state before the canonical migration has run', async () => {
+        const { createUpdateReleaseNotificationSettingsUseCase } =
+            await import('../src/features/userSettings/usecases/updateReleaseNotificationSettings.js');
+        const nextSettings = createReleaseNotificationSettings();
+        const state = createUserSettingsDependencies({
+            catalog: {
+                'artist-1': {
+                    complete: true,
+                    groups: [catalogGroup('group-1', '2026-01-01')],
+                },
+            },
+            unmigratedArtistIds: ['artist-1'],
+        });
+        const useCase = createUpdateReleaseNotificationSettingsUseCase(state.dependencies);
+
+        await useCase('user-1', nextSettings);
+
+        assert.deepEqual(state.replaceCalls, []);
+    });
+
     it('rolls settings back and skips notifications when known release rebuild fails', async () => {
         const { createUpdateReleaseNotificationSettingsUseCase } =
             await import('../src/features/userSettings/usecases/updateReleaseNotificationSettings.js');

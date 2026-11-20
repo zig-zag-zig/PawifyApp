@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createLegacyAssetPlanner } from '../src/services/backgroundAssets/legacyAssetPlanner.js';
 import { createCacheFirstAssetPlanner } from '../src/services/backgroundAssets/cacheFirstAssetPlanner.js';
 import { createDefaultCacheAssetPartitioner } from './helpers/partitionFakes.js';
 import { installFirebaseServiceFake } from './helpers/moduleFakes.js';
@@ -68,42 +67,7 @@ const release = {
 } as any;
 
 describe('background asset planners', () => {
-    describe('legacy planner (v1)', () => {
-        it('queues the full lookups and always returns a string task id with no resolved values', async () => {
-            const calls = { queueArtistProfileImagesWithLookups: 0, queueNewReleaseCovers: 0 };
-            const planner = createLegacyAssetPlanner(createQueuePorts(calls));
-            const lookups = [
-                { artistId: 'artist-1', artistName: 'One' },
-                { artistId: 'artist-2', artistName: 'Two' },
-            ];
-
-            const plan = await planner.planArtistProfileImages({
-                userId: 'user-1',
-                scope: 'following',
-                lookups,
-                ttl: undefined,
-            });
-
-            assert.equal(plan.taskId, 'profile-task');
-            assert.deepEqual(plan.resolved, {});
-            assert.equal(calls.queueArtistProfileImagesWithLookups, 1);
-        });
-
-        it('queues every cover page entry for new releases', async () => {
-            const calls = { queueArtistProfileImagesWithLookups: 0, queueNewReleaseCovers: 0 };
-            const planner = createLegacyAssetPlanner(createQueuePorts(calls));
-
-            const plan = await planner.planNewReleaseCovers({
-                userId: 'user-1',
-                pageEntries: [{ releaseGroupId: 'rg-1', releaseIds: ['r1'] }],
-            });
-
-            assert.equal(plan.taskId, 'new-covers');
-            assert.equal(calls.queueNewReleaseCovers, 1);
-        });
-    });
-
-    describe('cache-first planner (v2)', () => {
+    describe('cache-first planner (v3)', () => {
         it('returns null task id and resolved values when everything is cached', async () => {
             const calls = { queueArtistProfileImagesWithLookups: 0, queueNewReleaseCovers: 0 };
             const partitioner: AssetCachePartitioner = {
@@ -193,20 +157,16 @@ describe('background asset planners', () => {
     });
 
     describe('task key namespace', () => {
-        it('prefixes v2 keys and leaves v1 keys untouched', async () => {
+        it('prefixes v3 keys so pre-cutover tasks do not replay', async () => {
             const { withTaskKeyNamespace } =
                 await import('../src/services/backgroundTaskWorkers.js');
             assert.equal(
+                withTaskKeyNamespace('v3', 'artist_profile_images:following:a,b'),
+                'v3:artist_profile_images:following:a,b',
+            );
+            assert.equal(
                 withTaskKeyNamespace(undefined, 'artist_profile_images:following:a,b'),
-                'artist_profile_images:following:a,b',
-            );
-            assert.equal(
-                withTaskKeyNamespace('v1', 'artist_profile_images:following:a,b'),
-                'artist_profile_images:following:a,b',
-            );
-            assert.equal(
-                withTaskKeyNamespace('v2', 'artist_profile_images:following:a,b'),
-                'v2:artist_profile_images:following:a,b',
+                'v3:artist_profile_images:following:a,b',
             );
         });
     });

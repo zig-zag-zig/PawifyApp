@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { after, afterEach, describe, it } from 'node:test';
 
 import Database from 'better-sqlite3';
 
 import {
     closeMusicDb,
-    musicDbHasEntityImages,
+    MusicDbUnavailableError,
 } from '../../../src/infrastructure/musicDb/musicDbClient.js';
 import {
     readEntityImage,
@@ -46,8 +45,6 @@ const TIDAL_IMAGE = `https://resources.tidal.com/images/${TIDAL_TOKEN}`;
 const DISCOGS_IMAGE = 'https://i.discogs.com/artist-primary.jpg';
 const DEEZER_ALBUM = 'https://www.deezer.com/album/1110718732';
 
-const requireForTest = createRequire(__filename);
-
 const DAY_SECONDS = 24 * 60 * 60;
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -82,13 +79,6 @@ const useMirror = (seed: MusicDbSeed = {}): string => {
     closeMusicDb();
     resetEntityImageRepositoryForTests();
     return path;
-};
-
-/** Drops the image tables, which is what an older mirror looks like. */
-const dropImageTables = (path: string): void => {
-    const db = new Database(path);
-    db.exec('DROP TABLE entity_images; DROP TABLE image_services;');
-    db.close();
 };
 
 const imageRow = (
@@ -245,47 +235,17 @@ describe('mirrored release artwork', () => {
         assert.equal(calls.length > 0, true);
     });
 
-    it('serves a mirrored cover without writing the Redis asset cache', async () => {
-        // The mirror is the artwork store now. Duplicating a resolved cover into
-        // Redis was what left image keys in the cache after the SQLite migration.
+    it('serves a mirrored cover without provider calls', async () => {
         useMirror({
             entityImages: [imageRow('release', RELEASE_ID, 4, DEEZER_TOKEN, nowSeconds())],
         });
         const calls = forbidProviderCalls();
 
-        const cacheModule = requireForTest('../../../src/services/coverArt/coverArtCache.js') as {
-            readReleaseCoverState: (releaseId: string) => Promise<unknown>;
-            writeReleaseCoverState: (
-                releaseId: string,
-                state: unknown,
-                ttl?: number,
-            ) => Promise<void>;
-        };
-        const originalRead = cacheModule.readReleaseCoverState;
-        const originalWrite = cacheModule.writeReleaseCoverState;
-        const written: Array<{ releaseId: string; url: unknown }> = [];
-        let readCount = 0;
+        const { getReleaseCover } = await import('../../../src/services/coverArtService.js');
+        const result = await getReleaseCover(RELEASE_ID, null, undefined);
 
-        cacheModule.readReleaseCoverState = async () => {
-            readCount += 1;
-            return null;
-        };
-        cacheModule.writeReleaseCoverState = async (releaseId, state) => {
-            written.push({ releaseId, url: (state as { url?: unknown }).url });
-        };
-
-        try {
-            const { getReleaseCover } = await import('../../../src/services/coverArtService.js');
-            const result = await getReleaseCover(RELEASE_ID, null, undefined);
-
-            assert.equal(result.state.url, DEEZER_IMAGE);
-            assert.deepEqual(written, [], 'the mirror must not duplicate artwork into Redis');
-            assert.equal(readCount, 0, 'the mirror must be read instead of Redis');
-            assert.deepEqual(calls, []);
-        } finally {
-            cacheModule.readReleaseCoverState = originalRead;
-            cacheModule.writeReleaseCoverState = originalWrite;
-        }
+        assert.equal(result.state.url, DEEZER_IMAGE);
+        assert.deepEqual(calls, []);
     });
 
     it('falls through while the mirror still says pending', async () => {
@@ -411,33 +371,28 @@ describe('mirrored artist artwork', () => {
 });
 
 describe('mirrors without the image-state tables', () => {
-    it('behaves exactly like before the tables existed', async () => {
+    it('fails readiness instead of treating the database as artworkless', async () => {
         const path = createMusicDbFixture({});
-        dropImageTables(path);
+        const db = new Database(path);
+        db.exec('DROP TABLE entity_images; DROP TABLE image_services;');
+        db.close();
         process.env.MUSIC_DB_PATH = path;
         closeMusicDb();
         resetEntityImageRepositoryForTests();
+        const calls = forbidProviderCalls();
 
-        assert.equal(musicDbHasEntityImages(), false);
-        assert.equal(readEntityImage('artist', ARTIST_ID), null);
-
-        const calls = stubFetch((call) => {
-            if (call.url.includes('/invoke/deezer/')) {
-                return jsonResponse({ id: 1110718732, cover_xl: DEEZER_IMAGE });
-            }
-            throw new Error(`unexpected call ${call.url}`);
-        });
-
-        const { resolveReleaseImage } =
-            await import('../../../src/services/musicApi/releaseImageSources.js');
-        const result = await resolveReleaseImage({
-            releaseId: RELEASE_ID,
-            deezerUrls: [DEEZER_ALBUM],
-        });
-
-        assert.equal(result.image, DEEZER_IMAGE);
-        assert.equal(result.source, 'deezer');
-        assert.equal(calls.length > 0, true);
+        assert.throws(() => readEntityImage('artist', ARTIST_ID), MusicDbUnavailableError);
+        await assert.rejects(
+            async () =>
+                await (
+                    await import('../../../src/services/musicApi/releaseImageSources.js')
+                ).resolveReleaseImage({
+                    releaseId: RELEASE_ID,
+                    deezerUrls: [DEEZER_ALBUM],
+                }),
+            MusicDbUnavailableError,
+        );
+        assert.deepEqual(calls, []);
     });
 });
 

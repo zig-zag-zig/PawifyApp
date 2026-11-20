@@ -2,23 +2,12 @@ import {
     getNewReleasesSnapshotFromDb,
     removeNewReleasesFromDb,
 } from '../../../services/firebase/newReleasesStore.js';
-import { removeReleaseFromAllUserDocuments } from '../../../services/firebase/missingReleaseCleanupStore.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
-import type {
-    MissingReleaseCleanupRepository,
-    NewReleasesRepository,
-    ReleaseNotifier,
-} from '../ports.js';
+import type { NewReleasesRepository, ReleaseNotifier } from '../ports.js';
 
 const logger = createLogger('features.releases.infrastructure');
-
-export const missingReleaseCleanupRepository: MissingReleaseCleanupRepository = {
-    removeMissingRelease: async (releaseId) => {
-        return await removeReleaseFromAllUserDocuments(releaseId);
-    },
-};
 
 export const newReleasesRepository: NewReleasesRepository = {
     getNewReleasesSnapshot: async (userId) => await getNewReleasesSnapshotFromDb(userId),

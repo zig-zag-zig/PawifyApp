@@ -2,10 +2,6 @@ import type { NewRelease } from '@pawify/shared';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { ReleaseGroupReleasesPageEntry } from '../../utils/types/taskTypes.js';
 
-export type ArtistsAndReleasesMap = {
-    [artistId: string]: string[];
-};
-
 export type NewReleasesMap = {
     [releaseId: string]: NewRelease;
 };

@@ -1,17 +1,14 @@
 import {
     getKnownArtistReleaseGroupStateFromDb,
     getKnownReleaseGroupStateFromDb,
+    getKnownReleaseGroupStateWithStatusFromDb,
 } from './knownReleasesStore.js';
 import { getNewReleasesSnapshotFromDb, removeNewReleasesFromDb } from './newReleasesStore.js';
 import type { KnownReleaseGroupStateMap } from './knownReleaseStateNormalization.js';
 import { collectPrunedNewReleaseIds } from './newReleasePruning.js';
-import { getReleaseToGroupIdMapFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 
 /** Known release groups with their notification and content baseline. */
-export const getCurrentReleaseGroupState = async (
-    userId: string,
-    artistId: string,
-) => {
+export const getCurrentReleaseGroupState = async (userId: string, artistId: string) => {
     return await getKnownArtistReleaseGroupStateFromDb(userId, artistId);
 };
 
@@ -36,26 +33,20 @@ export const removePrunedNewReleaseGroups = async (
     if (releaseGroupIds.length === 0) return false;
 
     const { newReleasesMap } = await getNewReleasesSnapshotFromDb(userId);
-    const knownStatesByArtist = await getKnownReleaseGroupStateFromDb(userId);
+    const { state: knownStatesByArtist, hasUnmigratedValues } =
+        await getKnownReleaseGroupStateWithStatusFromDb(userId);
 
-    const legacyReleaseIds = Object.values(newReleasesMap)
-        .filter((entry) => !entry.releaseGroupId)
-        .map((entry) => entry.id);
-    let releaseToGroupId = new Map<string, string>();
-    if (legacyReleaseIds.length > 0) {
-        try {
-            releaseToGroupId =
-                getReleaseToGroupIdMapFromMirror(legacyReleaseIds) ?? releaseToGroupId;
-        } catch {
-            // Mirror unavailable: leave legacy entries rather than guessing.
-        }
+    // Do not prune feed entries while any artist still has an un-migrated scalar
+    // state: that artist's groups are invisible to the conservative cross-artist
+    // ownership check.
+    if (hasUnmigratedValues) {
+        return false;
     }
 
     const releaseIdsToRemove = collectPrunedNewReleaseIds({
         newReleasesMap,
         knownStatesByArtist,
         prunedGroupIds: releaseGroupIds,
-        releaseToGroupId,
     });
 
     if (releaseIdsToRemove.length > 0) {

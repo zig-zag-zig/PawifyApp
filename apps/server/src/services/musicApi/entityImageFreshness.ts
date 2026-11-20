@@ -1,5 +1,4 @@
 import { createLogger } from '../../common/logging/logger.js';
-import { isMusicDbEnabled } from '../../infrastructure/musicDb/musicDbClient.js';
 import {
     toEntityImageToken,
     writeEntityImage,
@@ -115,7 +114,7 @@ export const scheduleEntityImageRevalidation = (
     resolve: () => Promise<string | null | undefined>,
     options?: RevalidationOptions,
 ): void => {
-    if (!isMusicDbEnabled() || !entityId) {
+    if (!entityId) {
         return;
     }
 

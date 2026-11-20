@@ -15,10 +15,10 @@ const DEFAULT_PAGE_SIZE = 60;
 const MAX_PAGE_SIZE = 200;
 
 /**
- * Paged artist release groups for the v2 contract.
+ * Paged artist release groups.
  *
  * Keyset paging, so "load more" costs one page of work instead of re-walking the
- * catalog. The unpaged v1 contract is untouched.
+ * catalog. There is no unpaged contract in v3.
  */
 export const createGetArtistReleasesPageUseCase =
     ({
@@ -40,7 +40,7 @@ export const createGetArtistReleasesPageUseCase =
         );
         const ttl = artistCacheTtlHours;
 
-        const page = await releaseCatalogGateway.getArtistReleasesPage(artistId, ttl, {
+        const page = await releaseCatalogGateway.getArtistReleasesPage(artistId, {
             limit,
             cursor: options.cursor ?? null,
         });

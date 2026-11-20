@@ -1,228 +1,193 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
 import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
+import { isApiCallError } from '../../../services/apiErrors';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import { ReleaseNavigationProp, RootStackParamList } from '../../../types/navigation';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { extractReleaseGroupReleaseCovers } from '../../../utils/taskResultMaps';
 import { useReleaseApi } from '../api/releaseApi';
-import {
-    normalizeReleaseGroupReleaseListItems,
-    normalizeReleaseGroupReleasesResponse,
-} from '../domain/releaseGroupReleases';
-import type { ReleaseGroupPageController, ReleaseGroupPageUiState } from '../model/types';
+import type { ReleaseGroupPageController } from '../model/types';
 
 type ReleaseGroupRouteProp = RouteProp<RootStackParamList, 'ReleaseGroup'>;
 
+/**
+ * One group-loading path.
+ *
+ * Every entry point (artist, search, feed, deep link) navigates with the group id
+ * only. This screen performs the v3 local-data request itself; there is no artist
+ * prefetch, route-carried edition payload, old-response normalization, or second
+ * catalogue spinner.
+ */
 export function useReleaseGroupPage(): ReleaseGroupPageController {
     const route = useRoute<ReleaseGroupRouteProp>();
     const navigation = useNavigation<ReleaseNavigationProp>();
     const { releaseGroupReleaseCovers, setReleaseGroupReleaseCovers } = useCache();
-    const { getReleaseGroupReleases, waitForTaskResultById } = useReleaseApi();
-    const { releaseGroupId, releases: routeReleases, initialReleaseCoverTaskId, initialReleaseCovers } = route.params;
-    const immediateRouteCovers = useMemo(
-        () => normalizeNullableStringMap(initialReleaseCovers),
-        [initialReleaseCovers],
-    );
-    const normalizedRouteReleases = useMemo(
-        () => (routeReleases ? normalizeReleaseGroupReleaseListItems(routeReleases) : null),
-        [routeReleases],
-    );
-    const effectiveReleaseCovers = useMemo(
-        () => mergeNullableStringMaps(releaseGroupReleaseCovers, immediateRouteCovers),
-        [releaseGroupReleaseCovers, immediateRouteCovers],
-    );
-    const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>(() => {
-        if (!initialReleaseCoverTaskId || !routeReleases) {
-            return [];
-        }
-        return routeReleases
-            .map(release => release.id)
-            .filter(releaseId => effectiveReleaseCovers[releaseId] === undefined);
-    });
-    const [fetchedReleases, setFetchedReleases] = useState<ReleaseGroupReleaseListItem[]>([]);
-    const [lazyReleaseCoverTaskId, setLazyReleaseCoverTaskId] = useState<string | null>(null);
-    const [isLoadingReleases, setIsLoadingReleases] = useState(false);
+    const { getReleaseGroupReleases, resolveReleaseGroupReleaseCovers, waitForTaskResultById } =
+        useReleaseApi();
+    const releaseGroupId = route.params.releaseGroupId;
+    const [releaseGroupTitle, setReleaseGroupTitle] = useState<string | null>(null);
+    const [releases, setReleases] = useState<ReleaseGroupReleaseListItem[]>([]);
+    const [releaseCount, setReleaseCount] = useState(0);
+    const [pendingReleaseCoverIds, setPendingReleaseCoverIds] = useState<string[]>([]);
+    const [isLoadingReleases, setIsLoadingReleases] = useState(true);
     const [releaseLoadFailed, setReleaseLoadFailed] = useState(false);
+    const [releaseGroupNotFound, setReleaseGroupNotFound] = useState(false);
+    const generationRef = useRef(0);
+    const coversRef = useRef(releaseGroupReleaseCovers);
 
-    // Deep links / share URLs carry only releaseGroupId — fetch the list when
-    // the caller did not hand it over in params.
     useEffect(() => {
-        if (routeReleases || !releaseGroupId) {
-            return;
-        }
+        coversRef.current = releaseGroupReleaseCovers;
+    }, [releaseGroupReleaseCovers]);
 
-        let isCancelled = false;
-        setIsLoadingReleases(true);
-        setReleaseLoadFailed(false);
+    const loadGroup = useCallback(
+        async (generation: number) => {
+            const isCurrent = () => generationRef.current === generation;
+            setIsLoadingReleases(true);
+            setReleaseLoadFailed(false);
+            setReleaseGroupNotFound(false);
 
-        getReleaseGroupReleases(releaseGroupId)
-            .then(response => {
-                if (isCancelled) {
+            try {
+                const response = await getReleaseGroupReleases(releaseGroupId);
+                if (!isCurrent()) {
                     return;
                 }
 
-                const result = normalizeReleaseGroupReleasesResponse(response);
-                if (!result) {
-                    throw new Error('Invalid release-group releases response');
-                }
+                const immediateCovers = normalizeNullableStringMap(response.releaseCovers);
+                setReleaseGroupTitle(response.releaseGroup.title);
+                setReleases(response.releases);
+                setReleaseCount(response.releaseCount);
 
-                setFetchedReleases(result.releases);
-                setLazyReleaseCoverTaskId(result.releaseCoverTaskId);
-                const immediateCovers = normalizeNullableStringMap(result.releaseCovers);
                 if (Object.keys(immediateCovers).length > 0) {
                     setReleaseGroupReleaseCovers(prev =>
-                        mergeNullableStringMaps(prev, immediateCovers));
+                        mergeNullableStringMaps(prev, immediateCovers)
+                    );
                 }
-            })
-            .catch(error => {
-                console.error('release-group-page: lazy fetch of releases failed', error);
-                if (!isCancelled) {
-                    setReleaseLoadFailed(true);
+
+                const mergedCovers = mergeNullableStringMaps(
+                    coversRef.current,
+                    immediateCovers
+                );
+                const missingCoverIds = response.releaseCoverTaskId
+                    ? response.releases
+                          .map(release => release.id)
+                          .filter(releaseId => mergedCovers[releaseId] === undefined)
+                    : [];
+
+                setPendingReleaseCoverIds(missingCoverIds);
+
+                if (response.releaseCoverTaskId && missingCoverIds.length > 0) {
+                    void resolveNullableTaskMap({
+                        taskId: response.releaseCoverTaskId,
+                        expectedIds: missingCoverIds,
+                        waitForTaskResult: waitForTaskResultById,
+                        extractMap: extractReleaseGroupReleaseCovers,
+                        onResolvedValues: (covers, resolvedReleaseIds) => {
+                            if (!isCurrent()) {
+                                return;
+                            }
+                            if (Object.keys(covers).length > 0) {
+                                setReleaseGroupReleaseCovers(prev => ({
+                                    ...prev,
+                                    ...covers,
+                                }));
+                            }
+                            setPendingReleaseCoverIds(prev =>
+                                prev.filter(id => !resolvedReleaseIds.includes(id))
+                            );
+                        },
+                        onError: error => {
+                            console.error(
+                                'release-group-page: resolve release cover task failed',
+                                error
+                            );
+                        },
+                        shouldFillMissingOnCompleted: () => false,
+                        shouldFillMissingOnError: false,
+                        shouldFillMissingOnNonCompleted: false,
+                        recreateTask: async () => {
+                            // Enrichment replay: only the visible pending artwork is
+                            // requested, never the whole edition list again.
+                            const replayed = await resolveReleaseGroupReleaseCovers(
+                                releaseGroupId,
+                                missingCoverIds
+                            );
+                            const replayedCovers = normalizeNullableStringMap(
+                                replayed.releaseCovers
+                            );
+                            if (Object.keys(replayedCovers).length > 0) {
+                                setReleaseGroupReleaseCovers(prev =>
+                                    mergeNullableStringMaps(prev, replayedCovers)
+                                );
+                            }
+                            return replayed.releaseCoverTaskId;
+                        },
+                        recreateTaskDescription: 'resolveReleaseGroupReleaseCovers.releaseCoverTaskId',
+                    });
                 }
-            })
-            .finally(() => {
-                if (!isCancelled) {
+            } catch (error) {
+                console.error('release-group-page: load failed', error);
+                if (isCurrent()) {
+                    if (isApiCallError(error) && error.statusCode === 404) {
+                        setReleaseGroupNotFound(true);
+                    } else {
+                        setReleaseLoadFailed(true);
+                    }
+                }
+            } finally {
+                if (isCurrent()) {
                     setIsLoadingReleases(false);
                 }
-            });
-
-        return () => {
-            isCancelled = true;
-        };
-    }, [routeReleases, releaseGroupId, getReleaseGroupReleases, setReleaseGroupReleaseCovers]);
-
-    const releases = normalizedRouteReleases ?? fetchedReleases;
+            }
+        },
+        [
+            getReleaseGroupReleases,
+            releaseGroupId,
+            resolveReleaseGroupReleaseCovers,
+            setReleaseGroupReleaseCovers,
+            waitForTaskResultById,
+        ]
+    );
 
     useEffect(() => {
-        const releaseCoverTaskId = initialReleaseCoverTaskId ?? lazyReleaseCoverTaskId;
-        const immediateCovers = normalizeNullableStringMap(initialReleaseCovers);
-
-        // Merge immediate covers so cached values render without polling.
-        if (Object.keys(immediateCovers).length > 0) {
-            setReleaseGroupReleaseCovers(prev => mergeNullableStringMaps(prev, immediateCovers));
-        }
-
-        if (!releaseCoverTaskId) {
-            setPendingReleaseCoverIds([]);
-            return;
-        }
-
-        let isCancelled = false;
-        const mergedCovers = mergeNullableStringMaps(releaseGroupReleaseCovers, immediateCovers);
-        const missingCoverIds = releases
-            .map(release => release.id)
-            .filter(releaseId => mergedCovers[releaseId] === undefined);
-
-        if (missingCoverIds.length === 0) {
-            setPendingReleaseCoverIds([]);
-            return;
-        }
-
-        setPendingReleaseCoverIds(missingCoverIds);
-
-        const resolveReleaseCoverTask = async () => {
-            await resolveNullableTaskMap({
-                taskId: releaseCoverTaskId,
-                expectedIds: missingCoverIds,
-                waitForTaskResult: waitForTaskResultById,
-                extractMap: extractReleaseGroupReleaseCovers,
-                onResolvedValues: (covers, resolvedReleaseIds) => {
-                    if (isCancelled) {
-                        return;
-                    }
-
-                    if (Object.keys(covers).length > 0) {
-                        setReleaseGroupReleaseCovers(prev => ({
-                            ...prev,
-                            ...covers,
-                        }));
-                    }
-
-                    setPendingReleaseCoverIds(prev =>
-                        prev.filter(releaseId => !resolvedReleaseIds.includes(releaseId))
-                    );
-                },
-                onError: error => {
-                    console.error('release-group-page: resolve release-group cover task failed', error);
-                },
-                shouldFillMissingOnCompleted: () => false,
-                shouldFillMissingOnError: false,
-                shouldFillMissingOnNonCompleted: false,
-                recreateTask: releaseGroupId
-                    ? async () => {
-                        const result = await getReleaseGroupReleases(releaseGroupId);
-                        return result.releaseCoverTaskId;
-                    }
-                    : undefined,
-                recreateTaskDescription: 'getReleaseGroupReleases.releaseCoverTaskId',
-            });
-        };
-
-        void resolveReleaseCoverTask();
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        setReleases([]);
+        setReleaseCount(0);
+        setPendingReleaseCoverIds([]);
+        void loadGroup(generation);
 
         return () => {
-            isCancelled = true;
+            generationRef.current += 1;
         };
-    }, [
-        initialReleaseCoverTaskId,
-        lazyReleaseCoverTaskId,
-        getReleaseGroupReleases,
-        releaseGroupId,
-        releaseGroupReleaseCovers,
-        releases,
-        setReleaseGroupReleaseCovers,
-        waitForTaskResultById,
-    ]);
+    }, [loadGroup, releaseGroupId]);
 
-    const state: ReleaseGroupPageUiState = {
-        releases,
-        releaseGroupReleaseCovers: effectiveReleaseCovers,
-        pendingReleaseCoverIds,
-        isLoadingReleases,
-        releaseLoadFailed,
-        releaseGroupId: releaseGroupId ?? null,
-    };
-
-    const onReleasePressed = useCallback((release: ReleaseGroupReleaseListItem) => {
-        navigation.navigate('Release', { releaseId: release.id });
-    }, [navigation]);
+    const onReleasePressed = useCallback(
+        (release: ReleaseGroupReleaseListItem) => {
+            navigation.navigate('Release', { releaseId: release.id });
+        },
+        [navigation]
+    );
 
     const onRetryLoadReleases = useCallback(() => {
-        if (!releaseGroupId) {
-            return;
-        }
-
-        setFetchedReleases([]);
-        setLazyReleaseCoverTaskId(null);
-        setReleaseLoadFailed(false);
-        setIsLoadingReleases(true);
-
-        getReleaseGroupReleases(releaseGroupId)
-            .then(response => {
-                const result = normalizeReleaseGroupReleasesResponse(response);
-                if (!result) {
-                    throw new Error('Invalid release-group releases response');
-                }
-
-                setFetchedReleases(result.releases);
-                setLazyReleaseCoverTaskId(result.releaseCoverTaskId);
-                const immediateCovers = normalizeNullableStringMap(result.releaseCovers);
-                if (Object.keys(immediateCovers).length > 0) {
-                    setReleaseGroupReleaseCovers(prev =>
-                        mergeNullableStringMaps(prev, immediateCovers));
-                }
-            })
-            .catch(error => {
-                console.error('release-group-page: retry fetch failed', error);
-                setReleaseLoadFailed(true);
-            })
-            .finally(() => setIsLoadingReleases(false));
-    }, [getReleaseGroupReleases, releaseGroupId, setReleaseGroupReleaseCovers]);
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        void loadGroup(generation);
+    }, [loadGroup]);
 
     return {
-        state,
+        state: {
+            releaseGroupTitle,
+            releases,
+            releaseCount,
+            releaseGroupReleaseCovers,
+            pendingReleaseCoverIds,
+            isLoadingReleases,
+            releaseLoadFailed,
+            releaseGroupNotFound,
+            releaseGroupId,
+        },
         onReleasePressed,
         onRetryLoadReleases,
     };

@@ -1,7 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
-import { useCallback, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useCache } from '../../../contexts/CacheContext';
-import useTaskManager from '../../../hooks/useTaskManager';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
 import {
     extractArtistProfileImages,
@@ -48,7 +47,6 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
         releaseGroupCovers,
         setReleaseGroupCovers,
     } = useCache();
-    const { addTask, executeTask } = useTaskManager();
     const [state, dispatch] = useReducer(
         unifiedSearchReducer,
         undefined,
@@ -59,18 +57,34 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
         releaseGroups: false,
         tracks: false,
     });
+    const controllers = useRef<Record<SearchCategoryKind, AbortController | null>>({
+        artists: null,
+        releaseGroups: null,
+        tracks: null,
+    });
     const searchSeqRef = useRef(0);
 
+    const abortAll = useCallback(() => {
+        for (const kind of INITIAL_CATEGORY_ORDER) {
+            controllers.current[kind]?.abort();
+            controllers.current[kind] = null;
+        }
+    }, []);
+
+    useEffect(() => abortAll, [abortAll]);
+
     const resolveTasks = useCallback(
-        async (result: UnifiedSearchResponse, kind: SearchCategoryKind) => {
+        async (result: UnifiedSearchResponse, kind: SearchCategoryKind, expectedSeq: number) => {
             if (kind === 'artists' && result.artistProfileImageTaskId) {
                 void resolveNullableTaskMap({
                     taskId: result.artistProfileImageTaskId,
                     expectedIds: result.artists.map((artist) => artist.id),
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractArtistProfileImages,
-                    onResolvedValues: (values) =>
-                        setArtistProfileImages((previous) => ({ ...previous, ...values })),
+                    onResolvedValues: (values) => {
+                        if (searchSeqRef.current !== expectedSeq) return;
+                        setArtistProfileImages((previous) => ({ ...previous, ...values }));
+                    },
                     onError: (error) =>
                         console.warn('unified-search: artist images failed', error),
                 });
@@ -82,8 +96,10 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                     expectedIds: result.releaseGroups.map((group) => group.id),
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractReleaseGroupCovers,
-                    onResolvedValues: (values) =>
-                        setReleaseGroupCovers((previous) => ({ ...previous, ...values })),
+                    onResolvedValues: (values) => {
+                        if (searchSeqRef.current !== expectedSeq) return;
+                        setReleaseGroupCovers((previous) => ({ ...previous, ...values }));
+                    },
                     onError: (error) =>
                         console.warn('unified-search: release covers failed', error),
                 });
@@ -97,8 +113,10 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                     ),
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractReleaseGroupReleaseCovers,
-                    onResolvedValues: (values) =>
-                        dispatch({ type: 'trackCoversResolved', covers: values }),
+                    onResolvedValues: (values) => {
+                        if (searchSeqRef.current !== expectedSeq) return;
+                        dispatch({ type: 'trackCoversResolved', covers: values });
+                    },
                     onError: (error) =>
                         console.warn('unified-search: track covers failed', error),
                 });
@@ -115,33 +133,42 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
             expectedSeq: number,
         ): Promise<void> => {
             inFlightByKind.current[kind] = true;
+            controllers.current[kind]?.abort();
+            const controller = new AbortController();
+            controllers.current[kind] = controller;
+
             try {
-                const task = addTask(
-                    () => searchAll(query, SERVER_PAGE_SIZE, offset, kind),
-                    `searchAll:${kind}`,
-                    { replayPolicy: 'both' },
+                // Direct local request, not a persistent/replayable generic task.
+                // Cancellation plus the query generation make stale responses
+                // discardable without leaking busy state into the new query.
+                const result = await searchAll(
+                    query,
+                    SERVER_PAGE_SIZE,
+                    offset,
+                    kind,
+                    controller.signal,
                 );
-                const result = await executeTask(task);
-                if (!result) {
-                    throw new Error(`Search did not complete (${kind})`);
-                }
-                if (searchSeqRef.current !== expectedSeq) {
+                if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
                     return;
                 }
                 dispatch({ type: 'succeeded', result, kind, offset });
-                void resolveTasks(result, kind);
+                void resolveTasks(result, kind, expectedSeq);
             } catch (error) {
-                console.warn(`unified-search failed (${kind})`, error);
-                if (searchSeqRef.current === expectedSeq) {
-                    dispatch({ type: 'failed', kind });
+                if (searchSeqRef.current !== expectedSeq || controller.signal.aborted) {
+                    return;
                 }
+                console.warn(`unified-search failed (${kind})`, error);
+                dispatch({ type: 'failed', kind });
             } finally {
+                if (controllers.current[kind] === controller) {
+                    controllers.current[kind] = null;
+                }
                 if (searchSeqRef.current === expectedSeq) {
                     inFlightByKind.current[kind] = false;
                 }
             }
         },
-        [addTask, executeTask, resolveTasks, searchAll],
+        [resolveTasks, searchAll],
     );
 
     const submitSearch = useCallback(
@@ -151,6 +178,7 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                 return;
             }
 
+            abortAll();
             searchSeqRef.current += 1;
             const seq = searchSeqRef.current;
             inFlightByKind.current = {
@@ -171,7 +199,7 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
                 ),
             );
         },
-        [runCategory],
+        [abortAll, runCategory],
     );
 
     const loadMoreCategory = useCallback(
@@ -223,6 +251,7 @@ export const useUnifiedSearch = (): UnifiedSearchController => {
         searchSequence: searchSeqRef.current,
         onQueryChanged: (query) => {
             if (query.trim() !== state.submittedQuery) {
+                abortAll();
                 searchSeqRef.current += 1;
                 inFlightByKind.current = {
                     artists: false,

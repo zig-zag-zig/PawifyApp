@@ -1,14 +1,17 @@
 import type { NewRelease, ReleaseNotificationSettings } from '@pawify/shared';
 import { getFollowingFromDb } from '../firebase/followingStore.js';
-import { getKnownReleaseGroupStateFromDb } from '../firebase/knownReleasesStore.js';
+import { getKnownReleaseGroupStateWithStatusFromDb } from '../firebase/knownReleasesStore.js';
 import type { KnownReleaseGroupStateValue } from '../../features/releases/domain/releaseGroupProcessing.js';
 import { getReleaseNotificationSettingsFromDb } from '../firebase/userSettingsStore.js';
 import { processArtistReleases } from '../../utils/helpers/newReleaseHelpers.js';
+import { createLogger } from '../../common/logging/logger.js';
 import { mapWithConcurrency } from '../../utils/helpers/promisePool.js';
 import {
     getArtistReleaseGroupCatalog,
     type ArtistReleaseGroupCatalog,
 } from './artistReleaseGroupCatalog.js';
+
+const logger = createLogger('services.musicbrainz.newReleaseDetection');
 
 type ArtistProcessResult = {
     newReleases: NewRelease[];
@@ -24,6 +27,7 @@ const processSingleArtist = async (
         [artistId: string]: { [groupId: string]: KnownReleaseGroupStateValue };
     },
     releaseNotificationSettings: ReleaseNotificationSettings,
+    knownStateUnmigratedArtistIds: ReadonlySet<string>,
 ): Promise<ArtistProcessResult> => {
     return await processArtistReleases(
         userId,
@@ -31,6 +35,7 @@ const processSingleArtist = async (
         getCatalogForProcessing,
         currentReleaseGroupStateByArtist,
         releaseNotificationSettings,
+        knownStateUnmigratedArtistIds.has(artistId),
     );
 };
 
@@ -38,9 +43,23 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
     try {
         const followingArtists = await getFollowingFromDb(userId);
         const releaseNotificationSettings = await getReleaseNotificationSettingsFromDb(userId);
-        const currentReleaseGroupStateByArtist = await getKnownReleaseGroupStateFromDb(userId);
+        const {
+            state: currentReleaseGroupStateByArtist,
+            unmigratedArtistIds: unmigratedArtistIdsArray,
+        } = await getKnownReleaseGroupStateWithStatusFromDb(userId);
         for (const artistId of followingArtists) {
             currentReleaseGroupStateByArtist[artistId] ??= {};
+        }
+        const unmigratedArtistIds = new Set(unmigratedArtistIdsArray);
+        if (unmigratedArtistIds.size > 0) {
+            logger.warn(
+                'known-release state is not canonical; skipping notification detection for affected artists. See the v3 rollout runbook.',
+                {
+                    userId,
+                    artistCount: unmigratedArtistIds.size,
+                    artistIds: unmigratedArtistIdsArray.slice(0, 10),
+                },
+            );
         }
         const result: NewRelease[] = [];
 
@@ -53,6 +72,7 @@ export const getNewReleases = async (userId: string): Promise<NewRelease[]> => {
                     artistId,
                     currentReleaseGroupStateByArtist,
                     releaseNotificationSettings,
+                    unmigratedArtistIds,
                 ),
         );
 

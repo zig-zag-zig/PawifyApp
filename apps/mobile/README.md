@@ -55,7 +55,7 @@ EXPO_PUBLIC_API_BASE_URL=https://your-api.example.com/
 Optional environment values:
 
 ```bash
-EXPO_PUBLIC_API_VERSION=v1
+EXPO_PUBLIC_API_VERSION=v3
 EXPO_PUBLIC_ARTIST_DIAGNOSTICS=false
 EXPO_PUBLIC_UPDATE_GITHUB_REPO_URL=https://github.com/owner/repo
 

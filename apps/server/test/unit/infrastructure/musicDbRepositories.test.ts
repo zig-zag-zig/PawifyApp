@@ -9,7 +9,10 @@ import Database from 'better-sqlite3';
 import {
     closeMusicDb,
     getMusicDb,
+    getMusicDbWriter,
     initializeMusicDb,
+    MusicDbUnavailableError,
+    resetMusicDbHandleIdentityCheckForTests,
 } from '../../../src/infrastructure/musicDb/musicDbClient.js';
 import {
     countArtistReleasesFromMirror,
@@ -18,12 +21,13 @@ import {
     getArtistReleasesFromMirror,
     getFollowedArtistSummaryFromMirror,
     getReleaseGroupReleasesFromMirror,
-    getReleaseMetadataFromMirror,
+    getReleaseFromMirror,
     releaseExistsInMirror,
     searchArtistsFromMirror,
     searchReleaseGroupsFromMirror,
 } from '../../../src/infrastructure/musicDb/musicDbRepositories.js';
 import { toFtsQuery } from '../../../src/infrastructure/musicDb/musicDbQueries.js';
+import { writeEntityImages } from '../../../src/infrastructure/musicDb/entityImageRepository.js';
 import { cleanupMusicDbFixtures, createMusicDbFixture } from '../../helpers/musicDbFixture.js';
 
 const ARTIST_ID = 'b3ae82c2-3f9e-4d3d-9f0f-0e4b2a3e0a01';
@@ -241,30 +245,115 @@ describe('musicDb repositories', () => {
             assert.equal(getMusicDb()?.name, fixturePath);
         });
 
-        it('returns null instead of throwing when the file is missing', () => {
+        it('fails explicitly when the file is missing', () => {
             const missing = path.join(os.tmpdir(), `pawify-missing-${Date.now()}.db`);
             useMirror(missing);
-            assert.equal(getMusicDb(), null);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
         });
 
-        it('degrades at boot when the mirror file is not there yet', () => {
-            // A host without a synced mirror must serve from the API, not crash-loop.
-            const missing = path.join(os.tmpdir(), `pawify-missing-${Date.now()}.db`);
+        it('recovers when a transiently missing mirror appears later', () => {
+            const missing = path.join(os.tmpdir(), `pawify-late-${Date.now()}.db`);
             useMirror(missing);
-
-            assert.equal(initializeMusicDb(), null);
-            // Not cached: the hourly sync can create the file later.
-            assert.equal(getMusicDb(), null);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
 
             const late = createMusicDbFixture(seed);
             process.env.MUSIC_DB_PATH = late;
-            assert.notEqual(getMusicDb(), null);
+            assert.equal(getMusicDb().name, late);
         });
 
-        it('returns null when no mirror is configured', () => {
+        it('reopens when the mirror file is replaced', () => {
+            const replacement = createMusicDbFixture(seed);
+            const target = fixturePath;
+            useMirror(target);
+            const first = getMusicDb();
+            const firstIno = fs.statSync(target).ino;
+
+            const backup = `${target}.old`;
+            fs.renameSync(target, backup);
+            fs.renameSync(replacement, target);
+            resetMusicDbHandleIdentityCheckForTests();
+            const second = getMusicDb();
+
+            assert.notEqual(fs.statSync(target).ino, firstIno);
+            assert.notEqual(second, first);
+            assert.equal(second.name, target);
+        });
+
+        it('retries readiness without a restart once the same mirror becomes ready', () => {
+            const building = createMusicDbFixture({
+                ...seed,
+                meta: { track_data_state: 'building' },
+            });
+            useMirror(building);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+
+            const db = new Database(building);
+            db.prepare(`UPDATE _meta SET value = 'ready' WHERE key = 'track_data_state'`).run();
+            db.close();
+
+            assert.equal(getMusicDb().name, building);
+        });
+
+        it('clears a permanent schema latch when the file is replaced', () => {
+            const target = fixturePath;
+            useMirror(target);
+            getMusicDb();
+
+            const badDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-bad-swap-'));
+            const badPath = path.join(badDirectory, 'mb.db');
+            const bad = new Database(badPath);
+            bad.exec('CREATE TABLE artists (mbid TEXT PRIMARY KEY)');
+            bad.close();
+
+            fs.renameSync(target, `${target}.bad`);
+            fs.renameSync(badPath, target);
+            resetMusicDbHandleIdentityCheckForTests();
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+
+            const good = createMusicDbFixture(seed);
+            fs.renameSync(target, `${target}.bad2`);
+            fs.renameSync(good, target);
+            resetMusicDbHandleIdentityCheckForTests();
+
+            assert.equal(getMusicDb().name, target);
+            fs.rmSync(badDirectory, { recursive: true, force: true });
+        });
+
+        it('reopens the artwork writer when the mirror file is replaced', () => {
+            const target = fixturePath;
+            useMirror(target);
+            const writerBefore = getMusicDbWriter();
+            assert.ok(writerBefore);
+
+            const replacement = createMusicDbFixture(seed);
+            fs.renameSync(target, `${target}.old`);
+            fs.renameSync(replacement, target);
+
+            const writerAfter = getMusicDbWriter();
+            assert.notEqual(writerAfter, writerBefore);
+
+            writeEntityImages([
+                {
+                    entityType: 'release',
+                    entityId: 'release-writer-swap',
+                    service: 'caa_rel',
+                    token: 'release-writer-swap',
+                },
+            ]);
+
+            const fresh = new Database(target, { readonly: true });
+            const row = fresh
+                .prepare(`SELECT count(*) AS n FROM entity_images WHERE entity_mbid = ?`)
+                .get('release-writer-swap') as { n: number };
+            fresh.close();
+            assert.equal(row.n, 1);
+        });
+
+        it('fails boot when the mirror is not configured', () => {
             closeMusicDb();
             delete process.env.MUSIC_DB_PATH;
-            assert.equal(getMusicDb(), null);
+            assert.throws(() => initializeMusicDb(), MusicDbUnavailableError);
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
         });
 
         it('fails the boot when the file does not match the reader contract', () => {
@@ -284,7 +373,7 @@ describe('musicDb repositories', () => {
             fs.rmSync(directory, { recursive: true, force: true });
         });
 
-        it('degrades instead of throwing when the file breaks at runtime', () => {
+        it('fails requests explicitly when the file breaks at runtime', () => {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-bad-musicdb-'));
             const badPath = path.join(directory, 'mb.db');
             const db = new Database(badPath);
@@ -292,10 +381,11 @@ describe('musicDb repositories', () => {
             db.close();
 
             useMirror(badPath);
-            // A request must fall back to the API rather than 500.
-            assert.equal(getMusicDb(), null);
-            assert.equal(getArtistDetailsFromMirror('anything'), null);
-            assert.equal(searchArtistsFromMirror('anything', 0, 5), null);
+            // A request gets a retriable service error, never an empty result or a
+            // remote catalogue lookup.
+            assert.throws(() => getMusicDb(), MusicDbUnavailableError);
+            assert.throws(() => getArtistDetailsFromMirror('anything'), MusicDbUnavailableError);
+            assert.throws(() => searchArtistsFromMirror('anything', 0, 5), MusicDbUnavailableError);
             fs.rmSync(directory, { recursive: true, force: true });
         });
     });
@@ -469,7 +559,7 @@ describe('musicDb repositories', () => {
             const releases = getArtistReleasesFromMirror(ARTIST_ID);
             assert.ok(releases);
             assert.equal(releases[0].disambiguation, '');
-            assert.equal(getReleaseMetadataFromMirror(RELEASE_OLDER)?.disambiguation, '');
+            assert.equal(getReleaseFromMirror(RELEASE_OLDER)?.disambiguation, '');
         });
 
         it('orders groups newest first and reports the real total', () => {
@@ -602,7 +692,7 @@ describe('musicDb repositories', () => {
 
     describe('release metadata', () => {
         it('returns metadata without media and with credits', () => {
-            const release = getReleaseMetadataFromMirror(RELEASE_OLDER);
+            const release = getReleaseFromMirror(RELEASE_OLDER);
 
             assert.ok(release);
             assert.equal(release.id, RELEASE_OLDER);
@@ -618,14 +708,14 @@ describe('musicDb repositories', () => {
         });
 
         it('carries the join phrase into artist credits', () => {
-            const release = getReleaseMetadataFromMirror(RELEASE_OTHER);
+            const release = getReleaseFromMirror(RELEASE_OTHER);
 
             assert.ok(release);
             assert.equal(release['artist-credit'][0].joinphrase, 'feat.');
         });
 
         it('returns null for an unknown release', () => {
-            assert.equal(getReleaseMetadataFromMirror('unknown-release'), null);
+            assert.equal(getReleaseFromMirror('unknown-release'), null);
         });
 
         it('answers existence checks locally', () => {
@@ -721,7 +811,7 @@ describe('musicDb repositories', () => {
             assert.deepEqual(result.artists, []);
         });
 
-        it('returns nothing when the mirror has no search index', () => {
+        it('fails readiness when the mirror has no search index', () => {
             const noSearchPath = createMusicDbFixture({ artists: seed.artists });
             const db = new Database(noSearchPath);
             db.exec('DROP TABLE search_fts_artist');
@@ -729,8 +819,13 @@ describe('musicDb repositories', () => {
             db.close();
             useMirror(noSearchPath);
 
-            assert.equal(searchArtistsFromMirror('lloy', 0, 10), null);
-            assert.equal(searchReleaseGroupsFromMirror('lloy', 0, 10), null);
+            // Search is catalogue functionality, not an optional add-on: no silent
+            // MusicBrainz probe is allowed when the index is missing.
+            assert.throws(() => searchArtistsFromMirror('lloy', 0, 10), MusicDbUnavailableError);
+            assert.throws(
+                () => searchReleaseGroupsFromMirror('lloy', 0, 10),
+                MusicDbUnavailableError,
+            );
         });
     });
 });

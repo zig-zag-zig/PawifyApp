@@ -5,8 +5,3 @@ import { cacheConfig } from '../../config/runtimeConfig.js';
 // selection would plug in here, keyed by the user's followed-artist state.
 export const artistCacheTtlHours = cacheConfig.artistTtlHours;
 export const transientArtistCacheTtlHours = cacheConfig.transientArtistTtlHours;
-const releaseLyricsCacheTtlHours = cacheConfig.releaseLyricsTtlHours;
-
-export const getReleaseLyricsTtl = (artistTtl: number | undefined): number => {
-    return Math.min(artistTtl ?? releaseLyricsCacheTtlHours, releaseLyricsCacheTtlHours);
-};

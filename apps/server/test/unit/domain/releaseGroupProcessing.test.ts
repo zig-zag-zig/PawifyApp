@@ -3,11 +3,8 @@ import { describe, it } from 'node:test';
 
 import {
     analyzeReleaseGroupChanges,
-    buildReleaseToGroupMap,
     emptyKnownReleaseGroupState,
     planArtistScan,
-    translateKnownIdsToGroupIds,
-    translateKnownStateToGroupIds,
     type KnownReleaseGroupStateValue,
     type ReleaseEditionCandidate,
     type ReleaseGroupCandidate,
@@ -676,57 +673,6 @@ describe('analyzeReleaseGroupChanges', () => {
     });
 });
 
-describe('translateKnownIdsToGroupIds', () => {
-    it('maps legacy release ids onto their release groups', () => {
-        const translated = translateKnownIdsToGroupIds(
-            ['release-1', 'release-2'],
-            new Map([
-                ['release-1', 'group-a'],
-                ['release-2', 'group-a'],
-            ]),
-        );
-
-        assert.deepEqual(translated, ['group-a']);
-    });
-
-    it('leaves an id that is already a group id alone', () => {
-        assert.deepEqual(translateKnownIdsToGroupIds(['group-a'], new Map()), ['group-a']);
-    });
-
-    it('is stable when run twice', () => {
-        const map = new Map([['release-1', 'group-a']]);
-        const once = translateKnownIdsToGroupIds(['release-1', 'group-b'], map);
-        const twice = translateKnownIdsToGroupIds(once, map);
-
-        assert.deepEqual(once, ['group-a', 'group-b']);
-        assert.deepEqual(twice, once);
-    });
-
-    it('keeps the id when the release is unknown to the mirror', () => {
-        assert.deepEqual(translateKnownIdsToGroupIds(['deleted-release'], new Map()), [
-            'deleted-release',
-        ]);
-    });
-});
-
-describe('translateKnownStateToGroupIds', () => {
-    it('drops the content baseline for a translated release id', () => {
-        const translated = translateKnownStateToGroupIds(
-            new Map([['release-1', baselined('2026-01-01', 12, ['deluxe'])]]),
-            new Map([['release-1', 'group-a']]),
-        );
-
-        assert.deepEqual(translated.get('group-a'), emptyKnownReleaseGroupState('', false));
-    });
-
-    it('keeps a known group id untouched', () => {
-        const state = baselined('2026-01-01', 12, ['deluxe']);
-        const translated = translateKnownStateToGroupIds(new Map([['group-a', state]]), new Map());
-
-        assert.deepEqual(translated.get('group-a'), state);
-    });
-});
-
 describe('planArtistScan', () => {
     const album = groupWithEditions('a', [
         edition('release-1'),
@@ -734,9 +680,9 @@ describe('planArtistScan', () => {
         edition('release-3', { date: '2026-05-01' }),
     ]);
 
-    it('does not re-notify a group the user already knows through a pressing', () => {
+    it('does not re-notify a group the user already knows', () => {
         const plan = planArtistScan(
-            known([['release-2', emptyKnownReleaseGroupState('', false)]]),
+            known([['a', emptyKnownReleaseGroupState('', false)]]),
             [album],
             twelveMonths,
             NOW,
@@ -758,27 +704,11 @@ describe('planArtistScan', () => {
         assert.equal(plan.groupsChanged, true);
     });
 
-    it('collapses several known pressings into one known group', () => {
-        const plan = planArtistScan(
-            known([
-                ['release-1', emptyKnownReleaseGroupState('', false)],
-                ['release-2', emptyKnownReleaseGroupState('', false)],
-                ['release-3', emptyKnownReleaseGroupState('', false)],
-            ]),
-            [album],
-            twelveMonths,
-            NOW,
-        );
-
-        assert.deepEqual(plan.knownGroupIds, ['a']);
-        assert.deepEqual(plan.newEvents, []);
-    });
-
     it('keeps known groups and drops pruned ones in one pass', () => {
         const plan = planArtistScan(
             known([
-                ['release-1', emptyKnownReleaseGroupState('', false)],
-                ['deleted-release', emptyKnownReleaseGroupState('', false)],
+                ['a', emptyKnownReleaseGroupState('', false)],
+                ['deleted-group', emptyKnownReleaseGroupState('', false)],
             ]),
             [album],
             twelveMonths,
@@ -786,12 +716,12 @@ describe('planArtistScan', () => {
         );
 
         assert.equal(plan.groupState.has('a'), true);
-        assert.deepEqual(plan.prunedGroupIds, ['deleted-release']);
+        assert.deepEqual(plan.prunedGroupIds, ['deleted-group']);
     });
 
     it('is idempotent: a second scan plans nothing', () => {
         const first = planArtistScan(
-            known([['release-1', emptyKnownReleaseGroupState('', false)]]),
+            known([['a', emptyKnownReleaseGroupState('', false)]]),
             [album],
             twelveMonths,
             NOW,
@@ -802,13 +732,4 @@ describe('planArtistScan', () => {
         assert.equal(second.groupsChanged, false);
     });
 
-    it('maps every pressing of a group to that group', () => {
-        const map = buildReleaseToGroupMap([album]);
-
-        assert.deepEqual(Array.from(map.entries()).sort(), [
-            ['release-1', 'a'],
-            ['release-2', 'a'],
-            ['release-3', 'a'],
-        ]);
-    });
 });

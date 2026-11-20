@@ -17,10 +17,8 @@ describe('runtimeConfig', () => {
 
         it('cacheConfig has sensible defaults', async () => {
             const { cacheConfig } = await import('../../../src/config/runtimeConfig.js');
-            assert.ok(cacheConfig.defaultTtlHours >= 1);
             assert.ok(cacheConfig.artistTtlHours >= 1);
             assert.ok(cacheConfig.transientArtistTtlHours >= 1);
-            assert.ok(cacheConfig.releaseLyricsTtlHours >= 1);
         });
 
         it('musicApiConfig defaults', async () => {

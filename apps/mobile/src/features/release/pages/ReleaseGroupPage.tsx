@@ -7,11 +7,14 @@ const ReleaseGroupPage = () => {
 
     return (
         <ReleaseGroupView
+            releaseGroupTitle={releaseGroupPage.state.releaseGroupTitle}
             releases={releaseGroupPage.state.releases}
+            releaseCount={releaseGroupPage.state.releaseCount}
             releaseGroupReleaseCovers={releaseGroupPage.state.releaseGroupReleaseCovers}
             pendingReleaseCoverIds={releaseGroupPage.state.pendingReleaseCoverIds}
             isLoadingReleases={releaseGroupPage.state.isLoadingReleases}
             releaseLoadFailed={releaseGroupPage.state.releaseLoadFailed}
+            releaseGroupNotFound={releaseGroupPage.state.releaseGroupNotFound}
             releaseGroupId={releaseGroupPage.state.releaseGroupId}
             onReleasePressed={releaseGroupPage.onReleasePressed}
             onRetryLoadReleases={releaseGroupPage.onRetryLoadReleases}

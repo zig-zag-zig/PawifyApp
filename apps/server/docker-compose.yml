@@ -45,11 +45,15 @@ services:
             # Writable directory is required for SQLite WAL shared-memory files;
             # the app opens the database itself read-only.
             - ${PAWIFY_MUSIC_DB_DIR:-./music}:/var/pawify/music
+            # Application-owned lyrics state. Separate file from the mirror so sync
+            # prune/replacement can never erase it. LYRICS_DB_PATH is read from the
+            # env file, not declared under `environment:`.
+            - ${PAWIFY_LYRICS_DB_DIR:-./lyrics}:/var/pawify/lyrics
         healthcheck:
             test:
                 [
                     'CMD-SHELL',
-                    'node -e "fetch(''http://127.0.0.1:'' + (process.env.PORT || ''10000'') + ''/v1/health'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+                    'node -e "fetch(''http://127.0.0.1:'' + (process.env.PORT || ''10000'') + ''/health'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
                 ]
             interval: 10s
             timeout: 5s

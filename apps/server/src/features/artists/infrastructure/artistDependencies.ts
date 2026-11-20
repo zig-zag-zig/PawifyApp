@@ -10,58 +10,33 @@ import {
     deleteArtistFromDb,
     saveArtistAndKnownReleasesToDb,
 } from '../../../services/firebase/artistStore.js';
-import {
-    getArtistDetails as getArtistDetailsFromService,
-    getFollowedArtistSummary as getFollowedArtistSummaryFromService,
-} from '../../../services/artistDetailsService.js';
 import { sendDataOnlyNotification } from '../../../services/notifications/dataNotificationPublisher.js';
 import { notificationEvents } from '../../../services/notifications/notificationEvents.js';
 import { emptyKnownReleaseGroupState } from '../../releases/domain/releaseGroupProcessing.js';
-import { searchRecordings as searchRecordingsFromApi } from '../../../services/musicbrainz/recordingSearch.js';
-import { searchWithZeroResultFallback } from '../../../services/search/zeroResultApiFallback.js';
 import {
     getArtistDetailsFromMirror,
     getArtistReleaseGroupIdsFromMirror,
     getFollowedArtistSummaryFromMirror,
+    searchArtistsFromMirror,
     searchRecordingsFromMirror,
+    searchReleaseGroupsFromMirror,
 } from '../../../infrastructure/musicDb/musicDbRepositories.js';
-import { isMusicDbEnabled } from '../../../infrastructure/musicDb/musicDbClient.js';
-import { withMusicDb } from '../../../infrastructure/musicDb/withMusicDb.js';
-import { getArtistReleaseGroupCatalog } from '../../../services/musicbrainz/artistReleaseGroupCatalog.js';
 import type { ArtistUseCaseDependencies } from '../ports.js';
 
 const logger = createLogger('features.artists.dependencies');
 
+/**
+ * Catalogue dependencies are SQLite-only.
+ *
+ * A local miss is a local not-found: it is not proof that MusicBrainz globally
+ * deleted the entity, so it must not delete user history. A database failure
+ * throws and becomes an explicit retriable service error.
+ */
 export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'> = {
     artistDetailsGateway: {
-        getArtistDetails: async (userId, artistId) => {
-            // The mirror answers from local data; a miss (or a mirror failure)
-            // transparently uses the API, including its Redis cache.
-            const artist = await withMusicDb(
-                'getArtistDetails',
-                () => getArtistDetailsFromMirror(artistId),
-                () => getArtistDetailsFromService(userId, artistId),
-            );
-
-            if (artist === null) {
-                await deleteArtistFromDb(userId, artistId);
-            }
-
-            return artist;
-        },
-        getFollowedArtistSummary: async (userId, artistId) => {
-            const summary = await withMusicDb(
-                'getFollowedArtistSummary',
-                () => getFollowedArtistSummaryFromMirror(artistId),
-                () => getFollowedArtistSummaryFromService(userId, artistId),
-            );
-
-            if (summary === null) {
-                await deleteArtistFromDb(userId, artistId);
-            }
-
-            return summary;
-        },
+        getArtistDetails: async (_userId, artistId) => getArtistDetailsFromMirror(artistId),
+        getFollowedArtistSummary: async (_userId, artistId) =>
+            getFollowedArtistSummaryFromMirror(artistId),
     },
     artistFollowingRepository: {
         getFollowingArtistIds: async (userId) => {
@@ -78,10 +53,7 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
                 userId,
                 artistId,
                 new Map(
-                    groupIds.map((groupId) => [
-                        groupId,
-                        emptyKnownReleaseGroupState('', false),
-                    ]),
+                    groupIds.map((groupId) => [groupId, emptyKnownReleaseGroupState('', false)]),
                 ),
                 [],
                 artistSummary,
@@ -95,35 +67,18 @@ export const artistDependencies: Omit<ArtistUseCaseDependencies, 'assetPlanner'>
         },
     },
     artistReleaseCatalogGateway: {
-        getArtistReleaseGroupIds: async (artistId, ttl) =>
-            (await withMusicDb(
-                'getArtistReleaseGroupIds',
-                () => getArtistReleaseGroupIdsFromMirror(artistId),
-                async () => {
-                    const catalog = await getArtistReleaseGroupCatalog(artistId);
-                    if (!catalog.complete) {
-                        throw new Error('Incomplete release catalogue');
-                    }
-                    return catalog.groups.map((group) => group.id);
-                },
-            )) ?? [],
+        getArtistReleaseGroupIds: async (artistId) => {
+            return getArtistReleaseGroupIdsFromMirror(artistId) ?? [];
+        },
     },
     artistProfileImageQueue: artistProfileImageTaskQueue,
     artistSearchGateway: {
-        // Local FTS5 index is primary; when a typo or unavailable mirror returns 0
-        // rows, transparently fall back to MusicBrainz's Solr n-gram search (cached
-        // 1h in Redis).
-        searchArtists: async (userId, query, offset, limit) =>
-            await searchWithZeroResultFallback.searchArtists(userId, query, offset, limit),
-        searchRecordings: async (query, offset, limit) => {
-            if (isMusicDbEnabled()) {
-                const local = searchRecordingsFromMirror(query, offset, limit);
-                if (local !== null && local.recordings.length > 0) return local;
-            }
-            return await searchRecordingsFromApi(query, offset, limit);
-        },
-        searchReleaseGroups: async (userId, query, offset, limit) =>
-            await searchWithZeroResultFallback.searchReleaseGroups(userId, query, offset, limit),
+        searchArtists: async (_userId, query, offset, limit) =>
+            searchArtistsFromMirror(query, offset, limit),
+        searchRecordings: async (query, offset, limit) =>
+            searchRecordingsFromMirror(query, offset, limit),
+        searchReleaseGroups: async (_userId, query, offset, limit) =>
+            searchReleaseGroupsFromMirror(query, offset, limit),
     },
     followingNotifier: {
         notifyFollowingChanged: async (userId, sourcePushToken) => {

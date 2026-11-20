@@ -11,7 +11,6 @@ import {
 import { getArtistReleaseGroupCatalog } from '../../../src/services/musicbrainz/artistReleaseGroupCatalog.js';
 import { buildArtistNotificationCatalogFromRows } from '../../../src/infrastructure/musicDb/musicDbRepositories.js';
 import { cleanupMusicDbFixtures, createMusicDbFixture } from '../../helpers/musicDbFixture.js';
-import { installFetch } from '../../helpers/daprTestHelpers.js';
 
 const ARTIST_ID = 'b3ae82c2-3f9e-4d3d-9f0f-0e4b2a3e0a01';
 const GROUP_ID = 'e6db15f5-6c21-7a60-c232-3b7e5d6b3d04';
@@ -325,12 +324,19 @@ describe('getArtistReleaseGroupCatalog', () => {
         }
     });
 
-    it('reports incomplete when mirror edition data is not ready', async () => {
+    it('fails explicitly when mirror edition data is not ready', async () => {
         closeMusicDb();
-        const path = createMusicDbFixture({ ...seed, meta: {} });
+        const path = createMusicDbFixture({ ...seed, meta: { track_data_state: 'building' } });
         process.env.MUSIC_DB_PATH = path;
 
-        const catalog = await getArtistReleaseGroupCatalog(ARTIST_ID);
+        await assert.rejects(
+            () => getArtistReleaseGroupCatalog(ARTIST_ID),
+            /track\/edition data is not ready/,
+        );
+    });
+
+    it('reports an unknown artist as an incomplete catalogue without remote fallback', async () => {
+        const catalog = await getArtistReleaseGroupCatalog('unknown-artist');
 
         assert.equal(catalog.complete, false);
         assert.deepEqual(catalog.groups, []);
@@ -386,35 +392,6 @@ describe('getArtistReleaseGroupCatalog', () => {
             assert.ok(hunger);
             assert.equal(hunger.releaseIds.length, 2);
         });
-    });
-
-    it('marks an API catalogue incomplete when a release has no group identity', async () => {
-        closeMusicDb();
-        delete process.env.MUSIC_DB_PATH;
-        installFetch((url) => {
-            if (url.includes('/invoke/musicbrainz/')) {
-                return new Response(
-                    JSON.stringify({
-                        releases: [
-                            {
-                                id: 'r1',
-                                title: 'No group',
-                                date: '2020-01-01',
-                                'artist-credit': [],
-                                media: [],
-                            },
-                        ],
-                        'release-count': 1,
-                    }),
-                    { status: 200, headers: { 'content-type': 'application/json' } },
-                );
-            }
-            throw new Error(`unexpected call ${url}`);
-        });
-
-        const catalog = await getArtistReleaseGroupCatalog(ARTIST_ID);
-
-        assert.equal(catalog.complete, false);
     });
 
     it('aggregates many media rows for one release', async () => {
@@ -511,14 +488,8 @@ describe('getArtistReleaseGroupCatalog', () => {
             db.prepare = originalPrepare;
         }
 
-        assert.equal(
-            statements.filter((sql) => sql.includes('LEFT JOIN media')).length,
-            1,
-        );
-        assert.equal(
-            statements.filter((sql) => sql.includes('group_concat(r.mbid')).length,
-            0,
-        );
+        assert.equal(statements.filter((sql) => sql.includes('LEFT JOIN media')).length, 1);
+        assert.equal(statements.filter((sql) => sql.includes('group_concat(r.mbid')).length, 0);
     });
 
     it('omits credits rather than inventing them, so callers can fetch per group', async () => {

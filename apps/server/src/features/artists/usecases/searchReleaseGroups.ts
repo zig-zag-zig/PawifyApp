@@ -1,4 +1,4 @@
-import type { ReleaseGroupSearchResult } from '../../../services/musicbrainz/releaseGroupSearch.js';
+import type { ReleaseGroupSearchResult } from '../domain/searchResults.js';
 import { transientArtistCacheTtlHours } from '../../../services/cache/ttlPolicy.js';
 import type { ReleaseGroupPageEntry } from '../../../utils/types/taskTypes.js';
 import type { ArtistReadUseCaseDependencies } from '../ports.js';

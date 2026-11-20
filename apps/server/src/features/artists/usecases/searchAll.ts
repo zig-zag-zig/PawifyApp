@@ -35,18 +35,22 @@ export const createSearchAllUseCase =
 
         const [artists, releaseGroups, recordings] = result;
         const scopeSuffix = category ?? 'all';
-        const artistPlan = await assetPlanner.planArtistProfileImages({
+        // These planners are independent external-work partitions. They run
+        // concurrently, but the SQLite reads inside each one are synchronous:
+        // this is concurrency for provider/cache I/O, not parallel SQL.
+        const scope = `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`;
+        const artistPlanPromise = assetPlanner.planArtistProfileImages({
             userId,
-            scope: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
+            scope,
             lookups: artists.artists.map((artist) => ({
                 artistId: artist.id,
                 artistName: artist.name,
             })),
             ttl: transientArtistCacheTtlHours,
         });
-        const releasePlan = await assetPlanner.planArtistReleaseGroupCovers({
+        const releasePlanPromise = assetPlanner.planArtistReleaseGroupCovers({
             userId,
-            scope: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
+            scope,
             pageEntries: releaseGroups.releaseGroups.map((group) => ({
                 releaseGroupId: group.id,
                 releaseIds: [],
@@ -69,12 +73,12 @@ export const createSearchAllUseCase =
             trackReleasesByGroup.set(release.releaseGroupId, releaseIds);
         }
 
-        const trackCoverPlan =
+        const trackCoverPlanPromise =
             trackReleasesByGroup.size === 0
-                ? { resolved: {}, taskId: null }
-                : await assetPlanner.planReleaseGroupReleaseCovers({
+                ? Promise.resolve({ resolved: {}, taskId: null })
+                : assetPlanner.planReleaseGroupReleaseCovers({
                       userId,
-                      releaseGroupId: `searchAll:${query}:${limit}:${offset}:${scopeSuffix}`,
+                      releaseGroupId: scope,
                       pageEntries: Array.from(
                           trackReleasesByGroup,
                           ([releaseGroupId, releaseIds]) => ({
@@ -84,6 +88,12 @@ export const createSearchAllUseCase =
                       ),
                       ttl: transientArtistCacheTtlHours,
                   });
+
+        const [artistPlan, releasePlan, trackCoverPlan] = await Promise.all([
+            artistPlanPromise,
+            releasePlanPromise,
+            trackCoverPlanPromise,
+        ]);
 
         return {
             artists: artists.artists,

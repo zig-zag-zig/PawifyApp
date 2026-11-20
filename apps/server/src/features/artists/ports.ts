@@ -5,9 +5,11 @@ import type {
     ReleaseGroupReleaseCoversPlanner,
 } from '../../services/backgroundAssets/plannerTypes.js';
 import type { Artist } from '@pawify/shared';
-import type { ArtistSearchResult } from '../../services/musicbrainz/artistSearch.js';
-import type { ReleaseGroupSearchResult } from '../../services/musicbrainz/releaseGroupSearch.js';
-import type { RecordingSearchResult } from '../../services/musicbrainz/recordingSearch.js';
+import type {
+    ArtistSearchResult,
+    RecordingSearchResult,
+    ReleaseGroupSearchResult,
+} from './domain/searchResults.js';
 import type { FollowedArtistSummary } from '../../utils/types/followedArtistTypes.js';
 import type { ArtistProfileImageQueueOptions } from '../../utils/types/taskTypes.js';
 

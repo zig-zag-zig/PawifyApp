@@ -4,26 +4,15 @@ type VerifyReleaseExistenceResult = {
     exists: boolean;
 };
 
+/**
+ * Local existence check.
+ *
+ * A mirror miss is not proof that MusicBrainz deleted the release. Remote HEAD
+ * probing is removed, and this path deliberately does not run destructive global
+ * cleanup: only a confirmed mirror prune/redirect event may do that.
+ */
 export const createVerifyReleaseExistenceUseCase =
-    ({
-        missingReleaseCleanupRepository,
-        releaseCatalogGateway,
-        releaseNotifier,
-    }: Pick<
-        ReleaseWriteUseCaseDependencies,
-        'missingReleaseCleanupRepository' | 'releaseCatalogGateway' | 'releaseNotifier'
-    >) =>
+    ({ releaseCatalogGateway }: Pick<ReleaseWriteUseCaseDependencies, 'releaseCatalogGateway'>) =>
     async (_userId: string, releaseId: string): Promise<VerifyReleaseExistenceResult> => {
-        const exists = await releaseCatalogGateway.releaseExists(releaseId);
-
-        if (exists) {
-            return { exists: true };
-        }
-
-        const cleanup = await missingReleaseCleanupRepository.removeMissingRelease(releaseId);
-        for (const affectedUserId of cleanup.removedFromNewReleasesUserIds) {
-            await releaseNotifier.notifyReleasesChanged(affectedUserId);
-        }
-
-        return { exists: false };
+        return { exists: await releaseCatalogGateway.releaseExists(releaseId) };
     };

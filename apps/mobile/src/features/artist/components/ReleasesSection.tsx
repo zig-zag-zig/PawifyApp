@@ -22,7 +22,6 @@ interface ReleasesSectionProps {
     pendingReleaseGroupCoverIds: string[];
     loadedItemsByType: Record<string, number>;
     isLoadingReleases: boolean;
-    isLoadingReleaseGroup: boolean;
     onReleaseGroupPressed: (releaseGroup: ArtistReleaseGroup) => Promise<void>;
     onLoadMore: (sectionTitle: string) => void;
     onContentReady: () => void;
@@ -35,7 +34,6 @@ const ReleasesSection = ({
     pendingReleaseGroupCoverIds,
     loadedItemsByType,
     isLoadingReleases,
-    isLoadingReleaseGroup,
     onReleaseGroupPressed,
     onLoadMore,
     onContentReady,
@@ -82,11 +80,10 @@ const ReleasesSection = ({
 
         return items;
     }, [isLoadingReleases, loadedItemsByType, releaseSections]);
-    const listExtraData = useMemo(() => ({
-        isLoadingReleaseGroup,
-        pendingReleaseGroupCoverIds,
-        releaseGroupCovers,
-    }), [isLoadingReleaseGroup, pendingReleaseGroupCoverIds, releaseGroupCovers]);
+    const listExtraData = useMemo(
+        () => ({ pendingReleaseGroupCoverIds, releaseGroupCovers }),
+        [pendingReleaseGroupCoverIds, releaseGroupCovers],
+    );
 
     const renderRow = (releaseGroups: ArtistReleaseGroup[]) => (
         <View style={styles.row}>
@@ -96,7 +93,6 @@ const ReleasesSection = ({
                     onPress={() => void onReleaseGroupPressed(releaseGroup)}
                     activeOpacity={1}
                     style={styles.albumContainer}
-                    disabled={isLoadingReleaseGroup}
                 >
                     <CachedImageComponent
                         imageUrl={releaseGroupCovers[releaseGroup.id]}
@@ -164,7 +160,7 @@ const ReleasesSection = ({
         }
 
         return (
-            <InlineLink onPress={() => onLoadMore(item.title)} isLoading={isLoadingReleaseGroup}>
+            <InlineLink onPress={() => onLoadMore(item.title)} isLoading={isLoadingReleases}>
                 Load More
             </InlineLink>
         );

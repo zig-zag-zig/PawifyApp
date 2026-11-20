@@ -136,7 +136,7 @@ describe('parseApiBaseUrl', () => {
 
 describe('parseApiVersion', () => {
     it('returns fallback for undefined', () => {
-        expect(parseApiVersion(undefined)).toBe('v1');
+        expect(parseApiVersion(undefined)).toBe('v3');
     });
 
     it('parses "v1"', () => {

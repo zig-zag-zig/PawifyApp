@@ -25,32 +25,8 @@ export type ArtistWirePresenters = {
     ) => unknown;
 };
 
-/** v1 exact old contract: task ids always present, no immediate maps. */
-export const artistPresentersV1: ArtistWirePresenters = {
-    getFollowing: (result) => ({
-        artists: result.artists,
-        profileImageTaskId: result.profileImageTaskId,
-    }),
-    getArtistDetails: (result) => ({
-        artist: result.artist,
-        profileImageTaskId: result.profileImageTaskId,
-    }),
-    searchArtists: (result) => ({
-        artists: result.artists,
-        count: result.count,
-        profileImageTaskId: result.profileImageTaskId,
-    }),
-    searchReleaseGroups: (result) => ({
-        releaseGroups: result.releaseGroups,
-        count: result.count,
-        releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
-    }),
-    searchAll: (result) => result,
-    resolveFollowingArtistImages: (result) => result,
-};
-
-/** v2: full cache-first response with immediate maps and nullable task ids. */
-export const artistPresentersV2: ArtistWirePresenters = {
+/** Single v3 wire contract: cache-first payloads with nullable task ids. */
+export const artistPresentersV3: ArtistWirePresenters = {
     getFollowing: (result) => result,
     getArtistDetails: (result) => result,
     searchArtists: (result) => result,
@@ -74,7 +50,7 @@ export const createArtistHandlers = (
             const payload = await artistUseCases.getArtistDetails(userId, artistId);
 
             if (!payload) {
-                throw new NotFoundError('Artist was not found in MusicBrainz');
+                throw new NotFoundError('Artist was not found in the local catalogue');
             }
 
             res.status(200).send(presenters.getArtistDetails(payload));

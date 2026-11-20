@@ -37,7 +37,6 @@ export function useArtistPage(): ArtistPageController {
         unfollowArtist,
         getArtistDetails,
         getArtistReleases,
-        getReleaseGroupReleases,
         waitForTaskResultById
     } = useArtistApi();
 
@@ -142,7 +141,6 @@ export function useArtistPage(): ArtistPageController {
         artist: state.artist,
         isFollowing,
         isFollowLoading: state.isFollowLoading,
-        isLoadingReleaseGroup: state.isLoadingReleaseGroup,
         artistIdRef,
         pendingTaskRef,
         followToggleInFlightRef,
@@ -152,7 +150,6 @@ export function useArtistPage(): ArtistPageController {
         setFollowedArtist,
         followArtist,
         unfollowArtist,
-        getReleaseGroupReleases,
         removeTask,
         updatePendingTask,
     });
@@ -305,7 +302,6 @@ export function useArtistPage(): ArtistPageController {
         isFollowDisabled: false,
         isLoadingArtist: state.isLoadingArtist,
         isLoadingReleases: state.isLoadingReleases,
-        isLoadingReleaseGroup: state.isLoadingReleaseGroup,
         isFollowLoading: state.isFollowLoading,
         allReleaseGroups: state.allReleaseGroups,
         releaseGroupCovers,

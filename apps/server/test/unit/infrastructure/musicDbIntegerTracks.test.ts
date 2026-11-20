@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { closeMusicDb } from '../../../src/infrastructure/musicDb/musicDbClient.js';
-import { getReleaseTracksFromMirror } from '../../../src/infrastructure/musicDb/musicDbRepositories.js';
+import { getReleaseMediaFromMirror } from '../../../src/infrastructure/musicDb/musicDbRepositories.js';
 import { cleanupMusicDbFixtures, createMusicDbFixture } from '../../helpers/musicDbFixture.js';
 
 const originalPath = process.env.MUSIC_DB_PATH;
@@ -59,7 +59,7 @@ test('integer references stay internal and multi-medium track responses retain M
             { recording_id: 73, url: 'https://example.org/lyrics', source: 'recording' },
         ],
     });
-    const result = getReleaseTracksFromMirror('release');
+    const result = getReleaseMediaFromMirror('release');
     assert.ok(result);
     assert.equal(result.length, 2);
     assert.deepEqual(
@@ -101,7 +101,7 @@ test('compacted mirrors fall back to recording title and credit', () => {
             },
         ],
     });
-    const result = getReleaseTracksFromMirror('rel-c');
+    const result = getReleaseMediaFromMirror('rel-c');
     assert.ok(result);
     const track = result[0].tracks?.[0];
     assert.equal(track?.title, 'Recording Title');

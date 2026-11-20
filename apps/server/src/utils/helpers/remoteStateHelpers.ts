@@ -1,13 +1,13 @@
 import type { RemoteValueState } from '@pawify/shared';
 import { cacheConfig } from '../../config/runtimeConfig.js';
-import type { CoverState, LyricsState } from '../types/cacheTypes.js';
+import type { CoverState } from '../types/cacheTypes.js';
 
 export const TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS = cacheConfig.transientRemoteValueRetryWindowMs;
 
 const nextRefetchAt = (retryWindowMs: number): number => Date.now() + retryWindowMs;
 
 export const shouldRefetchRemoteState = (
-    state: CoverState | LyricsState | undefined,
+    state: CoverState | undefined,
     now: number = Date.now(),
 ): boolean => {
     if (!state) {
@@ -34,21 +34,6 @@ export const mapCoverState = (url: RemoteValueState): CoverState => {
     }
 
     if (url) {
-        return { url, nextRefetchAt: undefined };
-    }
-
-    return { url, confirmedMiss: true };
-};
-
-export const mapLyricsState = (url: RemoteValueState): LyricsState => {
-    if (url === undefined) {
-        return {
-            url,
-            nextRefetchAt: nextRefetchAt(TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS),
-        };
-    }
-
-    if (typeof url === 'string' && url.trim().length > 0) {
         return { url, nextRefetchAt: undefined };
     }
 

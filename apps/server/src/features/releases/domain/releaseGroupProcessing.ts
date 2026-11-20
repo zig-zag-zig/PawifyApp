@@ -70,10 +70,9 @@ export type KnownReleaseGroupStateValue = {
     maxOfficialTrackCount: number | null;
     editionKeywords: string[];
     /**
-     * Normalization-only migration marker. Legacy date/boolean entries are read
-     * with `false` so their content is baselined silently on the first scan. The
-     * Firebase writer persists only the three public fields, so an object read
-     * back from storage (no marker) is always already baselined.
+     * Canonical migration marker: the group is known but its content baseline has
+     * not been computed yet. The first complete scan baselines it silently; the
+     * writer then persists the object without the marker.
      */
     contentBaselined?: boolean;
 };
@@ -392,10 +391,9 @@ export const analyzeReleaseGroupChanges = (
             continue;
         }
 
-        // Legacy date-only state (or an empty-string migrated group) has no content
-        // metadata. Record the current content without notifying: the user already
-        // knows the group, only the baseline is missing. The writer persists the
-        // baseline without the marker, so this happens exactly once.
+        // The migration marker means the group is known but its content baseline
+        // has not been computed. Record the current content without notifying; the
+        // writer removes the marker, so this happens exactly once.
         if (stored.contentBaselined === false) {
             baselinedGroupIds.push(group.id);
             setState(group.id, stored, {
@@ -465,45 +463,6 @@ export const analyzeReleaseGroupChanges = (
     };
 };
 
-/**
- * Rewrites stored state keys from release ids to release-group ids.
- *
- * A translated entry deliberately loses its content metadata and date: a release id
- * was never an event anchor, so the group is known but its content gets baselined
- * silently on the next scan. Idempotent: an id that is already a group id is kept.
- */
-export const translateKnownStateToGroupIds = (
-    knownState: KnownReleaseGroupState,
-    releaseToGroupId: ReadonlyMap<string, string>,
-): Map<string, KnownReleaseGroupStateValue> => {
-    const translated = new Map<string, KnownReleaseGroupStateValue>();
-
-    for (const [knownId, state] of knownState) {
-        const groupId = releaseToGroupId.get(knownId);
-        translated.set(
-            groupId ?? knownId,
-            groupId === undefined
-                ? state
-                : emptyKnownReleaseGroupState('', false),
-        );
-    }
-
-    return translated;
-};
-
-export const translateKnownIdsToGroupIds = (
-    knownIds: readonly string[],
-    releaseToGroupId: ReadonlyMap<string, string>,
-): string[] => {
-    const translated = new Set<string>();
-
-    for (const knownId of knownIds) {
-        translated.add(releaseToGroupId.get(knownId) ?? knownId);
-    }
-
-    return Array.from(translated);
-};
-
 export type ArtistScanPlan = {
     /** The user's known groups after the release-id to release-group-id migration. */
     knownGroupIds: string[];
@@ -515,25 +474,6 @@ export type ArtistScanPlan = {
 };
 
 /**
- * Inverts the catalog's group -> releases mapping.
- *
- * This is what makes the state migration work without storing a version anywhere:
- * an id that is a release id becomes its group; an id that is already a group is
- * not a release, so it misses and is kept.
- */
-export const buildReleaseToGroupMap = (
-    catalog: readonly ReleaseGroupCandidate[],
-): Map<string, string> => {
-    const map = new Map<string, string>();
-    for (const group of catalog) {
-        for (const releaseId of group.releaseIds) {
-            map.set(releaseId, group.id);
-        }
-    }
-    return map;
-};
-
-/**
  * Decides everything one artist scan should change for one user.
  *
  * Kept pure and source-agnostic (mirror or MusicBrainz catalog) so the part that
@@ -541,9 +481,7 @@ export const buildReleaseToGroupMap = (
  * Firebase calls. Turning events into feed entries needs artist credits, which is a
  * lookup rather than a decision, so the caller does that.
  *
- * `storedState` may still contain release ids from before the migration; they are
- * translated here, and a translated id carries no content baseline, so it is
- * baselined instead of notified.
+ * `storedState` is assumed canonical (group ids) after the one-time migration.
  */
 export const planArtistScan = (
     storedState: KnownReleaseGroupState,
@@ -552,12 +490,8 @@ export const planArtistScan = (
     now = new Date(),
     complete = true,
 ): ArtistScanPlan => {
-    const knownState = translateKnownStateToGroupIds(
-        storedState,
-        buildReleaseToGroupMap(catalog),
-    );
-    const knownGroupIds = Array.from(knownState.keys());
-    const changes = analyzeReleaseGroupChanges(knownState, catalog, settings, now, complete);
+    const knownGroupIds = Array.from(storedState.keys());
+    const changes = analyzeReleaseGroupChanges(storedState, catalog, settings, now, complete);
 
     return {
         knownGroupIds,

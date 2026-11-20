@@ -1,85 +1,48 @@
-import { useNavigation } from '@react-navigation/native';
 import React from 'react';
-import { useGlobalSpinner } from '../../../contexts/GlobalSpinnerContext';
-import { useContentReady } from '../../../hooks/useContentReady';
 import type { ReleaseGroupReleaseListItem } from '@pawify/shared';
-import type { ReleaseGroupNavigationProp } from '../../../types/navigation';
 import ReleaseGroupCard from './ReleaseGroupCard';
 
 interface ReleaseGroupViewProps {
+    releaseGroupTitle: string | null;
     releases: ReleaseGroupReleaseListItem[];
+    releaseCount: number;
     releaseGroupReleaseCovers: Record<string, string | null | undefined>;
     pendingReleaseCoverIds: string[];
     isLoadingReleases: boolean;
     releaseLoadFailed: boolean;
+    releaseGroupNotFound: boolean;
     releaseGroupId: string | null;
     onReleasePressed: (release: ReleaseGroupReleaseListItem) => void;
     onRetryLoadReleases: () => void;
 }
 
-const RELEASE_GROUP_TRANSITION_FALLBACK_MS = 600;
-
 const ReleaseGroupView = ({
+    releaseGroupTitle,
     releases,
+    releaseCount,
     releaseGroupReleaseCovers,
     pendingReleaseCoverIds,
     isLoadingReleases,
     releaseLoadFailed,
+    releaseGroupNotFound,
     releaseGroupId,
     onReleasePressed,
-    onRetryLoadReleases
-}: ReleaseGroupViewProps) => {
-    const navigation = useNavigation<ReleaseGroupNavigationProp>();
-    const [isTransitionReady, setIsTransitionReady] = React.useState(false);
-    const { isWaitingForContent, onContentReady } = useContentReady(
-        false,
-        releases.length > 0 || !isLoadingReleases
-    );
-    useGlobalSpinner(isWaitingForContent || !isTransitionReady);
-
-    React.useLayoutEffect(() => {
-        let isCancelled = false;
-
-        const markTransitionReady = () => {
-            if (isCancelled) {
-                return;
-            }
-
-            setIsTransitionReady(true);
-        };
-
-        const fallbackTimeout = setTimeout(
-            markTransitionReady,
-            RELEASE_GROUP_TRANSITION_FALLBACK_MS
-        );
-        const unsubscribeTransitionEnd = navigation.addListener('transitionEnd', event => {
-            if (event.data?.closing) {
-                return;
-            }
-
-            clearTimeout(fallbackTimeout);
-            markTransitionReady();
-        });
-
-        return () => {
-            isCancelled = true;
-            clearTimeout(fallbackTimeout);
-            unsubscribeTransitionEnd();
-        };
-    }, [navigation]);
-
-    return (
-        <ReleaseGroupCard
-            releases={releases}
-            releaseCovers={releaseGroupReleaseCovers}
-            pendingReleaseCoverIds={pendingReleaseCoverIds}
-            releaseGroupId={releaseGroupId}
-            releaseLoadFailed={releaseLoadFailed}
-            onPress={onReleasePressed}
-            onRetryLoadReleases={onRetryLoadReleases}
-            onContentReady={onContentReady}
-        />
-    );
-};
+    onRetryLoadReleases,
+}: ReleaseGroupViewProps) => (
+    <ReleaseGroupCard
+        releaseGroupTitle={releaseGroupTitle}
+        releases={releases}
+        releaseCount={releaseCount}
+        releaseCovers={releaseGroupReleaseCovers}
+        pendingReleaseCoverIds={pendingReleaseCoverIds}
+        releaseGroupId={releaseGroupId}
+        isLoadingReleases={isLoadingReleases}
+        releaseLoadFailed={releaseLoadFailed}
+        releaseGroupNotFound={releaseGroupNotFound}
+        onPress={onReleasePressed}
+        onRetryLoadReleases={onRetryLoadReleases}
+        onContentReady={() => undefined}
+    />
+);
 
 export default ReleaseGroupView;

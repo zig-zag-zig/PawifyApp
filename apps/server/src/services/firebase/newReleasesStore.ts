@@ -1,9 +1,5 @@
 import type { NewRelease } from '@pawify/shared';
-import {
-    NewReleasesSnapshot,
-    StoredNewRelease,
-    StoredNewReleasesMap,
-} from './types.js';
+import { NewReleasesSnapshot, StoredNewRelease, StoredNewReleasesMap } from './types.js';
 import { buildNewReleasesCollectionPayload, getNewReleasesMapDocRef } from './refs.js';
 import { db } from '../../infrastructure/firebase/firebaseInit.js';
 import { isPlainObject } from '../../common/utils/objectGuards.js';
@@ -38,11 +34,15 @@ const capNewReleasesMap = (newReleasesMap: StoredNewReleasesMap): StoredNewRelea
     return Object.fromEntries(sortedByNewest.slice(0, MAX_STORED_NEW_RELEASES));
 };
 
+/**
+ * ISO date derived from the stored display value when an older entry has no
+ * structured `date`. This is input normalization (the public/UI date is the
+ * display value), not an API-version compatibility branch.
+ */
 const normalizeDateForDisplay = (value: unknown): string | null => {
     if (typeof value !== 'string' || !value.trim() || value === 'Unknown date') {
         return null;
     }
-
     const parts = value
         .split('.')
         .map((part) => part.trim())
@@ -53,25 +53,12 @@ const normalizeDateForDisplay = (value: unknown): string | null => {
             ? `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
             : null;
     }
-
     if (parts.length === 2) {
         const [month, year] = parts;
         return year && month ? `${year}-${month.padStart(2, '0')}` : null;
     }
-
-    if (parts.length === 1) {
-        return /^\d{4}$/.test(parts[0] ?? '') ? parts[0] : null;
-    }
-
+    if (parts.length === 1) return /^\d{4}$/.test(parts[0] ?? '') ? parts[0]! : null;
     return null;
-};
-
-const normalizeStoredDate = (date: unknown, dateForDisplay: unknown): string | null => {
-    if (typeof date === 'string' && date.trim().length > 0) {
-        return date.trim();
-    }
-
-    return normalizeDateForDisplay(dateForDisplay);
 };
 
 const normalizeArtistsMap = (value: unknown): { [artistId: string]: string } | null => {
@@ -117,7 +104,10 @@ const normalizeNewRelease = (value: unknown): NewRelease | null => {
     return {
         id: value.id,
         title: value.title,
-        date: normalizeStoredDate(value.date, value.date_for_display),
+        date:
+            typeof value.date === 'string' && value.date.trim().length > 0
+                ? value.date.trim()
+                : normalizeDateForDisplay(value.date_for_display),
         disambiguation: typeof value.disambiguation === 'string' ? value.disambiguation : null,
         artists,
         date_for_display: value.date_for_display,
@@ -173,8 +163,7 @@ const normalizeEventMetadata = (
     if (Array.isArray(value.editionKeywords)) {
         metadata.editionKeywords = normalizeEditionKeywords(
             value.editionKeywords.filter(
-                (keyword): keyword is string =>
-                    typeof keyword === 'string' && keyword.length > 0,
+                (keyword): keyword is string => typeof keyword === 'string' && keyword.length > 0,
             ),
         );
     }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { after, afterEach, beforeEach, describe, it } from 'node:test';
 
 // Provider clients acquire shared token buckets. With no reachable Dapr state they
 // fall back to a local limiter whose default 1s delay would dominate these tests,
@@ -14,6 +14,21 @@ process.env.TIDAL_COUNTRY_CODE = 'US';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
+
+import { cleanupMusicDbFixtures, createMusicDbFixture } from '../../helpers/musicDbFixture.js';
+import { closeMusicDb } from '../../../src/infrastructure/musicDb/musicDbClient.js';
+
+const mirrorPath = createMusicDbFixture();
+
+beforeEach(() => {
+    process.env.MUSIC_DB_PATH = mirrorPath;
+    closeMusicDb();
+});
+
+after(() => {
+    closeMusicDb();
+    cleanupMusicDbFixtures();
+});
 
 type Call = { url: string; method: string };
 

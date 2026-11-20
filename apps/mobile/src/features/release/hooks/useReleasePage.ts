@@ -4,16 +4,19 @@ import { useCache } from '../../../contexts/CacheContext';
 import type { Release } from '@pawify/shared';
 import { openExternalUrl } from '../../../services/externalNavigation';
 import { isApiCallError } from '../../../services/apiErrors';
-import { extractArtistProfileImages, extractReleaseTrackLyrics } from '../../../utils/taskResultMaps';
+import {
+    extractArtistProfileImages,
+    extractReleaseGroupReleaseCovers,
+    extractReleaseTrackLyrics,
+} from '../../../utils/taskResultMaps';
 import { mergeNullableStringMaps, normalizeNullableStringMap } from '../../../utils/nullableMaps';
 import { resolveNullableTaskMap } from '../../../shared/taskResults/resolveNullableTaskMap';
-import type { ReleaseTracksResponse } from '../../../types/apiTypes';
+import type { ReleaseResponse } from '../../../types/apiTypes';
 import { RootStackParamList } from '../../../types/navigation';
 import { useReleaseApi } from '../api/releaseApi';
 import {
-    cloneRelease,
     collectArtistImagesForRelease,
-    collectTrackLyricsForRelease
+    collectTrackLyricsForRelease,
 } from '../domain/releaseEnrichment';
 import type { ReleasePageController, ReleasePageUiState } from '../model/types';
 import { createInitialReleaseState, releaseReducer } from '../state/releaseReducer';
@@ -45,6 +48,13 @@ function collectArtistIds(release: Release): string[] {
     return [...artistIds];
 }
 
+/**
+ * One request loads the release, all media/tracks and persisted enrichment state.
+ *
+ * There is no separate track request or track-loading phase. Lyrics and artist
+ * images remain progressive per-item enrichment; their results update maps only,
+ * never the whole release object or the clearly selected track.
+ */
 export function useReleasePage(): ReleasePageController {
     const route = useRoute<ReleaseRouteProp>();
     const releaseId = route.params.releaseId;
@@ -54,7 +64,7 @@ export function useReleasePage(): ReleasePageController {
         artistProfileImages,
         setArtistProfileImages
     } = useCache();
-    const { getRelease, getReleaseTracks, waitForTaskResultById } = useReleaseApi();
+    const { getRelease, waitForTaskResultById } = useReleaseApi();
     const [state, dispatch] = useReducer(
         releaseReducer,
         undefined,
@@ -62,79 +72,69 @@ export function useReleasePage(): ReleasePageController {
     );
     const releaseTracksLyricsRef = useRef(releaseTracksLyrics);
     const artistProfileImagesRef = useRef(artistProfileImages);
-    const currentReleaseRef = useRef<Release | null>(null);
-    const retryGenerationRef = useRef(0);
+    const generationRef = useRef(0);
 
     useEffect(() => {
         releaseTracksLyricsRef.current = releaseTracksLyrics;
         artistProfileImagesRef.current = artistProfileImages;
     }, [artistProfileImages, releaseTracksLyrics]);
 
-    useEffect(() => {
-        currentReleaseRef.current = state.release;
-    }, [state.release]);
-
-    const applyTracksResponse = useCallback(
-        (
-            baseRelease: Release,
-            tracksResponse: ReleaseTracksResponse,
-            isCancelled: () => boolean,
-        ) => {
-            const releaseWithTracks: Release = {
-                ...cloneRelease(baseRelease),
-                media: tracksResponse.media ?? [],
-            };
-            currentReleaseRef.current = releaseWithTracks;
-
-            const lyricsTaskId = tracksResponse.lyricsTaskId;
-            const profileImageTaskId = tracksResponse.profileImageTaskId;
-            const immediateTrackLyrics = normalizeNullableStringMap(tracksResponse.trackLyrics);
-            const immediateProfileImages = normalizeNullableStringMap(tracksResponse.profileImages);
+    const resolveEnrichment = useCallback(
+        (release: Release, response: ReleaseResponse, generation: number) => {
+            const isCurrent = () => generationRef.current === generation;
+            const immediateTrackLyrics = normalizeNullableStringMap(response.trackLyrics);
+            const immediateProfileImages = normalizeNullableStringMap(response.profileImages);
 
             setReleaseTracksLyrics(prev => mergeNullableStringMaps(prev, immediateTrackLyrics));
             setArtistProfileImages(prev => mergeNullableStringMaps(prev, immediateProfileImages));
 
             const mergedTrackLyrics = mergeNullableStringMaps(
-                collectTrackLyricsForRelease(
-                    releaseWithTracks,
-                    releaseTracksLyricsRef.current
-                ),
+                collectTrackLyricsForRelease(release, releaseTracksLyricsRef.current),
                 immediateTrackLyrics
             );
             const mergedArtistImages = mergeNullableStringMaps(
-                collectArtistImagesForRelease(
-                    releaseWithTracks,
-                    artistProfileImagesRef.current
-                ),
+                collectArtistImagesForRelease(release, artistProfileImagesRef.current),
                 immediateProfileImages
             );
 
-            const pendingLyricTrackIds = lyricsTaskId
-                ? collectTrackIds(releaseWithTracks).filter(trackId => mergedTrackLyrics[trackId] === undefined)
+            const pendingLyricTrackIds = response.lyricsTaskId
+                ? collectTrackIds(release).filter(trackId => mergedTrackLyrics[trackId] === undefined)
                 : [];
-            const pendingArtistImageIds = profileImageTaskId
-                ? collectArtistIds(releaseWithTracks).filter(artistId => mergedArtistImages[artistId] === undefined)
+            const pendingArtistImageIds = response.profileImageTaskId
+                ? collectArtistIds(release).filter(artistId => mergedArtistImages[artistId] === undefined)
                 : [];
 
-            dispatch({
-                type: 'lyricsLoadingStarted',
-                release: releaseWithTracks,
-                trackLyrics: mergedTrackLyrics,
-                artistProfileImages: mergedArtistImages,
-                pendingLyricTrackIds,
-                pendingArtistImageIds,
-            });
+            if (isCurrent()) {
+                dispatch({
+                    type: 'releaseLoaded',
+                    release,
+                    trackLyrics: mergedTrackLyrics,
+                    artistProfileImages: mergedArtistImages,
+                    pendingLyricTrackIds,
+                    pendingArtistImageIds,
+                });
+            }
+
+            const recreateEnrichment = async (): Promise<ReleaseResponse> => {
+                const replayed = await getRelease(releaseId);
+                setReleaseTracksLyrics(prev =>
+                    mergeNullableStringMaps(prev, normalizeNullableStringMap(replayed.trackLyrics))
+                );
+                setArtistProfileImages(prev =>
+                    mergeNullableStringMaps(prev, normalizeNullableStringMap(replayed.profileImages))
+                );
+                return replayed;
+            };
 
             const resolveLyricsTask = async () => {
                 let nextTrackLyrics = mergedTrackLyrics;
-
                 await resolveNullableTaskMap({
-                    taskId: lyricsTaskId,
+                    taskId: response.lyricsTaskId,
                     expectedIds: pendingLyricTrackIds,
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractReleaseTrackLyrics,
                     onResolvedValues: (trackLyrics, resolvedTrackIds) => {
-                        if (isCancelled()) {
+                        if (!isCurrent()) {
                             return;
                         }
 
@@ -143,7 +143,6 @@ export function useReleasePage(): ReleasePageController {
 
                         dispatch({
                             type: 'lyricsLoadingFinished',
-                            release: releaseWithTracks,
                             trackLyrics: nextTrackLyrics,
                             resolvedLyricTrackIds: resolvedTrackIds,
                         });
@@ -151,32 +150,46 @@ export function useReleasePage(): ReleasePageController {
                     onError: error => {
                         console.error('release-page: resolve lyrics task result failed', error);
                     },
-                    recreateTask: async () => {
-                        const replayed = await getReleaseTracks(releaseId);
-                        setReleaseTracksLyrics(prev => mergeNullableStringMaps(
-                            prev,
-                            normalizeNullableStringMap(replayed.trackLyrics)
-                        ));
-                        setArtistProfileImages(prev => mergeNullableStringMaps(
-                            prev,
-                            normalizeNullableStringMap(replayed.profileImages)
-                        ));
-                        return replayed.lyricsTaskId;
-                    },
-                    recreateTaskDescription: 'getReleaseTracks.lyricsTaskId',
+                    recreateTask: async () => (await recreateEnrichment()).lyricsTaskId,
+                    recreateTaskDescription: 'getRelease.lyricsTaskId',
                 });
             };
 
-            const resolveTrackArtistImagesTask = async () => {
-                let nextArtistImages = mergedArtistImages;
-
+            const resolveReleaseCoverTask = async () => {
                 await resolveNullableTaskMap({
-                    taskId: profileImageTaskId,
+                    taskId: response.releaseCoverTaskId,
+                    expectedIds: [release.id],
+                    waitForTaskResult: waitForTaskResultById,
+                    extractMap: extractReleaseGroupReleaseCovers,
+                    onResolvedValues: covers => {
+                        if (!isCurrent()) {
+                            return;
+                        }
+                        const coverUrl = covers[release.id];
+                        if (coverUrl !== undefined) {
+                            dispatch({ type: 'releaseCoverResolved', coverUrl });
+                        }
+                    },
+                    onError: error => {
+                        console.error('release-page: resolve release cover task failed', error);
+                    },
+                    shouldFillMissingOnCompleted: () => false,
+                    shouldFillMissingOnError: false,
+                    shouldFillMissingOnNonCompleted: false,
+                    recreateTask: async () => (await recreateEnrichment()).releaseCoverTaskId,
+                    recreateTaskDescription: 'getRelease.releaseCoverTaskId',
+                });
+            };
+
+            const resolveArtistImageTask = async () => {
+                let nextArtistImages = mergedArtistImages;
+                await resolveNullableTaskMap({
+                    taskId: response.profileImageTaskId,
                     expectedIds: pendingArtistImageIds,
                     waitForTaskResult: waitForTaskResultById,
                     extractMap: extractArtistProfileImages,
                     onResolvedValues: (artistImages, resolvedArtistIds) => {
-                        if (isCancelled()) {
+                        if (!isCurrent()) {
                             return;
                         }
 
@@ -185,7 +198,6 @@ export function useReleasePage(): ReleasePageController {
 
                         dispatch({
                             type: 'artistImagesLoadingFinished',
-                            release: releaseWithTracks,
                             artistProfileImages: nextArtistImages,
                             resolvedArtistImageIds: resolvedArtistIds,
                         });
@@ -193,23 +205,17 @@ export function useReleasePage(): ReleasePageController {
                     onError: error => {
                         console.error('release-page: resolve artist image task result failed', error);
                     },
-                    recreateTask: async () => {
-                        const replayed = await getReleaseTracks(releaseId);
-                        setArtistProfileImages(prev => mergeNullableStringMaps(
-                            prev,
-                            normalizeNullableStringMap(replayed.profileImages)
-                        ));
-                        return replayed.profileImageTaskId;
-                    },
-                    recreateTaskDescription: 'getReleaseTracks.profileImageTaskId',
+                    recreateTask: async () => (await recreateEnrichment()).profileImageTaskId,
+                    recreateTaskDescription: 'getRelease.profileImageTaskId',
                 });
             };
 
             void resolveLyricsTask();
-            void resolveTrackArtistImagesTask();
+            void resolveArtistImageTask();
+            void resolveReleaseCoverTask();
         },
         [
-            getReleaseTracks,
+            getRelease,
             releaseId,
             setArtistProfileImages,
             setReleaseTracksLyrics,
@@ -218,10 +224,12 @@ export function useReleasePage(): ReleasePageController {
     );
 
     useEffect(() => {
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
         let isCancelled = false;
+        const isCurrent = () => !isCancelled && generationRef.current === generation;
 
         const loadRelease = async () => {
-            currentReleaseRef.current = null;
             dispatch({ type: 'releaseLoadStarted' });
 
             if (!releaseId) {
@@ -229,117 +237,20 @@ export function useReleasePage(): ReleasePageController {
                 return;
             }
 
-            // Start the tracklist request in parallel with the mirror-backed metadata
-            // lookup, so the Release header renders immediately without waiting on the
-            // MusicBrainz rate limiter.
-            const tracksPromise = getReleaseTracks(releaseId);
-
-            let resolvedRelease: Release;
-            let headerProfileImageTaskId: string | null;
-            let immediateHeaderProfileImages: Record<string, string | null> = {};
-
             try {
-                const releaseResponse = await getRelease(releaseId);
-                if (isCancelled) {
+                const response = await getRelease(releaseId);
+                if (!isCurrent()) {
                     return;
                 }
 
-                resolvedRelease = cloneRelease(releaseResponse.release);
-                headerProfileImageTaskId = releaseResponse.profileImageTaskId;
-                immediateHeaderProfileImages = normalizeNullableStringMap(
-                    releaseResponse.profileImages
-                );
+                resolveEnrichment(response.release, response, generation);
             } catch (error) {
                 console.error('release-page: fetch release payload failed', error);
-                void tracksPromise.catch(() => {});
-                if (!isCancelled) {
+                if (isCurrent()) {
                     dispatch({
                         type: 'releaseLoadFailed',
                         notFound: isApiCallError(error) && error.statusCode === 404,
                     });
-                }
-                return;
-            }
-
-            setArtistProfileImages(prev =>
-                mergeNullableStringMaps(prev, immediateHeaderProfileImages)
-            );
-            const mergedHeaderArtistImages = mergeNullableStringMaps(
-                collectArtistImagesForRelease(
-                    resolvedRelease,
-                    artistProfileImagesRef.current
-                ),
-                immediateHeaderProfileImages
-            );
-            const pendingHeaderArtistImageIds = headerProfileImageTaskId
-                ? collectArtistIds(resolvedRelease).filter(
-                      artistId => mergedHeaderArtistImages[artistId] === undefined
-                  )
-                : [];
-
-            currentReleaseRef.current = resolvedRelease;
-            dispatch({
-                type: 'releaseMetadataLoaded',
-                release: resolvedRelease,
-                artistProfileImages: mergedHeaderArtistImages,
-                pendingArtistImageIds: pendingHeaderArtistImageIds,
-            });
-
-            if (headerProfileImageTaskId && pendingHeaderArtistImageIds.length > 0) {
-                let nextArtistImages = mergedHeaderArtistImages;
-                void resolveNullableTaskMap({
-                    taskId: headerProfileImageTaskId,
-                    expectedIds: pendingHeaderArtistImageIds,
-                    waitForTaskResult: waitForTaskResultById,
-                    extractMap: extractArtistProfileImages,
-                    onResolvedValues: (artistImages, resolvedArtistIds) => {
-                        if (isCancelled) {
-                            return;
-                        }
-                        setArtistProfileImages(prev =>
-                            mergeNullableStringMaps(prev, artistImages)
-                        );
-                        nextArtistImages = mergeNullableStringMaps(
-                            nextArtistImages,
-                            artistImages
-                        );
-                        dispatch({
-                            type: 'artistImagesLoadingFinished',
-                            release: currentReleaseRef.current ?? resolvedRelease,
-                            artistProfileImages: nextArtistImages,
-                            resolvedArtistImageIds: resolvedArtistIds,
-                        });
-                    },
-                    onError: error => {
-                        console.error(
-                            'release-page: resolve header artist image task failed',
-                            error
-                        );
-                    },
-                    recreateTask: async () => {
-                        const replayed = await getRelease(releaseId);
-                        setArtistProfileImages(prev =>
-                            mergeNullableStringMaps(
-                                prev,
-                                normalizeNullableStringMap(replayed.profileImages)
-                            )
-                        );
-                        return replayed.profileImageTaskId;
-                    },
-                    recreateTaskDescription: 'getRelease.profileImageTaskId',
-                });
-            }
-
-            try {
-                const tracksResponse = await tracksPromise;
-                if (isCancelled) {
-                    return;
-                }
-                applyTracksResponse(resolvedRelease, tracksResponse, () => isCancelled);
-            } catch (error) {
-                console.error('release-page: fetch release tracks failed', error);
-                if (!isCancelled) {
-                    dispatch({ type: 'tracksLoadFailed' });
                 }
             }
         };
@@ -348,40 +259,9 @@ export function useReleasePage(): ReleasePageController {
 
         return () => {
             isCancelled = true;
-            retryGenerationRef.current += 1;
+            generationRef.current += 1;
         };
-    }, [
-        applyTracksResponse,
-        getRelease,
-        getReleaseTracks,
-        releaseId,
-        setArtistProfileImages,
-        waitForTaskResultById,
-    ]);
-
-    const onRetryTracks = useCallback(() => {
-        const baseRelease = currentReleaseRef.current;
-        if (!releaseId || !baseRelease) {
-            return;
-        }
-        retryGenerationRef.current += 1;
-        const generation = retryGenerationRef.current;
-        const isRetryCancelled = () => retryGenerationRef.current !== generation;
-
-        dispatch({ type: 'tracksLoadStarted' });
-        void getReleaseTracks(releaseId)
-            .then(tracksResponse => {
-                if (!isRetryCancelled()) {
-                    applyTracksResponse(baseRelease, tracksResponse, isRetryCancelled);
-                }
-            })
-            .catch(error => {
-                console.error('release-page: retry release tracks failed', error);
-                if (!isRetryCancelled()) {
-                    dispatch({ type: 'tracksLoadFailed' });
-                }
-            });
-    }, [applyTracksResponse, getReleaseTracks, releaseId]);
+    }, [getRelease, releaseId, resolveEnrichment]);
 
     const uiState: ReleasePageUiState = {
         release: state.release,
@@ -390,8 +270,6 @@ export function useReleasePage(): ReleasePageController {
         artistProfileImages: state.artistProfileImages,
         pendingLyricTrackIds: state.pendingLyricTrackIds,
         pendingArtistImageIds: state.pendingArtistImageIds,
-        loadingTracks: state.loadingTracks,
-        tracksLoadFailed: state.tracksLoadFailed,
         loadingLyrics: state.loadingLyrics,
         releaseExists: state.releaseExists,
         checkingExistence: state.checkingExistence,
@@ -411,6 +289,5 @@ export function useReleasePage(): ReleasePageController {
                 console.warn('release-page: failed to open lyrics url', { lyricsUrl, error });
             });
         },
-        onRetryTracks,
     };
 }

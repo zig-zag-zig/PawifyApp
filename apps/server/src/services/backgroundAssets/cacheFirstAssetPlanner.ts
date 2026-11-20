@@ -10,10 +10,9 @@ import type {
 } from './plannerTypes.js';
 
 /**
- * v2 cache-first planner: pre-resolves everything resolvable from cache,
- * queues only the pending subset, and returns a null task id when nothing is
- * pending. All queued work is namespaced with the v2 contract so it never
- * collides with v1 tasks.
+ * v3 cache-first planner: pre-resolves everything resolvable from persisted
+ * state, queues only the pending subset, and returns a null task id when nothing
+ * is pending.
  */
 export const createCacheFirstAssetPlanner = (deps: {
     artistProfileImageQueue: ArtistProfileImageQueuePort;
@@ -32,16 +31,14 @@ export const createCacheFirstAssetPlanner = (deps: {
                       ttl,
                       {
                           fullArtistIds: lookups.map((lookup) => lookup.artistId),
-                          contractNamespace: 'v2',
+                          contractNamespace: 'v3',
                       },
                   )
                 : null;
         return { taskId, resolved };
     },
     peekArtistProfileImages: async (lookups) => {
-        const { resolved } = await deps.cacheAssetPartitioner.partitionArtistProfileImages(
-            lookups,
-        );
+        const { resolved } = await deps.cacheAssetPartitioner.partitionArtistProfileImages(lookups);
         return resolved;
     },
     peekNewReleaseCovers: async (pageEntries) => {
@@ -51,20 +48,27 @@ export const createCacheFirstAssetPlanner = (deps: {
     },
     planArtistReleaseGroupCovers: async ({ userId, scope, pageEntries, ttl }) => {
         const { resolved, pending } =
-            await deps.cacheAssetPartitioner.partitionArtistReleaseGroupCovers(
-                scope,
-                pageEntries,
-            );
+            await deps.cacheAssetPartitioner.partitionArtistReleaseGroupCovers(scope, pageEntries);
         const taskId =
             pending.length > 0
-                ? deps.releaseTaskQueue.queueArtistReleaseGroupCovers(
+                ? deps.releaseTaskQueue.queueArtistReleaseGroupCovers(userId, scope, pending, ttl, {
+                      contractNamespace: 'v3',
+                  })
+                : null;
+        return { taskId, resolved };
+    },
+    planReleaseCover: async ({ userId, releaseId, releaseGroupId, ttl }) => {
+        const pageEntries = [{ releaseGroupId, releaseIds: [releaseId] }];
+        const { resolved, pending } =
+            await deps.cacheAssetPartitioner.partitionReleaseGroupReleaseCovers(pageEntries);
+        const taskId =
+            pending.length > 0
+                ? deps.releaseTaskQueue.queueReleaseGroupReleaseCovers(
                       userId,
-                      scope,
+                      `release:${releaseId}`,
                       pending,
                       ttl,
-                      {
-                          contractNamespace: 'v2',
-                      },
+                      { contractNamespace: 'v3' },
                   )
                 : null;
         return { taskId, resolved };
@@ -80,7 +84,7 @@ export const createCacheFirstAssetPlanner = (deps: {
                       pending,
                       ttl,
                       {
-                          contractNamespace: 'v2',
+                          contractNamespace: 'v3',
                       },
                   )
                 : null;
@@ -93,7 +97,7 @@ export const createCacheFirstAssetPlanner = (deps: {
             pending.length > 0
                 ? deps.releaseTaskQueue.queueNewReleaseCovers(userId, pageEntries, undefined, {
                       pendingEntries: pending,
-                      contractNamespace: 'v2',
+                      contractNamespace: 'v3',
                   })
                 : null;
         return { taskId, resolved };
@@ -108,7 +112,7 @@ export const createCacheFirstAssetPlanner = (deps: {
             pending.length > 0
                 ? deps.releaseTaskQueue.queueReleaseTrackLyrics(userId, release, ttl, {
                       pendingTracks: pending,
-                      contractNamespace: 'v2',
+                      contractNamespace: 'v3',
                   })
                 : null;
         return { taskId, resolved };
@@ -123,7 +127,7 @@ export const createCacheFirstAssetPlanner = (deps: {
                 ? deps.releaseTaskQueue.queueReleaseArtistProfileImages(userId, release, ttl, {
                       pendingArtistIds: pending.map((lookup) => lookup.artistId),
                       fullArtistIds: artistIds,
-                      contractNamespace: 'v2',
+                      contractNamespace: 'v3',
                   })
                 : null;
         return { taskId, resolved };

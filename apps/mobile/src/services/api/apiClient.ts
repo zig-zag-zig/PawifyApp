@@ -25,6 +25,8 @@ export type ApiRequestOptions = {
   body?: unknown;
   method?: ApiRequestMethod;
   requiresAuth?: boolean;
+  /** Cancels the request; callers use it to discard stale screen/search work. */
+  signal?: AbortSignal;
 };
 
 export type ApiClient = {
@@ -138,6 +140,7 @@ export function createApiClient({
       body = null,
       method = 'POST',
       requiresAuth = true,
+      signal,
     }: ApiRequestOptions = {},
   ): Promise<{ response: Response; elapsedMs: number | null }> => {
     const shouldLogDiagnostics = shouldLogApiDiagnostics(endpoint);
@@ -177,6 +180,7 @@ export function createApiClient({
         method,
         headers,
         body: body ? JSON.stringify(body) : null,
+        signal,
       });
     } catch (error) {
       const apiError = createNetworkApiCallError(error);

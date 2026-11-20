@@ -51,6 +51,7 @@ export const collectTrackLyricsRequests = (release: Release): TrackLyricsRequest
             requests.push({
                 releaseId: release.id,
                 trackId: track.id,
+                recordingId: track.recordingId ?? null,
                 artistName,
                 trackName: track.title,
             });

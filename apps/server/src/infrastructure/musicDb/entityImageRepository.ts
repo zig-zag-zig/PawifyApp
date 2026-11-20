@@ -2,7 +2,7 @@ import { createLogger } from '../../common/logging/logger.js';
 import {
     getMusicDb,
     getMusicDbWriter,
-    musicDbHandleHasEntityImages,
+    MusicDbUnavailableError,
     type MusicDb,
 } from './musicDbClient.js';
 
@@ -46,28 +46,12 @@ type EntityImageRow = {
 };
 
 /**
- * Cached per open handle: the table check costs two `PRAGMA table_info` calls and
- * the answer cannot change while a handle is open.
+ * `image_services`/`entity_images` are part of the required mirror contract. A
+ * missing/unready mirror is an explicit service error, not "no artwork": silently
+ * returning null here made every image look unresolved during an outage and queued
+ * provider work against a database the server could not read.
  */
-let checkedHandle: MusicDb | null = null;
-let handleHasTables = false;
-
-const readerFor = (): MusicDb | null => {
-    const db = getMusicDb();
-    if (!db) {
-        return null;
-    }
-
-    if (db !== checkedHandle) {
-        checkedHandle = db;
-        handleHasTables = musicDbHandleHasEntityImages(db);
-        if (!handleHasTables) {
-            logger.debug('mirror has no image-state tables; artwork falls back to providers');
-        }
-    }
-
-    return handleHasTables ? db : null;
-};
+const readerFor = (): MusicDb => getMusicDb();
 
 /**
  * Builds the public URL from the service template.
@@ -179,8 +163,8 @@ const readRows = (
 /**
  * Artwork the mirror already knows for one entity, or null when it knows nothing.
  *
- * Never throws: a mirror without the image tables, a locked file, or a malformed
- * row all degrade to null so the caller runs its normal provider chain.
+ * A malformed row degrades to null so the provider chain can run. Database
+ * unavailability propagates as a retriable service error.
  */
 export const readEntityImage = (
     entityType: EntityImageEntityType,
@@ -198,9 +182,6 @@ export const readEntityImages = (
 ): Map<string, EntityImageRecord> => {
     const result = new Map<string, EntityImageRecord>();
     const db = readerFor();
-    if (!db) {
-        return result;
-    }
 
     const unique = Array.from(new Set(mbids.filter((mbid) => mbid.length > 0)));
     if (unique.length === 0) {
@@ -218,6 +199,9 @@ export const readEntityImages = (
             }
         }
     } catch (error) {
+        if (error instanceof MusicDbUnavailableError) {
+            throw error;
+        }
         logger.debug('entity image lookup failed; falling back to providers', {
             entityType,
             count: unique.length,
@@ -229,10 +213,8 @@ export const readEntityImages = (
     return result;
 };
 
-/** Test-only: forget which handle the table capability was probed on. */
+/** Test-only: reset the cached writer handle state. */
 export const resetEntityImageRepositoryForTests = (): void => {
-    checkedHandle = null;
-    handleHasTables = false;
     writerCheckedHandle = null;
     writerWarned = false;
 };

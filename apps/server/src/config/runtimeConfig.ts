@@ -54,10 +54,8 @@ export const backgroundTaskWorkerConfig = {
 };
 
 export const cacheConfig = {
-    defaultTtlHours: parsePositiveIntEnv(process.env.CACHE_DEFAULT_TTL_HOURS, 24 * 14),
     artistTtlHours: parsePositiveIntEnv(process.env.ARTIST_CACHE_TTL_HOURS, 24 * 61),
     transientArtistTtlHours: parsePositiveIntEnv(process.env.TRANSIENT_ARTIST_CACHE_TTL_HOURS, 24),
-    releaseLyricsTtlHours: parsePositiveIntEnv(process.env.RELEASE_LYRICS_CACHE_TTL_HOURS, 24 * 14),
     // New-release scan cache: short on purpose. It only exists to dedupe
     // per-artist MusicBrainz fetches *within* one notification run (and across
     // closely-spaced runs), so it must expire well before the next scan.
@@ -70,18 +68,9 @@ export const cacheConfig = {
         process.env.ARTIST_METADATA_REFRESH_TTL_MS,
         1000 * 60 * 60 * 24 * 28,
     ),
-    // Provider artwork/lyrics: ninety days of success, a week of "definitely absent".
-    // Most artwork now lives in the SQLite mirror, so these TTLs only govern lyric
-    // lookups and the API-fallback path.
-    assetSuccessTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_SUCCESS_TTL_HOURS, 24 * 90),
-    assetMissTtlHours: parsePositiveIntEnv(process.env.ASSET_CACHE_MISS_TTL_HOURS, 24 * 7),
     // Tracklists are mirror-first when the mirror's track data is ready and fall
     // back to one 1 req/s MusicBrainz request per release view. A tracklist
     // effectively never changes.
-    releaseTracksTtlHours: parsePositiveIntEnv(process.env.RELEASE_TRACKS_CACHE_TTL_HOURS, 24 * 30),
-    // Recording search uses the local mirror FTS index first and the API as
-    // fallback, so this TTL only governs fallback pages.
-    trackSearchTtlHours: parsePositiveIntEnv(process.env.TRACK_SEARCH_CACHE_TTL_HOURS, 24),
     transientRemoteValueRetryWindowMs: parsePositiveIntEnv(
         process.env.TRANSIENT_REMOTE_VALUE_RETRY_WINDOW_MS,
         1000 * 60 * 5,
@@ -257,12 +246,11 @@ export const firebaseAdminConfig = {
 /**
  * Local MusicBrainz mirror (SQLite), produced by zig-zag-zig/pawify_mb_sqlite.
  *
- * The mirror is the source of truth for artist and release metadata; there is no
- * "use the API instead" switch, because running both paths is a cost with no user
- * benefit. The API stays as a *failure* path only: if the file is missing or cannot
- * be opened, requests are served from the API and an error is logged, so a broken
- * sync job degrades the app instead of taking it down. Tracklists are served from
- * the mirror when its track data is ready, with the API as fallback.
+ * The mirror is the required catalogue/search/track source. There is no
+ * "use the API instead" switch: a missing, corrupt or unready mirror fails
+ * readiness, and catalogue requests return an explicit retriable service error.
+ * The MusicBrainz Web Service remains reachable only through the narrow lyrics
+ * fallback adapter.
  */
 export const musicDbConfig = {
     // Resolved on access: the mirror client is a lazily opened singleton and tests
@@ -295,4 +283,32 @@ export const musicDbConfig = {
             100000,
         );
     },
+};
+
+/**
+ * Application-owned lyrics lookup state.
+ *
+ * Deliberately a separate SQLite file from the sync-owned mirror: mirror
+ * replacement/prune must never erase lyric results. The file is created only by
+ * an explicit migration/administration command, not by request handling.
+ */
+export const lyricsDbConfig = {
+    get path(): string | undefined {
+        return optionalEnv('LYRICS_DB_PATH');
+    },
+    successTtlDays: parsePositiveIntEnv(process.env.LYRICS_SUCCESS_TTL_DAYS, 90),
+    missTtlDays: parsePositiveIntEnv(process.env.LYRICS_MISS_TTL_DAYS, 7),
+    transientRetryMs: parsePositiveIntEnv(
+        process.env.LYRICS_TRANSIENT_RETRY_MS,
+        5 * 60 * 1000,
+    ),
+    /** Bounds one release's MusicBrainz fallback flood (giant releases exist). */
+    maxFallbackRequestsPerJob: parsePositiveIntEnv(
+        process.env.LYRICS_MAX_FALLBACK_REQUESTS_PER_JOB,
+        40,
+    ),
+    housekeepingBatchSize: parsePositiveIntEnv(
+        process.env.LYRICS_HOUSEKEEPING_BATCH_SIZE,
+        500,
+    ),
 };

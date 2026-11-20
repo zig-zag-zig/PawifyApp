@@ -1,6 +1,11 @@
 import type { RequestDeduperPort } from '../../common/request/requestDeduper.js';
 import type { BackgroundAssetPlanner } from '../../services/backgroundAssets/plannerTypes.js';
-import type { NewRelease, Release, ReleaseGroupReleaseListItem } from '@pawify/shared';
+import type {
+    NewRelease,
+    Release,
+    ReleaseGroup,
+    ReleaseGroupReleaseListItem,
+} from '@pawify/shared';
 import type { CachedArtistReleases } from '../../utils/types/cacheTypes.js';
 import type {
     ContractNamespace,
@@ -30,25 +35,22 @@ export type ArtistReleasesPageResult = {
     hasMore: boolean;
 };
 
+export type ReleaseGroupReleasesResult = {
+    releaseGroup: ReleaseGroup;
+    releases: ReleaseGroupReleaseListItem[];
+    releaseCount: number;
+};
+
 export interface ReleaseCatalogGateway {
-    getArtistReleases(artistId: string, ttl: number | undefined): Promise<CachedArtistReleases>;
-    /** Paged variant, used by the v2 contract. */
+    getArtistReleases(artistId: string): Promise<CachedArtistReleases>;
     getArtistReleasesPage(
         artistId: string,
-        ttl: number | undefined,
         page: ArtistReleasesPage,
     ): Promise<ArtistReleasesPageResult>;
-    getReleaseGroupReleases(
-        releaseGroupId: string,
-        ttl: number | undefined,
-        onReleaseIdsPage: (
-            releaseGroupId: string,
-            releaseIds: string[],
-            isLastPage: boolean,
-        ) => Promise<void> | void,
-    ): Promise<ReleaseGroupReleaseListItem[]>;
+    getReleaseGroupReleases(releaseGroupId: string): Promise<ReleaseGroupReleasesResult | null>;
+    /** Id-only variant for cover-task replay; avoids loading edition metadata. */
+    getReleaseGroupReleaseIds?(releaseGroupId: string): Promise<string[] | null>;
     getRelease(releaseId: string): Promise<Release | null>;
-    getReleaseTracks(releaseId: string): Promise<Release | null>;
     releaseExists(releaseId: string): Promise<boolean>;
 }
 
@@ -104,19 +106,11 @@ export interface NewReleasesRepository {
     deleteNewReleases(userId: string, releaseIds: string[]): Promise<void>;
 }
 
-export interface MissingReleaseCleanupRepository {
-    removeMissingRelease(releaseId: string): Promise<{
-        affectedUserIds: string[];
-        removedFromNewReleasesUserIds: string[];
-    }>;
-}
-
 export interface ReleaseNotifier {
     notifyReleasesChanged(userId: string, sourcePushToken?: string): Promise<void>;
 }
 
 type ReleaseSharedUseCaseDependencies = {
-    missingReleaseCleanupRepository: MissingReleaseCleanupRepository;
     newReleasesRepository: NewReleasesRepository;
     releaseCatalogGateway: ReleaseCatalogGateway;
     releaseNotifier: ReleaseNotifier;

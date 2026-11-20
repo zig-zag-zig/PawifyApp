@@ -12,61 +12,23 @@ const DEFAULT_ARTIST_RELEASES_PAGE_SIZE = 60;
 const MAX_ARTIST_RELEASES_PAGE_SIZE = 200;
 
 export type ReleaseWirePresenters = {
-    /** v2 accepts PATCHED paging params on getArtistReleases; v1 ignores them. */
-    supportsArtistReleasesPaging?: boolean;
     getNewReleases: (result: Awaited<ReturnType<ReleaseUseCases['getNewReleases']>>) => unknown;
-    getArtistReleases: (
-        result: Awaited<ReturnType<ReleaseUseCases['getArtistReleases']>>,
-    ) => unknown;
     getReleaseGroupReleases: (
-        result: Awaited<ReturnType<ReleaseUseCases['getReleaseGroupReleases']>>,
+        result: NonNullable<Awaited<ReturnType<ReleaseUseCases['getReleaseGroupReleases']>>>,
     ) => unknown;
     getRelease: (
         result: NonNullable<Awaited<ReturnType<ReleaseUseCases['getRelease']>>>,
-    ) => unknown;
-    getReleaseTracks: (
-        result: NonNullable<Awaited<ReturnType<ReleaseUseCases['getReleaseTracks']>>>,
     ) => unknown;
     resolveNewReleaseCovers: (
         result: Awaited<ReturnType<ReleaseUseCases['resolveNewReleaseCovers']>>,
     ) => unknown;
 };
 
-/** v1 exact old contract: task ids always present, no immediate maps. */
-export const releasePresentersV1: ReleaseWirePresenters = {
-    getNewReleases: (result) => ({
-        releases: result.releases,
-        releaseCoverTaskId: result.releaseCoverTaskId,
-    }),
-    getArtistReleases: (result) => ({
-        releaseGroups: result.releaseGroups,
-        releaseGroupCoverTaskId: result.releaseGroupCoverTaskId,
-    }),
-    getReleaseGroupReleases: (result) => ({
-        releases: result.releases,
-        releaseCoverTaskId: result.releaseCoverTaskId,
-    }),
-    getRelease: (result) => ({
-        release: result.release,
-        profileImageTaskId: result.profileImageTaskId,
-    }),
-    getReleaseTracks: (result) => ({
-        media: result.media,
-        lyricsTaskId: result.lyricsTaskId,
-        profileImageTaskId: result.profileImageTaskId,
-    }),
-    // v1 has no page-scoped resolve; the old full-feed task id still drives covers.
-    resolveNewReleaseCovers: () => ({}),
-};
-
-/** v2: full cache-first response with immediate maps and nullable task ids. */
-export const releasePresentersV2: ReleaseWirePresenters = {
-    supportsArtistReleasesPaging: true,
+/** Single v3 wire contract: cache-first payloads with nullable task ids. */
+export const releasePresentersV3: ReleaseWirePresenters = {
     getNewReleases: (result) => result,
-    getArtistReleases: (result) => result,
     getReleaseGroupReleases: (result) => result,
     getRelease: (result) => result,
-    getReleaseTracks: (result) => result,
     resolveNewReleaseCovers: (result) => result,
 };
 
@@ -98,18 +60,6 @@ export const createReleaseHandlers = (
         '/getArtistReleases',
         async ({ req, res, userId }) => {
             const artistId = requireString(req.body, 'artistId');
-
-            if (!presenters.supportsArtistReleasesPaging) {
-                res.status(200).send(
-                    presenters.getArtistReleases(
-                        await releaseUseCases.getArtistReleases(userId, artistId),
-                    ),
-                );
-                return;
-            }
-
-            // Optional paging: omitting both fields keeps the old "give me
-            // everything" behaviour, so an older client build is unaffected.
             const limit = optionalIntegerInRange(
                 req.body,
                 'limit',
@@ -129,12 +79,13 @@ export const createReleaseHandlers = (
         '/getReleaseGroupReleases',
         async ({ req, res, userId }) => {
             const releaseGroupId = requireString(req.body, 'releaseGroupId');
+            const payload = await releaseUseCases.getReleaseGroupReleases(userId, releaseGroupId);
 
-            res.status(200).send(
-                presenters.getReleaseGroupReleases(
-                    await releaseUseCases.getReleaseGroupReleases(userId, releaseGroupId),
-                ),
-            );
+            if (!payload) {
+                throw new NotFoundError('Release group was not found in the local catalogue');
+            }
+
+            res.status(200).send(presenters.getReleaseGroupReleases(payload));
         },
     );
 
@@ -143,25 +94,11 @@ export const createReleaseHandlers = (
         const payload = await releaseUseCases.getRelease(userId, releaseId);
 
         if (!payload) {
-            throw new NotFoundError('Release was not found in MusicBrainz');
+            throw new NotFoundError('Release was not found in the local catalogue');
         }
 
         res.status(200).send(presenters.getRelease(payload));
     });
-
-    const getReleaseTracksHandler = authenticatedHandler(
-        '/getReleaseTracks',
-        async ({ req, res, userId }) => {
-            const releaseId = requireString(req.body, 'releaseId');
-            const payload = await releaseUseCases.getReleaseTracks(userId, releaseId);
-
-            if (!payload) {
-                throw new NotFoundError('Release was not found in MusicBrainz');
-            }
-
-            res.status(200).send(presenters.getReleaseTracks(payload));
-        },
-    );
 
     const verifyReleaseExistenceHandler = authenticatedHandler(
         '/verifyReleaseExistence',
@@ -169,6 +106,22 @@ export const createReleaseHandlers = (
             const releaseId = requireString(req.body, 'releaseId');
 
             res.status(200).send(await releaseUseCases.verifyReleaseExistence(userId, releaseId));
+        },
+    );
+
+    const resolveReleaseGroupReleaseCoversHandler = authenticatedHandler(
+        '/resolveReleaseGroupReleaseCovers',
+        async ({ req, res, userId }) => {
+            const releaseGroupId = requireString(req.body, 'releaseGroupId');
+            const releaseIds = requireStringArray(req.body, 'releaseIds', 200);
+
+            res.status(200).send(
+                await releaseUseCases.resolveReleaseGroupReleaseCovers(
+                    userId,
+                    releaseGroupId,
+                    releaseIds,
+                ),
+            );
         },
     );
 
@@ -187,13 +140,13 @@ export const createReleaseHandlers = (
     );
 
     return {
+        resolveReleaseGroupReleaseCoversHandler,
         resolveNewReleaseCoversHandler,
         getNewReleasesHandler,
         removeNewReleasesHandler,
         getArtistReleasesHandler,
         getReleaseGroupReleasesHandler,
         getReleaseHandler,
-        getReleaseTracksHandler,
         verifyReleaseExistenceHandler,
     };
 };
