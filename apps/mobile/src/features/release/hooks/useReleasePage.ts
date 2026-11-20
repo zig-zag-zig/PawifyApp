@@ -156,6 +156,12 @@ export function useReleasePage(): ReleasePageController {
             };
 
             const resolveReleaseCoverTask = async () => {
+                // A null task id means the mirror already resolved the cover and
+                // the response carries it. Running the resolver anyway would hit
+                // its 'missing-task' branch and overwrite that URL with null.
+                if (!response.releaseCoverTaskId) {
+                    return;
+                }
                 await resolveNullableTaskMap({
                     taskId: response.releaseCoverTaskId,
                     expectedIds: [release.id],
