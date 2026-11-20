@@ -1,4 +1,4 @@
-import { backgroundTaskWorkerConfig } from '../../../config/runtimeConfig.js';
+import { backgroundTaskWorkerConfig, lyricsDbConfig } from '../../../config/runtimeConfig.js';
 import { createLogger } from '../../../common/logging/logger.js';
 import { mapWithConcurrency } from '../../../utils/helpers/promisePool.js';
 import type { TrackLyricsRequest, TrackLyricsTaskResult } from '../../../utils/types/taskTypes.js';
@@ -29,6 +29,7 @@ export const fetchAndUpsertTrackLyrics = async (
 
     const startedAt = Date.now();
     const resultMap: { [trackId: string]: string | null | undefined } = {};
+    let fallbackBudget = lyricsDbConfig.maxFallbackRequestsPerJob;
     let hitCount = 0;
     let foundCount = 0;
     let missCount = 0;
@@ -46,6 +47,15 @@ export const fetchAndUpsertTrackLyrics = async (
                 trackName: track.trackName,
             },
             signal,
+            {
+                // The MB fallback costs one recording probe plus up to three work
+                // probes per track, so a giant release must not flood it.
+                canUseMusicBrainzFallback: () => {
+                    if (fallbackBudget <= 0) return false;
+                    fallbackBudget -= 1;
+                    return true;
+                },
+            },
         );
 
         resultMap[track.trackId] = result.url;

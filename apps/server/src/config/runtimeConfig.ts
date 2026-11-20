@@ -296,14 +296,11 @@ export const lyricsDbConfig = {
     get path(): string | undefined {
         return optionalEnv('LYRICS_DB_PATH');
     },
-    successTtlDays: parsePositiveIntEnv(process.env.LYRICS_SUCCESS_TTL_DAYS, 90),
+    /** How long a confirmed "no lyrics anywhere" answer is held. */
     missTtlDays: parsePositiveIntEnv(process.env.LYRICS_MISS_TTL_DAYS, 7),
-    transientRetryMs: parsePositiveIntEnv(
-        process.env.LYRICS_TRANSIENT_RETRY_MS,
-        5 * 60 * 1000,
-    ),
-    housekeepingBatchSize: parsePositiveIntEnv(
-        process.env.LYRICS_HOUSEKEEPING_BATCH_SIZE,
-        500,
+    /** Bounds one release's MusicBrainz fallback flood (giant releases exist). */
+    maxFallbackRequestsPerJob: parsePositiveIntEnv(
+        process.env.LYRICS_MAX_FALLBACK_REQUESTS_PER_JOB,
+        40,
     ),
 };
