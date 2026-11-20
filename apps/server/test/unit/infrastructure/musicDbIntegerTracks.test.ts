@@ -71,6 +71,40 @@ test('integer references stay internal and multi-medium track responses retain M
     assert.equal(result[1].format, 'DVD');
 });
 
+test('empty track titles fall back to the recording title', () => {
+    closeMusicDb();
+    process.env.MUSIC_DB_PATH = createMusicDbFixture({
+        meta: { track_data_state: 'ready' },
+        releases: [{ id: 61, mbid: 'rel-empty', title: 'Single' }],
+        media: [{ release_id: 61, position: 1, format: 'Digital Media', track_count: 1 }],
+        recordings: [{ id: 91, mbid: 'rec-empty', title: 'Game Changers' }],
+        tracks: [
+            {
+                id: 111,
+                mbid: 'track-empty',
+                release_id: 61,
+                medium_position: 1,
+                position: 1,
+                title: '',
+                number: '1',
+                recording_id: 91,
+            },
+        ],
+        recordingArtists: [
+            {
+                recording_id: 91,
+                artist_mbid: 'artist-empty',
+                artist_name: 'Raekwon',
+                join_phrase: '',
+                position: 1,
+            },
+        ],
+    });
+    const result = getReleaseMediaFromMirror('rel-empty');
+    assert.ok(result);
+    assert.equal(result[0].tracks?.[0].title, 'Game Changers');
+});
+
 test('compacted mirrors fall back to recording title and credit', () => {
     closeMusicDb();
     process.env.MUSIC_DB_PATH = createMusicDbFixture({
