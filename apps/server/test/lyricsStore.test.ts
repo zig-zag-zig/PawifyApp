@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
+import Database from 'better-sqlite3';
+
 import { installFetch } from './helpers/daprTestHelpers.js';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-lyrics-'));
@@ -11,7 +13,7 @@ const lyricsPath = path.join(directory, 'lyrics.db');
 process.env.LYRICS_DB_PATH = lyricsPath;
 process.env.DAPR_HTTP_ENDPOINT = 'http://dapr.test';
 process.env.RATE_LIMIT_FALLBACK_DELAY_MS = '1';
-process.env.LYRICS_TRANSIENT_RETRY_MS = '60000';
+process.env.LYRICS_MISS_TTL_DAYS = '7';
 
 const jsonResponse = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), {
@@ -22,8 +24,12 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 type StubState = {
     geniusHits?: unknown[];
     geniusStatus?: number;
+    recordingRelations?: unknown[];
+    recordingStatus?: number;
+    workRelations?: unknown[];
 };
 
+/** Records every provider URL touched, so tests can assert on request counts. */
 const installProviderStub = (state: StubState) => {
     const calls: string[] = [];
     installFetch((url) => {
@@ -37,6 +43,15 @@ const installProviderStub = (state: StubState) => {
             }
             return jsonResponse({ response: { hits: state.geniusHits ?? [] } });
         }
+        if (url.includes('/v1.0/invoke/musicbrainz/method/ws/2/recording/')) {
+            return jsonResponse(
+                { relations: state.recordingRelations ?? [] },
+                state.recordingStatus ?? 200,
+            );
+        }
+        if (url.includes('/v1.0/invoke/musicbrainz/method/ws/2/work/')) {
+            return jsonResponse({ relations: state.workRelations ?? [] });
+        }
         throw new Error(`unexpected provider call ${url}`);
     });
     return calls;
@@ -49,6 +64,16 @@ const geniusHit = {
         lyrics_state: 'complete',
         url: 'https://genius.com/artist-one-song-one-lyrics',
     },
+};
+
+const mbLyricsRelation = {
+    type: 'lyrics',
+    url: { resource: 'https://www.genius.com/artist-one-song-one-lyrics' },
+};
+
+const performanceRelation = {
+    type: 'performance',
+    work: { id: 'work-1' },
 };
 
 const request = {
@@ -65,12 +90,19 @@ const loadModules = async () => {
     return { client, repo, resolver, secrets };
 };
 
-before(async () => {
-    const { client } = await loadModules();
-    client.createLyricsDatabase(lyricsPath);
-});
+/** Raw stored row, bypassing the repository so storage shape can be asserted. */
+const readRawRow = async (lookupKey: string) => {
+    const db = new Database(lyricsPath, { readonly: true });
+    try {
+        return db
+            .prepare('SELECT lyrics_url, retry_after FROM lyrics_lookup_state WHERE lookup_key = ?')
+            .get(lookupKey) as { lyrics_url: string | null; retry_after: number | null } | undefined;
+    } finally {
+        db.close();
+    }
+};
 
-beforeEach(async () => {
+const resetStore = async () => {
     const { client, resolver, secrets } = await loadModules();
     client.closeLyricsDb();
     for (const suffix of ['', '-wal', '-shm']) {
@@ -79,7 +111,14 @@ beforeEach(async () => {
     client.createLyricsDatabase(lyricsPath);
     secrets.clearDaprSecretCache();
     resolver.resetLyricsResolverForTests();
+};
+
+before(async () => {
+    const { client } = await loadModules();
+    client.createLyricsDatabase(lyricsPath);
 });
+
+beforeEach(resetStore);
 
 after(async () => {
     const { client } = await loadModules();
@@ -87,7 +126,7 @@ after(async () => {
     fs.rmSync(directory, { recursive: true, force: true });
 });
 
-describe('lyrics URL storage', () => {
+describe('lyrics URL storage shape', () => {
     it('reduces Genius and Genius-hosted fallback URLs to a path', async () => {
         const { compactLyricsUrlForStorage, expandStoredLyricsUrl } = await import(
             '../src/infrastructure/lyricsDb/lyricsUrlStorage.js'
@@ -101,7 +140,7 @@ describe('lyrics URL storage', () => {
         );
     });
 
-    it('keeps the host for non-Genius fallback URLs', async () => {
+    it('keeps only host and path for non-Genius fallback URLs', async () => {
         const { compactLyricsUrlForStorage, expandStoredLyricsUrl } = await import(
             '../src/infrastructure/lyricsDb/lyricsUrlStorage.js'
         );
@@ -119,148 +158,144 @@ describe('lyrics URL storage', () => {
 });
 
 describe('persistent lyrics lookup state', () => {
-    it('reuses a stored hit without any provider call', async () => {
+    it('serves a stored URL with no provider call and never queues a refresh', async () => {
         const { repo, resolver } = await loadModules();
-        repo.recordLyricsFound(request, 'https://genius.com/stored', 'genius', {
-            geniusAttempted: true,
-            musicbrainzAttempted: false,
-        });
+        repo.recordLyricsUrl(request, 'https://genius.com/stored');
         const calls = installProviderStub({});
 
-        const result = await resolver.resolveLyrics(request);
+        const first = await resolver.resolveLyrics(request);
+        const second = await resolver.resolveLyrics(request);
 
-        assert.deepEqual(result, {
+        assert.deepEqual(first, {
             url: 'https://genius.com/stored',
             outcome: 'found',
             provider: 'stored',
         });
+        assert.deepEqual(second, first, 'resolved lyrics do not expire');
         assert.deepEqual(calls, []);
     });
 
-    it('stores only host and path for a lyrics URL and expands it on read', async () => {
-        const { repo } = await loadModules();
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
-        const sourceUrl = 'https://genius.com/Artist-One-song-one-lyrics?utm_source=test#fragment';
-
-        repo.recordLyricsFound(request, sourceUrl, 'genius', {
-            geniusAttempted: true,
-            musicbrainzAttempted: false,
-        });
-
-        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
-        const db = openLyricsDb(lyricsPath);
-        const row = db
-            .prepare('SELECT resolved_url FROM lyrics_lookup_state WHERE lookup_key = ?')
-            .get(lookupKey) as { resolved_url: string };
-        db.close();
-
-        assert.equal(row.resolved_url, '/Artist-One-song-one-lyrics');
-        assert.equal(
-            repo.readLyricsStates([request]).get(lookupKey)?.resolvedUrl,
-            'https://genius.com/Artist-One-song-one-lyrics',
-        );
-    });
-
-    it('applies the same compact storage to non-Genius fallback URLs', async () => {
-        const { repo } = await loadModules();
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
-        const fallbackRequest = { ...request, recordingId: 'recording-azlyrics' };
-        const sourceUrl = 'https://www.azlyrics.com/lyrics/artist/song.html?ref=1#top';
-
-        repo.recordLyricsFound(fallbackRequest, sourceUrl, 'musicbrainz', {
-            geniusAttempted: true,
-            musicbrainzAttempted: true,
-        });
-
-        const lookupKey = repo.buildDurableLyricsLookupIdentity(fallbackRequest).lookupKey;
-        const db = openLyricsDb(lyricsPath);
-        const row = db
-            .prepare('SELECT resolved_url FROM lyrics_lookup_state WHERE lookup_key = ?')
-            .get(lookupKey) as { resolved_url: string };
-        db.close();
-
-        assert.equal(row.resolved_url, 'azlyrics.com/lyrics/artist/song.html');
-        assert.equal(
-            repo.readLyricsStates([fallbackRequest]).get(lookupKey)?.resolvedUrl,
-            'https://azlyrics.com/lyrics/artist/song.html',
-        );
-    });
-
-    it('keeps legacy full URLs readable without a migration', async () => {
-        const { repo } = await loadModules();
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
-        const legacyUrl = 'https://legacy.example/lyrics/song';
-        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
-        const db = openLyricsDb(lyricsPath);
-        db.prepare(
-            `INSERT INTO lyrics_lookup_state (
-                 lookup_key, recording_mbid, query_fingerprint, resolved_url, provider,
-                 outcome, checked_at, next_attempt_at, genius_attempted_at,
-                 musicbrainz_attempted_at
-             ) VALUES (?, ?, ?, ?, 'genius', 'found', ?, ?, ?, ?)`,
-        ).run(
-            lookupKey,
-            request.recordingId,
-            'legacy-fingerprint',
-            legacyUrl,
-            Date.now(),
-            Date.now() + 60_000,
-            Date.now(),
-            null,
-        );
-        db.close();
-
-        assert.equal(
-            repo.readLyricsStates([request]).get(lookupKey)?.resolvedUrl,
-            legacyUrl,
-        );
-    });
-
-    it('returns a stored confirmed miss without provider calls', async () => {
+    it('stores a resolved Genius hit as a path and reads it back as a URL', async () => {
         const { repo, resolver } = await loadModules();
-        repo.recordLyricsConfirmedMiss(request, {
-            geniusAttempted: true,
-            musicbrainzAttempted: true,
+        installProviderStub({ geniusHits: [geniusHit] });
+
+        const result = await resolver.resolveLyrics(request);
+        assert.equal(result.provider, 'genius');
+        assert.equal(result.url, geniusHit.result.url);
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        const row = await readRawRow(lookupKey);
+        assert.equal(row?.lyrics_url, '/artist-one-song-one-lyrics');
+        assert.equal(row?.retry_after, null, 'a resolved row carries no retry gate');
+    });
+
+    it('stores a Genius URL reached through MusicBrainz relations in the same path form', async () => {
+        const { repo, resolver } = await loadModules();
+        const calls = installProviderStub({
+            geniusHits: [],
+            recordingRelations: [mbLyricsRelation],
         });
-        const calls = installProviderStub({});
 
         const result = await resolver.resolveLyrics(request);
 
-        assert.equal(result.url, null);
-        assert.equal(result.outcome, 'confirmed-miss');
-        assert.deepEqual(calls, []);
-    });
-
-    it('does not destroy a found URL when a refresh fails', async () => {
-        const { repo, resolver } = await loadModules();
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
-        repo.recordLyricsFound(request, 'https://genius.com/good', 'genius', {
-            geniusAttempted: true,
-            musicbrainzAttempted: false,
-        });
-
-        // Make the success row due for a refresh, then fail both providers.
-        const db = openLyricsDb(lyricsPath);
-        db.prepare('UPDATE lyrics_lookup_state SET next_attempt_at = 0').run();
-        db.close();
-        installProviderStub({ geniusStatus: 503 });
-
-        const result = await resolver.resolveLyrics(request);
-
-        assert.equal(result.url, 'https://genius.com/good');
         assert.equal(result.outcome, 'found');
-        const state = repo
-            .readLyricsStates([request])
-            .get(repo.buildDurableLyricsLookupIdentity(request).lookupKey);
-        assert.equal(state?.outcome, 'found');
-        assert.equal(state?.resolvedUrl, 'https://genius.com/good');
-        assert.ok(
-            (state?.nextAttemptAt ?? 0) - Date.now() > 24 * 60 * 60 * 1000,
-            'preserved found URLs use a bounded long refresh policy, not the 5-minute transient window',
+        assert.equal(result.provider, 'musicbrainz');
+        assert.equal(result.url, 'https://genius.com/artist-one-song-one-lyrics');
+        assert.equal(
+            calls.filter((url) => url.includes('/invoke/musicbrainz/method/ws/2/work/')).length,
+            0,
+            'a recording-level lyrics relation needs no work probe',
         );
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        assert.equal((await readRawRow(lookupKey))?.lyrics_url, '/artist-one-song-one-lyrics');
     });
 
-    it('records a Genius miss as a confirmed absence without any other provider call', async () => {
+    it('probes the linked work when the recording carries no lyrics relation', async () => {
+        const { repo, resolver } = await loadModules();
+        const calls = installProviderStub({
+            geniusHits: [],
+            recordingRelations: [performanceRelation],
+            workRelations: [mbLyricsRelation],
+        });
+
+        const result = await resolver.resolveLyrics(request);
+
+        assert.equal(result.outcome, 'found');
+        assert.equal(result.provider, 'musicbrainz');
+        assert.equal(
+            calls.filter((url) => url.includes('/invoke/musicbrainz/method/ws/2/recording/')).length,
+            1,
+        );
+        assert.equal(
+            calls.filter((url) => url.includes('/invoke/musicbrainz/method/ws/2/work/')).length,
+            1,
+        );
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        assert.equal((await readRawRow(lookupKey))?.lyrics_url, '/artist-one-song-one-lyrics');
+    });
+
+    it('holds a confirmed dual miss behind a retry gate and skips providers until then', async () => {
+        const { repo, resolver } = await loadModules();
+        installProviderStub({ geniusHits: [], recordingRelations: [] });
+
+        const first = await resolver.resolveLyrics(request);
+        assert.equal(first.outcome, 'confirmed-miss');
+        assert.equal(first.url, null);
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        const row = await readRawRow(lookupKey);
+        assert.equal(row?.lyrics_url, null);
+        assert.ok(
+            (row?.retry_after ?? 0) > Date.now() + 6 * 24 * 60 * 60 * 1000,
+            'a confirmed miss is held for the negative-TTL window',
+        );
+
+        const calls = installProviderStub({ geniusHits: [geniusHit] });
+        const second = await resolver.resolveLyrics(request);
+        assert.deepEqual(second, { url: null, outcome: 'confirmed-miss', provider: 'stored' });
+        assert.deepEqual(calls, [], 'the gate is honoured, not re-probed');
+    });
+
+    it('retries a confirmed miss once its gate has passed', async () => {
+        const { repo, resolver } = await loadModules();
+        installProviderStub({ geniusHits: [], recordingRelations: [] });
+        await resolver.resolveLyrics(request);
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        const db = new Database(lyricsPath);
+        db.prepare('UPDATE lyrics_lookup_state SET retry_after = 1 WHERE lookup_key = ?').run(
+            lookupKey,
+        );
+        db.close();
+
+        const calls = installProviderStub({ geniusHits: [geniusHit] });
+        const result = await resolver.resolveLyrics(request);
+
+        assert.equal(result.outcome, 'found');
+        assert.ok(
+            calls.some((url) => url.includes('/invoke/genius/method/search')),
+            'an expired gate lets the lookup run again',
+        );
+        assert.equal((await readRawRow(lookupKey))?.lyrics_url, '/artist-one-song-one-lyrics');
+    });
+
+    it('keeps a Genius failure retryable with no gate', async () => {
+        const { repo, resolver } = await loadModules();
+        installProviderStub({ geniusStatus: 503, recordingStatus: 200, recordingRelations: [] });
+
+        const result = await resolver.resolveLyrics(request);
+        assert.equal(result.outcome, 'failure');
+        assert.equal(result.url, undefined);
+
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        const row = await readRawRow(lookupKey);
+        assert.equal(row?.lyrics_url, null);
+        assert.equal(row?.retry_after, null, 'a failure is retried on the next request');
+    });
+
+    it('treats a Genius miss as final when no recording identity exists', async () => {
         const { repo, resolver } = await loadModules();
         const calls = installProviderStub({ geniusHits: [] });
         const noRecording = { ...request, recordingId: null };
@@ -268,69 +303,35 @@ describe('persistent lyrics lookup state', () => {
         const result = await resolver.resolveLyrics(noRecording);
 
         assert.equal(result.outcome, 'confirmed-miss');
-        assert.equal(result.url, null);
         assert.equal(
             calls.filter((url) => url.includes('/invoke/musicbrainz/')).length,
             0,
-            'the lyrics path must never touch MusicBrainz',
+            'the fallback may never search the catalogue',
         );
-        const state = repo
-            .readLyricsStates([noRecording])
-            .get(repo.buildDurableLyricsLookupIdentity(noRecording).lookupKey);
-        assert.equal(state?.outcome, 'confirmed-miss');
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(noRecording).lookupKey;
+        assert.ok((await readRawRow(lookupKey))?.retry_after);
     });
 
-    it('persists a Genius hit and skips MusicBrainz', async () => {
-        const { resolver } = await loadModules();
-        const calls = installProviderStub({ geniusHits: [geniusHit] });
-
-        const result = await resolver.resolveLyrics(request);
-
-        assert.equal(result.provider, 'genius');
-        assert.equal(result.url, geniusHit.result.url);
-        assert.equal(calls.filter((url) => url.includes('/invoke/musicbrainz/')).length, 0);
-
-        const callsAfterHit = installProviderStub({});
-        assert.equal((await resolver.resolveLyrics(request)).url, geniusHit.result.url);
-        assert.deepEqual(callsAfterHit, []);
-    });
-
-    it('confirms a miss when Genius answers absence, without MusicBrainz', async () => {
+    it('keeps a budget-starved fallback retryable', async () => {
         const { repo, resolver } = await loadModules();
-        const calls = installProviderStub({ geniusHits: [] });
+        const calls = installProviderStub({ geniusHits: [], recordingRelations: [] });
 
-        const result = await resolver.resolveLyrics(request);
+        const result = await resolver.resolveLyrics(request, undefined, {
+            canUseMusicBrainzFallback: () => false,
+        });
 
-        assert.equal(result.outcome, 'confirmed-miss');
-        assert.equal(result.url, null);
-        assert.deepEqual(
-            calls.filter((url) => !url.includes('/invoke/genius/') && !url.includes('/secrets/')),
-            [],
-            'no provider transport other than Genius may be invoked',
-        );
-        const state = repo
-            .readLyricsStates([request])
-            .get(repo.buildLyricsLookupIdentity(request).lookupKey);
-        assert.equal(state?.outcome, 'confirmed-miss');
-    });
-
-    it('keeps retryable state when Genius fails', async () => {
-        const { repo, resolver } = await loadModules();
-        installProviderStub({ geniusStatus: 503 });
-
-        const result = await resolver.resolveLyrics(request);
         assert.equal(result.outcome, 'failure');
-        assert.equal(result.url, undefined);
-
-        const state = repo
-            .readLyricsStates([request])
-            .get(repo.buildLyricsLookupIdentity(request).lookupKey);
-        assert.equal(state?.outcome, 'transient-failure');
+        assert.equal(
+            calls.filter((url) => url.includes('/invoke/musicbrainz/')).length,
+            0,
+        );
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        assert.equal((await readRawRow(lookupKey))?.retry_after, null);
     });
 
-    it('does not call a provider after cancellation', async () => {
-        const { resolver } = await loadModules();
-        const calls = installProviderStub({});
+    it('writes nothing after cancellation', async () => {
+        const { repo, resolver } = await loadModules();
+        const calls = installProviderStub({ geniusHits: [geniusHit] });
         const controller = new AbortController();
         controller.abort();
 
@@ -338,6 +339,8 @@ describe('persistent lyrics lookup state', () => {
 
         assert.equal(result.outcome, 'failure');
         assert.deepEqual(calls, []);
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(request).lookupKey;
+        assert.equal(await readRawRow(lookupKey), undefined);
     });
 
     it('deduplicates concurrent resolution for the same durable lookup', async () => {
@@ -360,21 +363,17 @@ describe('persistent lyrics lookup state', () => {
 
         await resolver.resolveLyrics(request);
         const variant = { ...request, artistName: 'Different Artist' };
-        const state = repo
-            .readLyricsStates([variant])
-            .get(repo.buildLyricsLookupIdentity(variant).lookupKey);
+        const lookupKey = repo.buildDurableLyricsLookupIdentity(variant).lookupKey;
 
-        assert.equal(state, undefined);
+        assert.equal(await readRawRow(lookupKey), undefined);
     });
 
     it('follows a local recording MBID redirect without deleting the old row', async () => {
         const { repo, resolver } = await loadModules();
         const mirror = await import('../src/infrastructure/musicDb/musicDbClient.js');
         const { createMusicDbFixture } = await import('./helpers/musicDbFixture.js');
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
 
         const mirrorPath = createMusicDbFixture();
-        const Database = (await import('better-sqlite3')).default;
         const db = new Database(mirrorPath);
         db.exec(
             'CREATE TABLE mbid_redirects (entity_type TEXT NOT NULL, old_mbid TEXT NOT NULL, new_mbid TEXT NOT NULL)',
@@ -391,12 +390,7 @@ describe('persistent lyrics lookup state', () => {
         mirror.closeMusicDb();
 
         try {
-            repo.recordLyricsFound(
-                request,
-                'https://genius.com/redirected',
-                'genius',
-                { geniusAttempted: true, musicbrainzAttempted: false },
-            );
+            repo.recordLyricsUrl(request, 'https://genius.com/redirected');
             const calls = installProviderStub({});
 
             const result = await resolver.resolveLyrics({
@@ -406,105 +400,11 @@ describe('persistent lyrics lookup state', () => {
 
             assert.equal(result.url, 'https://genius.com/redirected');
             assert.deepEqual(calls, []);
-
-            const rows = openLyricsDb(lyricsPath);
-            const count = rows
-                .prepare('SELECT count(*) AS n FROM lyrics_lookup_state')
-                .get() as { n: number };
-            rows.close();
-            assert.equal(count.n, 1, 'the old durable row is retained, not moved or deleted');
         } finally {
             mirror.closeMusicDb();
             if (previousPath === undefined) delete process.env.MUSIC_DB_PATH;
             else process.env.MUSIC_DB_PATH = previousPath;
-            fs.rmSync(path.dirname(mirrorPath), { recursive: true, force: true });
+            fs.rmSync(mirrorPath, { force: true });
         }
-    });
-
-    it('keeps using an old-identity row when the redirect target has no row yet', async () => {
-        const { repo, resolver } = await loadModules();
-        const mirror = await import('../src/infrastructure/musicDb/musicDbClient.js');
-        const { createMusicDbFixture } = await import('./helpers/musicDbFixture.js');
-        const Database = (await import('better-sqlite3')).default;
-
-        const mirrorPath = createMusicDbFixture();
-        const db = new Database(mirrorPath);
-        db.exec(
-            'CREATE TABLE mbid_redirects (entity_type TEXT NOT NULL, old_mbid TEXT NOT NULL, new_mbid TEXT NOT NULL)',
-        );
-        db.prepare('INSERT INTO mbid_redirects VALUES (?, ?, ?)').run(
-            'recording',
-            'old-recording',
-            'canonical-recording',
-        );
-        db.close();
-
-        const previousPath = process.env.MUSIC_DB_PATH;
-        process.env.MUSIC_DB_PATH = mirrorPath;
-        mirror.closeMusicDb();
-
-        try {
-            repo.recordLyricsFound(
-                { ...request, recordingId: 'old-recording' },
-                'https://genius.com/old-identity',
-                'genius',
-                { geniusAttempted: true, musicbrainzAttempted: false },
-            );
-            const calls = installProviderStub({});
-
-            const result = await resolver.resolveLyrics({
-                ...request,
-                recordingId: 'old-recording',
-            });
-
-            assert.equal(result.url, 'https://genius.com/old-identity');
-            assert.deepEqual(calls, []);
-        } finally {
-            mirror.closeMusicDb();
-            if (previousPath === undefined) delete process.env.MUSIC_DB_PATH;
-            else process.env.MUSIC_DB_PATH = previousPath;
-            fs.rmSync(path.dirname(mirrorPath), { recursive: true, force: true });
-        }
-    });
-
-    it('reports the rows actually removed by housekeeping', async () => {
-        const { repo } = await loadModules();
-        const { openLyricsDb } = await import('../src/infrastructure/lyricsDb/lyricsDbClient.js');
-        repo.recordLyricsFound(request, 'https://genius.com/old', 'genius', {
-            geniusAttempted: true,
-            musicbrainzAttempted: false,
-        });
-        const db = openLyricsDb(lyricsPath);
-        db.prepare('UPDATE lyrics_lookup_state SET checked_at = 0').run();
-        db.close();
-
-        const applied = repo.applyLyricsHousekeeping();
-        assert.deepEqual(applied, {
-            removableRows: 1,
-            removableFound: 1,
-            removableMisses: 0,
-            removableFailures: 0,
-        });
-        assert.equal(repo.getLyricsStoreStats().rows, 0);
-    });
-
-    it('survives mirror replacement because the sidecar is a separate file', async () => {
-        const { repo, resolver } = await loadModules();
-        repo.recordLyricsFound(request, 'https://genius.com/durable', 'genius', {
-            geniusAttempted: true,
-            musicbrainzAttempted: false,
-        });
-
-        const mirrorDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'pawify-mirror-replace-'));
-        const mirrorPath = path.join(mirrorDirectory, 'mb.db');
-        fs.writeFileSync(mirrorPath, 'not the same mirror');
-        const calls = installProviderStub({});
-
-        const result = await resolver.resolveLyrics(request);
-        assert.equal(result.url, 'https://genius.com/durable');
-        assert.deepEqual(calls, []);
-        assert.equal(fs.existsSync(lyricsPath), true);
-
-        fs.rmSync(mirrorDirectory, { recursive: true, force: true });
     });
 });

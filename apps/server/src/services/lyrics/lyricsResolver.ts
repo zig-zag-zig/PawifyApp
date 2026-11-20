@@ -1,16 +1,16 @@
 import { createLogger } from '../../common/logging/logger.js';
-import { lyricsDbConfig } from '../../config/runtimeConfig.js';
 import {
     buildDurableLyricsLookupIdentity,
     isLyricsRefreshDue,
-    isUsableLyricsState,
     readLyricsStates,
-    recordLyricsConfirmedMiss,
-    recordLyricsFound,
-    recordLyricsTransientFailure,
+    recordLyricsAbsent,
+    recordLyricsRetryable,
+    recordLyricsUrl,
     type LyricsLookupRequest,
 } from '../../infrastructure/lyricsDb/lyricsStateRepository.js';
+import { normalizeLyricsUrl } from '../../infrastructure/lyricsDb/lyricsUrlStorage.js';
 import { fetchGeniusLyrics } from '../musicApi/geniusClient.js';
+import { fetchMusicBrainzLyricsFallback } from '../musicApi/musicBrainzLyricsFallback.js';
 import { isAbortError } from '../musicApi/httpClient.js';
 
 const logger = createLogger('services.lyrics.resolver');
@@ -18,7 +18,7 @@ const logger = createLogger('services.lyrics.resolver');
 export type LyricsResolutionOutcome = 'found' | 'confirmed-miss' | 'failure';
 
 export type LyricsResolution = {
-    /** String for found, null for a confirmed dual miss, undefined for retryable failure. */
+    /** String for found, null for a confirmed miss, undefined for retryable failure. */
     url: string | null | undefined;
     outcome: LyricsResolutionOutcome;
     provider: 'genius' | 'musicbrainz' | 'stored' | null;
@@ -65,83 +65,97 @@ const attachWaiter = (signal: AbortSignal | undefined, entry: InFlight): void =>
     void entry.promise.finally(() => release(false));
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-const preservedFound = (
-    request: LyricsLookupRequest,
-    url: string,
-    attempts: { geniusAttempted: boolean; musicbrainzAttempted: boolean },
-): LyricsResolution => {
-    // Keep serving the known URL, but do not re-spend both providers on every
-    // screen open while upstream is stable. A miss TTL is the bounded refresh
-    // policy for a preserved success.
-    recordLyricsTransientFailure(request, {
-        ...attempts,
-        retryAfterMs: lyricsDbConfig.missTtlDays * DAY_MS,
-    });
-    return { url, outcome: 'found', provider: 'stored' };
-};
-
+/**
+ * Runs the provider chain for one lookup and persists the outcome.
+ *
+ * Genius first (one cheap search request). The MusicBrainz fallback only runs for
+ * a Genius miss on a track with a real recording id, and only while the per-job
+ * budget lasts: it costs one recording probe plus up to three work probes, because
+ * MusicBrainz does not nest URL relations on a recording's work objects.
+ *
+ * Every answer is persisted, so the chain runs at most once per recording identity
+ * until the stored retry gate expires.
+ */
 const resolveFresh = async (
     request: LyricsLookupRequest,
     signal: AbortSignal,
-    existingFoundUrl?: string | null,
+    canUseMusicBrainzFallback?: () => boolean,
 ): Promise<LyricsResolution> => {
-    const attempts = { geniusAttempted: false, musicbrainzAttempted: false };
-
     const genius = await fetchGeniusLyrics(request.artistName, request.trackName, signal);
-    attempts.geniusAttempted = true;
+
     if (genius.status === 'found') {
-        recordLyricsFound(request, genius.url, 'genius', attempts);
-        return { url: genius.url, outcome: 'found', provider: 'genius' };
+        const url = normalizeLyricsUrl(genius.url);
+        recordLyricsUrl(request, url);
+        return { url, outcome: 'found', provider: 'genius' };
     }
 
-    // Navigation/abort cancellation is not a provider miss: do not persist
-    // anything derived from an incomplete request.
+    // Navigation/abort cancellation is not an answer from any provider.
     if (signal.aborted) {
         return { url: undefined, outcome: 'failure', provider: null };
     }
 
     if (genius.status === 'failure') {
-        // Missing credential/rate limit/network: retryable, never a miss.
-        if (existingFoundUrl) {
-            return preservedFound(request, existingFoundUrl, attempts);
-        }
-        recordLyricsTransientFailure(request, attempts);
+        // Missing credential, rate limit, network: retryable, never a miss.
+        recordLyricsRetryable(request);
         return { url: undefined, outcome: 'failure', provider: null };
     }
 
-    // Genius answered "no lyrics" for this exact query variant. It is the only
-    // live provider: the catalogue mirror and the durable lyrics DB carry every
-    // other answer, so a successful miss is a confirmed absence.
-    if (existingFoundUrl) {
-        return preservedFound(request, existingFoundUrl, attempts);
+    const recordingId = request.recordingId?.trim();
+    if (!recordingId) {
+        // No trustworthy recording identity, and the fallback may never search the
+        // catalogue. Genius is the only reachable source, so its answer is final.
+        recordLyricsAbsent(request);
+        return { url: null, outcome: 'confirmed-miss', provider: null };
     }
-    recordLyricsConfirmedMiss(request, attempts);
+
+    if (!(canUseMusicBrainzFallback?.() ?? true)) {
+        // Budget spent for this job: retryable, not an absence.
+        recordLyricsRetryable(request);
+        return { url: undefined, outcome: 'failure', provider: null };
+    }
+
+    const fallback = await fetchMusicBrainzLyricsFallback(recordingId, signal);
+    if (signal.aborted) {
+        return { url: undefined, outcome: 'failure', provider: null };
+    }
+
+    if (fallback.status === 'found') {
+        const url = normalizeLyricsUrl(fallback.url);
+        recordLyricsUrl(request, url);
+        return { url, outcome: 'found', provider: 'musicbrainz' };
+    }
+
+    if (fallback.status === 'failure') {
+        recordLyricsRetryable(request);
+        return { url: undefined, outcome: 'failure', provider: null };
+    }
+
+    // Both providers answered successfully and neither has lyrics: hold the result
+    // for the negative-TTL window instead of re-spending both on every open.
+    recordLyricsAbsent(request);
     return { url: null, outcome: 'confirmed-miss', provider: null };
 };
 
 /**
- * Resolves one durable lyrics lookup against Genius only.
+ * Resolves one durable lyrics lookup.
  *
- * No live MusicBrainz calls exist on this path: the catalogue mirror and the
- * durable lyrics DB answer everything else, and the MB web service rate budget
- * belongs to the hourly sync, not to per-track user requests.
+ * Stored state first; provider work only when the row is absent, retryable, or its
+ * retry gate has passed. Concurrent callers sharing the same durable lookup key
+ * wait on one provider request.
  */
 export const resolveLyrics = async (
     request: LyricsLookupRequest,
     signal?: AbortSignal,
+    options?: { canUseMusicBrainzFallback?: () => boolean },
 ): Promise<LyricsResolution> => {
     const identity = buildDurableLyricsLookupIdentity(request);
     const stored = readLyricsStates([request]).get(identity.lookupKey);
-    if (isUsableLyricsState(stored) && !isLyricsRefreshDue(stored)) {
-        if (stored.outcome === 'found') {
-            return { url: stored.resolvedUrl, outcome: 'found', provider: 'stored' };
+    if (!isLyricsRefreshDue(stored)) {
+        if (stored?.lyricsUrl) {
+            return { url: stored.lyricsUrl, outcome: 'found', provider: 'stored' };
         }
         return { url: null, outcome: 'confirmed-miss', provider: 'stored' };
     }
-    const existingFoundUrl =
-        stored?.outcome === 'found' && stored.resolvedUrl ? stored.resolvedUrl : null;
 
     if (isAborted(signal)) {
         return { url: undefined, outcome: 'failure', provider: null };
@@ -163,7 +177,7 @@ export const resolveLyrics = async (
             provider: null,
         }),
     };
-    entry.promise = resolveFresh(request, controller.signal, existingFoundUrl)
+    entry.promise = resolveFresh(request, controller.signal, options?.canUseMusicBrainzFallback)
         .catch((error) => {
             if (isAbortError(error)) {
                 return { url: undefined, outcome: 'failure', provider: null } as const;
@@ -172,10 +186,7 @@ export const resolveLyrics = async (
                 lookupKey: identity.lookupKey,
                 error: error instanceof Error ? error.message : String(error),
             });
-            recordLyricsTransientFailure(request, {
-                geniusAttempted: true,
-                musicbrainzAttempted: false,
-            });
+            recordLyricsRetryable(request);
             return { url: undefined, outcome: 'failure', provider: null } as const;
         })
         .finally(() => {

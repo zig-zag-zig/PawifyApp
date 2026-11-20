@@ -44,3 +44,11 @@ export const expandStoredLyricsUrl = (value: string): string => {
     if (trimmed.startsWith('/')) return `https://${GENIUS_HOST}${trimmed}`;
     return `https://${trimmed.replace(/^\/+/, '')}`;
 };
+
+/**
+ * Canonical form of a provider URL: identical to what the store keeps, expanded
+ * back to a clickable HTTPS URL. Serving this keeps the client's copy and the
+ * persisted copy in lockstep (same host spelling, no query/fragment).
+ */
+export const normalizeLyricsUrl = (value: string): string =>
+    expandStoredLyricsUrl(compactLyricsUrlForStorage(value));

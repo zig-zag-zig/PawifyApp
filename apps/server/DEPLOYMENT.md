@@ -253,6 +253,25 @@ openLyricsDb(target).close();
 
 This one-off command installs no migration CLI or API role and copies no lyrics data.
 
+The store holds three columns only — `lookup_key`, `lyrics_url`, `retry_after`:
+
+| Row shape | Meaning |
+|---|---|
+| `lyrics_url` set | Resolved. Permanent: never refetched, never expired. |
+| both `NULL` | Nothing usable (provider failure). Retried on the next request. |
+| `lyrics_url NULL`, `retry_after` in the future | Confirmed absence everywhere. Not retried before that date. |
+
+Recording identity, query fingerprint, provider name and attempt timestamps are
+deliberately not stored: the first two are substrings of `lookup_key`, the third is
+visible in the URL's host, and nothing needs an audit trail on a small VPS disk.
+Secondary indexes are not stored either — every read is by primary key.
+
+A v1 file (ten columns, two indexes) is upgraded in place by the API on the next
+boot, before it serves traffic; no manual step is needed. The mapping is
+`found` -> `lyrics_url`, `confirmed-miss` -> `retry_after` from `next_attempt_at`,
+`transient-failure` -> both `NULL`. Old rows are rewritten, not deleted, so the
+upgrade is reversible by restoring a backup taken before it.
+
 This file is application-owned: mirror sync/prune/replacement must not touch it.
 Legacy `asset:lyrics:*` Redis values are cache-only results; after the cutover
 they are refetched on demand rather than promised as migrated state. Do not flush

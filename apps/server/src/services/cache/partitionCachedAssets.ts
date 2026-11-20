@@ -20,7 +20,6 @@ import { fetchReleaseCover, fetchReleaseGroupCover } from '../coverArt/coverArtL
 import { getArtistImageProviderLinksFromMirror } from '../../infrastructure/musicDb/musicDbRepositories.js';
 import {
     buildDurableLyricsLookupIdentity,
-    isLyricsRefreshDue,
     isUsableLyricsState,
     readLyricsStates,
 } from '../../infrastructure/lyricsDb/lyricsStateRepository.js';
@@ -157,19 +156,15 @@ export const partitionTrackLyrics = async (
     for (const track of tracks) {
         const state = states.get(buildDurableLyricsLookupIdentity(track).lookupKey);
 
+        // Resolved lyrics are permanent: serve the URL and never queue work again.
+        if (state?.lyricsUrl) {
+            resolved[track.trackId] = state.lyricsUrl;
+            continue;
+        }
+        // A confirmed absence is served as null until its retry gate opens.
         if (isUsableLyricsState(state, now)) {
-            if (state.outcome === 'found' && state.resolvedUrl) {
-                resolved[track.trackId] = state.resolvedUrl;
-                // Serve the known URL now, but queue a bounded refresh once due.
-                if (isLyricsRefreshDue(state, now)) {
-                    pending.push(track);
-                }
-                continue;
-            }
-            if (state.outcome === 'confirmed-miss') {
-                resolved[track.trackId] = null;
-                continue;
-            }
+            resolved[track.trackId] = null;
+            continue;
         }
 
         pending.push(track);

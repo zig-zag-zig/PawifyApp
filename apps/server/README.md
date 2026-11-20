@@ -431,8 +431,12 @@ VPS if it becomes necessary.
   startup/readiness with an actionable reason. Catalogue requests then return a
   retriable `503`, never empty results or a MusicBrainz Web Service fallback.
 - `LYRICS_DB_PATH` points at the application-owned lyrics SQLite file, mounted
-  outside disposable container layers and outside mirror replacement. See
-  [Deployment](DEPLOYMENT.md#lyrics-state-required-separate-file) for one-time setup.
+  outside disposable container layers and outside mirror replacement. It stores one
+  row per durable lookup with three columns (url / retry gate / neither), so a
+  resolved lyric is never refetched and a confirmed absence is not retried before
+  its gate. See
+  [Deployment](DEPLOYMENT.md#lyrics-state-required-separate-file) for one-time setup
+  and the schema shape.
 
 - The MusicBrainz Web Service is used at runtime only by the narrow lyrics
   fallback adapter (Genius first). Artwork providers (Deezer/Tidal/Discogs/Cover
