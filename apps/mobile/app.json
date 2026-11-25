@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pawify",
     "slug": "pawify",
-    "version": "3.1.3",
+    "version": "3.1.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -37,7 +37,7 @@
       },
       "package": "vip.chi_chi.pawify",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 32,
+      "versionCode": 33,
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],

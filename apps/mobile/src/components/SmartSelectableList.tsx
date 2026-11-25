@@ -1,4 +1,4 @@
-import React, { useImperativeHandle } from 'react';
+import React, { useCallback, useImperativeHandle } from 'react';
 import { Animated, FlatList } from 'react-native';
 import { useAnimatedDelete } from '../hooks/useAnimatedDelete';
 import { useSelectionManager } from '../hooks/useSelectionManager';
@@ -64,6 +64,17 @@ export function SmartSelectableList<T extends { id: string }>(
     } = useAnimatedDelete(items, onRemoveSelected);
     const scroll = useScrollAffordance();
 
+    // Rows can grow without the user scrolling (load more, restored cards), so the
+    // affordances take the content-size event as a second geometry source alongside
+    // the spinner gate this list was already reporting through `onContentReady`.
+    const handleContentSizeChange = useCallback(
+        (_width: number, height: number) => {
+            onContentReady();
+            scroll.onContentSizeChange(_width, height);
+        },
+        [onContentReady, scroll.onContentSizeChange],
+    );
+
     useImperativeHandle(selectionManagerRef, () => ({
         clearSelection,
     }));
@@ -108,7 +119,8 @@ export function SmartSelectableList<T extends { id: string }>(
                 onScroll={scroll.onScroll}
                 scrollEventThrottle={scroll.scrollEventThrottle}
                 keyExtractor={item => item.id}
-                onContentSizeChange={onContentReady}
+                onContentSizeChange={handleContentSizeChange}
+                onLayout={scroll.onViewportLayout}
                 ListFooterComponent={footer ? <>{footer}</> : null}
             />
             {/* Above the bottom action bar so a selection cannot hide them. */}

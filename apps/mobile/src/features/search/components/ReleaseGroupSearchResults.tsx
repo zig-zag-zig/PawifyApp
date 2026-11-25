@@ -112,6 +112,16 @@ const ReleaseGroupSearchResults = ({
         releaseGroups.length > 0
     );
 
+    // Appended rows arrive without any user scrolling, so the spinner gate and the
+    // scroll affordances both need the content-size event as a second geometry source.
+    const handleContentSizeChange = useCallback(
+        (_width: number, height: number) => {
+            onContentReady();
+            scroll.onContentSizeChange(_width, height);
+        },
+        [onContentReady, scroll.onContentSizeChange],
+    );
+
     const renderLoadMore = useCallback(() => {
         if (canLoadMore || isLoading) {
             return (
@@ -166,7 +176,8 @@ const ReleaseGroupSearchResults = ({
                 updateCellsBatchingPeriod={16}
                 windowSize={11}
                 removeClippedSubviews={false}
-                onContentSizeChange={onContentReady}
+                onContentSizeChange={handleContentSizeChange}
+                onLayout={scroll.onViewportLayout}
             />
             <ScrollButtons
                 showScrollToTop={scroll.showScrollToTop}

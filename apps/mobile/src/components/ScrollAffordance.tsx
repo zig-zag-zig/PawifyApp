@@ -4,6 +4,7 @@ import {
     Pressable,
     StyleSheet,
     View,
+    type LayoutChangeEvent,
     type NativeScrollEvent,
     type NativeSyntheticEvent,
 } from 'react-native';
@@ -13,13 +14,23 @@ import { theme } from '../styles/theme';
 /**
  * Floating scroll affordances for long lists.
  *
- * Two deliberate constraints:
+ * Two deliberate constraints, one per button:
  *
- * - "Top" appears only after a real scroll (SHOW_AFTER_PX), so short lists never
+ * - "Top" needs a real run above the viewport (SHOW_AFTER_PX), so short lists never
  *   grow a button that does nothing.
- * - "Bottom" additionally needs a meaningful run left below the viewport
- *   (MIN_BOTTOM_DISTANCE_PX). Otherwise a list that is only a few rows taller than
- *   the screen would show two buttons offering the same tiny jump.
+ * - "Bottom" needs a meaningful run left below the viewport (MIN_BOTTOM_DISTANCE_PX).
+ *   Otherwise a list that is only a few rows taller than the screen would show two
+ *   buttons offering the same tiny jump.
+ *
+ * Each button is decided by the run in *its own* direction only: a freshly loaded long
+ * list shows "bottom" right away, and a list scrolled to its end shows only "top".
+ *
+ * The geometry behind those two numbers comes from three sources, because "Load more"
+ * changes the content without the user moving: scroll events carry offset *and*
+ * content/viewport size, `onContentSizeChange` carries a new content height, and
+ * `onLayout` carries a new viewport height. Wiring only the scroll event made the
+ * bottom button lag one nudge behind every content growth -- the appended rows were
+ * counted only once some finger movement produced a fresh scroll event.
  *
  * The buttons sit in a bottom-right column with a margin from the safe area/edge, and
  * they are small circles, so they cover as little list content as possible and never
@@ -34,46 +45,81 @@ export type ScrollMetrics = {
     viewportHeight: number;
 };
 
+type ScrollFlags = {
+    showScrollToTop: boolean;
+    showScrollToBottom: boolean;
+};
+
+const decide = ({ offsetY, contentHeight, viewportHeight }: ScrollMetrics): ScrollFlags => {
+    // Nothing is measurable until the viewport itself has laid out; a content height
+    // arriving first would otherwise look like an infinitely long list.
+    if (viewportHeight <= 0) {
+        return { showScrollToTop: false, showScrollToBottom: false };
+    }
+
+    const scrollableHeight = Math.max(0, contentHeight - viewportHeight);
+    // An offset beyond the current end cannot be where the user is: the list shrank
+    // (a replaced search, removed rows) around them, so they are at the end now.
+    // Capping the offset for the *decision* only -- instead of rewriting the stored
+    // geometry -- keeps a transient dip in the reported content height recoverable:
+    // the next scroll event is authoritative either way.
+    const offsetFromTop = Math.min(offsetY, scrollableHeight);
+
+    return {
+        showScrollToTop: offsetFromTop > SHOW_AFTER_PX,
+        showScrollToBottom: scrollableHeight - offsetFromTop > MIN_BOTTOM_DISTANCE_PX,
+    };
+};
+
 export const useScrollAffordance = () => {
-    const [metrics, setMetrics] = useState<ScrollMetrics>({
-        offsetY: 0,
-        contentHeight: 0,
-        viewportHeight: 0,
-    });
+    // Latest geometry lives in a ref: every event is authoritative, so a decision can
+    // never be recomputed from the stale snapshot that the last *rendered* one left.
+    const metricsRef = useRef<ScrollMetrics>({ offsetY: 0, contentHeight: 0, viewportHeight: 0 });
+    const [flags, setFlags] = useState<ScrollFlags>(() => decide(metricsRef.current));
 
-    const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const applyMetrics = useCallback((next: Partial<ScrollMetrics>) => {
+        const merged: ScrollMetrics = { ...metricsRef.current, ...next };
+        metricsRef.current = merged;
 
-        setMetrics((previous) => {
-            // Scroll fires constantly; only re-render when the *decision* changes.
-            const next = {
+        const decided = decide(merged);
+        // Scroll and layout churn fire constantly; re-render only on a flip.
+        setFlags((previous) =>
+            previous.showScrollToTop === decided.showScrollToTop &&
+            previous.showScrollToBottom === decided.showScrollToBottom
+                ? previous
+                : decided,
+        );
+    }, []);
+
+    const onScroll = useCallback(
+        (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+            applyMetrics({
                 offsetY: contentOffset.y,
                 contentHeight: contentSize.height,
                 viewportHeight: layoutMeasurement.height,
-            };
+            });
+        },
+        [applyMetrics],
+    );
 
-            const wasVisible = previous.offsetY > SHOW_AFTER_PX;
-            const isVisible = next.offsetY > SHOW_AFTER_PX;
-            const remainingBefore =
-                previous.contentHeight - previous.viewportHeight - previous.offsetY;
-            const remainingAfter = next.contentHeight - next.viewportHeight - next.offsetY;
-            const couldScrollToBottom = remainingBefore > MIN_BOTTOM_DISTANCE_PX;
-            const canScrollToBottom = remainingAfter > MIN_BOTTOM_DISTANCE_PX;
+    const onContentSizeChange = useCallback(
+        (_width: number, height: number) => applyMetrics({ contentHeight: height }),
+        [applyMetrics],
+    );
 
-            if (wasVisible === isVisible && couldScrollToBottom === canScrollToBottom) {
-                return previous;
-            }
-
-            return next;
-        });
-    }, []);
-
-    const remaining = metrics.contentHeight - metrics.viewportHeight - metrics.offsetY;
+    const onViewportLayout = useCallback(
+        (event: LayoutChangeEvent) =>
+            applyMetrics({ viewportHeight: event.nativeEvent.layout.height }),
+        [applyMetrics],
+    );
 
     return {
-        showScrollToTop: metrics.offsetY > SHOW_AFTER_PX,
-        showScrollToBottom: metrics.offsetY > SHOW_AFTER_PX && remaining > MIN_BOTTOM_DISTANCE_PX,
+        showScrollToTop: flags.showScrollToTop,
+        showScrollToBottom: flags.showScrollToBottom,
         onScroll,
+        onContentSizeChange,
+        onViewportLayout,
         scrollEventThrottle: 32,
     };
 };
