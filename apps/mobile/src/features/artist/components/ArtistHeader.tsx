@@ -188,7 +188,7 @@ const ArtistHeader = ({
                         {isGroup ? "Disbanded" : "Died"} {formatDate(deathDate)}
                         {age !== null && (isGroup
                             ? ` (after ${formatYearCount(age)})`
-                            : ` (aged ${formatYearCount(age)})`)}
+                            : ` (${formatYearCount(age)}) old`)}
                     </SelectableText>
                 )}
 

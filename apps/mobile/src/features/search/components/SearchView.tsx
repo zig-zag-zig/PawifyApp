@@ -123,6 +123,8 @@ const TrackResults = ({
                 data={tracks}
                 keyExtractor={(track) => track.id}
                 onScroll={scroll.onScroll}
+                onContentSizeChange={scroll.onContentSizeChange}
+                onLayout={scroll.onViewportLayout}
                 scrollEventThrottle={scroll.scrollEventThrottle}
                 renderItem={renderItem}
                 style={styles.trackListViewport}
